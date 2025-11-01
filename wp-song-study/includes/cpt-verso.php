@@ -96,6 +96,32 @@ function wpss_register_cpt_verso() {
 
     register_post_meta(
         'verso',
+        '_fin_de_estrofa',
+        [
+            'type'              => 'boolean',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default'           => false,
+        ]
+    );
+
+    register_post_meta(
+        'verso',
+        '_nombre_estrofa',
+        [
+            'type'              => 'string',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_text_field',
+            'default'           => '',
+        ]
+    );
+
+    register_post_meta(
+        'verso',
         '_notas_verso',
         [
             'type'              => 'string',

@@ -185,6 +185,59 @@
     width: 100%;
 }
 
+.wpss-verse-stanza {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #dcdcde;
+    display: grid;
+    gap: 12px;
+}
+
+.wpss-verse-stanza__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.wpss-verse-stanza__toggle input {
+    margin: 0;
+}
+
+.wpss-verse-stanza__label input:disabled {
+    background: #f6f7f7;
+    color: #646970;
+}
+
+.wpss-stanza-preview,
+.wpss-reading__stanza {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #646970;
+}
+
+.wpss-reading__stanza {
+    margin-top: 8px;
+}
+
+.wpss-stanza-sep {
+    flex: 1;
+    border-top: 1px solid #ccd0d4;
+    height: 0;
+    display: block;
+}
+
+.wpss-stanza-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #1d2327;
+    white-space: nowrap;
+}
+
 .wpss-verse-event {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

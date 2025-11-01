@@ -46,6 +46,8 @@ Cada verso se guarda como CPT hijo y ahora puede incluir múltiples segmentos te
 * **Función relativa** (`_funcion_relativa`). Opcional para numerales romanos o etiquetas como `V7/ii`.
 * **Notas adicionales** (`_notas_verso`). Observaciones o análisis puntual.
 * **Evento armónico** (`_evento_armonico_json`). Marca préstamos o modulaciones por verso.
+* **Fin de estrofa** (`_fin_de_estrofa`). Bandera booleana para insertar un separador visual tras el verso en la vista de lectura y exportación.
+* **Nombre de estrofa** (`_nombre_estrofa`). Texto (máx. 64 caracteres) opcional que se muestra junto al separador para etiquetar secciones como “Coro” o “Puente”. Solo se persiste cuando `fin_de_estrofa` es verdadero.
 
 ### Campos armónicos
 
@@ -65,9 +67,10 @@ Ambas páginas cargan una SPA (`assets/cancion-dashboard.js`) que permite:
 
 1. **Explorar y filtrar canciones** por tonalidad, presencia de préstamos o modulaciones y paginar los resultados.
 2. **Editar en una sola vista** el título, tonalidad, campo armónico predominante, préstamos tonales, modulaciones y la tabla completa de versos.
-3. **Editar versos segmentados**: cada verso admite múltiples segmentos texto-acorde con duplicado, división y reordenado tanto por segmento como por verso, manteniendo `_orden` coherente.
-4. **Alternar vistas**: la pestaña *Editor* convive con una biblioteca editable de campos armónicos y una *Vista de lectura* tipo lead sheet para revisar la canción sin controles de edición.
-5. **Guardar de forma atómica** canción + préstamos + modulaciones + versos mediante AJAX seguro con nonce dedicado.
+3. **Editar versos segmentados**: cada verso admite múltiples segmentos texto-acorde con duplicado, división y reordenado tanto por segmento como por verso, manteniendo `_orden` coherente y respetando los segmentos guardados en `_segmentos_json` al recargar.
+4. **Marcar separadores de estrofa**: activa la casilla *Fin de estrofa* en cada verso para insertar una línea divisoria y, si lo deseas, asigna un nombre de sección (Coro, Puente, etc.) que se replica en la vista de lectura y en la exportación de texto.
+5. **Alternar vistas**: la pestaña *Editor* convive con una biblioteca editable de campos armónicos y una *Vista de lectura* tipo lead sheet para revisar la canción sin controles de edición.
+6. **Guardar de forma atómica** canción + préstamos + modulaciones + versos mediante AJAX seguro con nonce dedicado.
 
 > Consejo: la acción “Nueva canción” limpia el editor sin perder la lista filtrada de la biblioteca.
 
@@ -82,6 +85,8 @@ Todas las rutas se exponen bajo el namespace `wpss/v1` y requieren `current_user
 | `POST` | `/wpss/v1/cancion` | Crea o actualiza una canción y reemplaza su set de préstamos, modulaciones y versos en una sola operación. Responde con `{ ok, id, tiene_prestamos, tiene_modulaciones }`. |
 | `GET` | `/wpss/v1/campos-armonicos` | Devuelve la biblioteca completa de campos armónicos (defaults + personalizados) con nombre, slug, sistema, intervalos, descripciones y bandera `activo`. |
 | `POST` | `/wpss/v1/campos-armonicos` | Sobrescribe la biblioteca de campos armónicos fusionando por `slug`. Requiere `[{ slug, nombre, sistema, intervalos, descripcion, notas, activo }]`. |
+
+Las respuestas de `GET /wpss/v1/cancion/{id}` devuelven cada verso con su arreglo `segmentos` ya normalizado, además de las banderas `fin_de_estrofa` (booleano) y `nombre_estrofa` (string opcional) para renderizar separadores en el cliente. El endpoint de guardado valida que cada verso incluya al menos un segmento con texto o acorde antes de aceptar la solicitud.
 
 Payload esperado al guardar:
 
@@ -105,7 +110,9 @@ Payload esperado al guardar:
         { "texto": "con resolución", "acorde": "G7" }
       ],
       "comentario": "I → IV",
-      "evento_armonico": null
+      "evento_armonico": null,
+      "fin_de_estrofa": true,
+      "nombre_estrofa": "Coro"
     }
   ]
 }
@@ -130,5 +137,8 @@ Payload esperado al guardar:
 4. Usar los filtros de la biblioteca para mostrar solo canciones con préstamos y validar que los indicadores correspondan.
 5. Editar una canción existente desde la lista, modificar campos y guardar verificando que los cambios se reflejen en la tabla.
 6. Revisar las peticiones REST en el inspector para comprobar cabeceras `X-WPSS-Nonce` y respuestas `{ ok, id, tiene_* }`.
+7. Dividir un verso en múltiples segmentos con acordes distintos, guardar la canción, recargar el editor y confirmar que cada segmento reaparece tal como se guardó.
+8. Marcar *Fin de estrofa* en un verso, asignar un nombre de estrofa, guardar y verificar que la línea divisoria y la etiqueta se rendericen tanto en la vista de lectura como en la exportación “Copiar como texto”.
+9. Abrir una canción previa sin `_segmentos_json`, comprobar que genera un segmento único, dividirla en el editor, guardar y confirmar que al recargar obtiene los segmentos reales.
 
 Consulta `CHANGELOG.md` para detalles de versiones.

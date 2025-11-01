@@ -395,6 +395,40 @@ function wpss_decode_json_meta( $value ) {
 }
 
 /**
+ * Obtiene y rehidrata los segmentos almacenados en meta evitando falsos positivos.
+ *
+ * @param int $verso_id ID del verso.
+ * @return array|null Array de segmentos o null si debe usarse la ruta retrocompatible.
+ */
+function wpss_get_segmentos_from_meta( $verso_id ) {
+    $raw = get_post_meta( $verso_id, '_segmentos_json', true );
+
+    if ( empty( $raw ) ) {
+        return null;
+    }
+
+    $raw = wp_unslash( $raw );
+    $raw = maybe_unserialize( $raw );
+
+    if ( is_string( $raw ) ) {
+        $decoded = json_decode( $raw, true );
+
+        if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+            return $decoded;
+        }
+
+        error_log( 'wpss: segmentos corruptos en verso ' . $verso_id );
+        return null;
+    }
+
+    if ( is_array( $raw ) ) {
+        return $raw;
+    }
+
+    return null;
+}
+
+/**
  * Limita la longitud de una cadena respetando caracteres multibyte cuando es posible.
  *
  * @param string $value  Cadena a truncar.
@@ -507,7 +541,7 @@ function wpss_get_cancion_versos( $post_id ) {
     $data = [];
 
     foreach ( $versos as $verso ) {
-        $segmentos_meta = wpss_decode_json_meta( get_post_meta( $verso->ID, '_segmentos_json', true ) );
+        $segmentos_meta = wpss_get_segmentos_from_meta( $verso->ID );
         $segmentos      = [];
 
         if ( ! empty( $segmentos_meta ) ) {
@@ -541,12 +575,14 @@ function wpss_get_cancion_versos( $post_id ) {
             ];
         }
 
-        $evento_raw = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
-        $evento     = wpss_sanitize_evento_armonico( $evento_raw );
-
-        $comentario = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
-        $texto_base = wpss_implode_segmentos_text( $segmentos );
-        $acorde     = isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '';
+        $evento_raw      = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
+        $evento          = wpss_sanitize_evento_armonico( $evento_raw );
+        $comentario      = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
+        $fin_de_estrofa  = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
+        $nombre_estrofa  = sanitize_text_field( get_post_meta( $verso->ID, '_nombre_estrofa', true ) );
+        $nombre_estrofa  = wpss_truncate_string( $nombre_estrofa, 64 );
+        $texto_base      = wpss_implode_segmentos_text( $segmentos );
+        $acorde          = isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '';
 
         $data[] = [
             'id'              => (int) $verso->ID,
@@ -556,6 +592,8 @@ function wpss_get_cancion_versos( $post_id ) {
             'segmentos'       => $segmentos,
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'fin_de_estrofa'  => $fin_de_estrofa,
+            'nombre_estrofa'  => $nombre_estrofa,
         ];
     }
 
@@ -775,6 +813,18 @@ function wpss_sanitize_versos_array( array $versos ) {
 
         $segmentos = wpss_sanitize_segmentos_array( $segmentos_input );
 
+        $fin_de_estrofa = ! empty( $verso['fin_de_estrofa'] ) ? 1 : 0;
+        $nombre_estrofa = '';
+
+        if ( isset( $verso['nombre_estrofa'] ) ) {
+            $nombre_estrofa = sanitize_text_field( $verso['nombre_estrofa'] );
+            $nombre_estrofa = wpss_truncate_string( $nombre_estrofa, 64 );
+        }
+
+        if ( ! $fin_de_estrofa ) {
+            $nombre_estrofa = '';
+        }
+
         if ( empty( $segmentos ) ) {
             if ( '' === $comentario && null === $evento ) {
                 continue;
@@ -790,6 +840,8 @@ function wpss_sanitize_versos_array( array $versos ) {
             'acorde'          => isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '',
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'fin_de_estrofa'  => (bool) $fin_de_estrofa,
+            'nombre_estrofa'  => $nombre_estrofa,
         ];
     }
 
@@ -883,7 +935,25 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
         update_post_meta( $verso_id, '_acorde_absoluto', isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '' );
         update_post_meta( $verso_id, '_funcion_relativa', $verso['comentario'] );
         update_post_meta( $verso_id, '_notas_verso', '' );
-        update_post_meta( $verso_id, '_segmentos_json', wp_json_encode( $segmentos ) );
+        $segmentos_json = wp_json_encode( $segmentos, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        if ( false === $segmentos_json ) {
+            $segmentos_json = wp_json_encode( $segmentos );
+        }
+
+        update_post_meta( $verso_id, '_segmentos_json', $segmentos_json );
+
+        if ( ! empty( $verso['fin_de_estrofa'] ) ) {
+            update_post_meta( $verso_id, '_fin_de_estrofa', 1 );
+        } else {
+            delete_post_meta( $verso_id, '_fin_de_estrofa' );
+        }
+
+        $nombre_estrofa = isset( $verso['nombre_estrofa'] ) ? wpss_truncate_string( (string) $verso['nombre_estrofa'], 64 ) : '';
+        if ( '' !== $nombre_estrofa ) {
+            update_post_meta( $verso_id, '_nombre_estrofa', $nombre_estrofa );
+        } else {
+            delete_post_meta( $verso_id, '_nombre_estrofa' );
+        }
 
         if ( ! empty( $verso['evento_armonico'] ) ) {
             update_post_meta( $verso_id, '_evento_armonico_json', wp_json_encode( $verso['evento_armonico'] ) );

@@ -6,10 +6,14 @@
 - Nuevo modo predeterminado **Frigio Dominante** y biblioteca editable de campos armónicos (REST `GET/POST /wpss/v1/campos-armonicos`).
 - SPA con pestañas para Editor, Vista de lectura y Campos armónicos, incluyendo validaciones de segmentos y botón “Copiar como texto”.
 - Vista pública `[song]` actualizada para mostrar segmentos y eventos por verso.
+- Separadores de estrofa opcionales por verso con etiqueta editable para secciones como “Coro” o “Puente”, visibles en el editor, la vista de lectura y el portapapeles.
 
 ### Changed
 - Interfaz de versos reorganizada con controles para duplicar, dividir y reordenar segmentos.
 - Documentación ampliada con ejemplos de segmentos y guía de la biblioteca de campos armónicos.
+
+### Fixed
+- Rehidratación robusta de `_segmentos_json` al cargar versos (unslash/deserialización/JSON) con registro de corrupciones antes de caer en la ruta retrocompatible, preservando la segmentación guardada.
 
 ## [0.1.0] - 2024-05-31
 ### Added

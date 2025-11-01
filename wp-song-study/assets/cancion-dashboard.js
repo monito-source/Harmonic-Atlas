@@ -192,6 +192,8 @@
                 segmentos: [ createEmptySegment() ],
                 comentario: '',
                 evento_armonico: null,
+                fin_de_estrofa: false,
+                nombre_estrofa: '',
             };
         }
 
@@ -228,6 +230,9 @@
                 if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
                     verso.evento_armonico = null;
                 }
+
+                verso.fin_de_estrofa = !! verso.fin_de_estrofa;
+                verso.nombre_estrofa = verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '';
             } );
         }
 
@@ -685,6 +690,16 @@
             const comentario = verso.comentario || '';
             const evento = verso.evento_armonico || null;
             const tipo = evento && evento.tipo ? evento.tipo : '';
+            const stanzaLabel = verso.nombre_estrofa ? escapeHtml( verso.nombre_estrofa ) : '';
+            const stanzaDisabled = verso.fin_de_estrofa ? '' : 'disabled';
+            const stanzaPreview = verso.fin_de_estrofa
+                ? `
+                    <div class="wpss-stanza-preview">
+                        <span class="wpss-stanza-sep" aria-hidden="true"></span>
+                        ${ stanzaLabel ? `<span class="wpss-stanza-label">${ stanzaLabel }</span>` : '' }
+                    </div>
+                `
+                : '';
 
             let eventFields = '';
 
@@ -735,6 +750,17 @@
                         </select>
                     </label>
                     ${ eventFields }
+                    <div class="wpss-verse-stanza">
+                        <label class="wpss-verse-stanza__toggle">
+                            <input type="checkbox" data-action="verse-stanza-toggle" data-index="${ index }" ${ verso.fin_de_estrofa ? 'checked' : '' } />
+                            <span>Fin de estrofa</span>
+                        </label>
+                        <label class="wpss-verse-stanza__label">
+                            <span>Nombre de estrofa (opcional)</span>
+                            <input type="text" data-model="versos" data-field="nombre_estrofa" data-index="${ index }" value="${ escapeAttr( verso.nombre_estrofa || '' ) }" maxlength="64" ${ stanzaDisabled } placeholder="Coro, Puente…" />
+                        </label>
+                        ${ stanzaPreview }
+                    </div>
                 </div>
             `;
         }
@@ -838,11 +864,20 @@
 
             const evento = renderEventoChip( verso.evento_armonico );
             const comentario = verso.comentario ? `<span class="wpss-reading__comment">${ escapeHtml( verso.comentario ) }</span>` : '';
+            const stanza = verso.fin_de_estrofa
+                ? `
+                    <div class="wpss-reading__stanza">
+                        <span class="wpss-stanza-sep" aria-hidden="true"></span>
+                        ${ verso.nombre_estrofa ? `<span class="wpss-stanza-label">${ escapeHtml( verso.nombre_estrofa ) }</span>` : '' }
+                    </div>
+                `
+                : '';
 
             return `
                 <li>
                     <div class="wpss-reading__line">${ partes }</div>
                     <div class="wpss-reading__meta">${ evento } ${ comentario }</div>
+                    ${ stanza }
                 </li>
             `;
         }
@@ -1019,7 +1054,12 @@
                     return;
                 }
 
-                state.editingSong[ model ][ index ][ field ] = value;
+                let nextValue = value;
+                if ( 'nombre_estrofa' === field ) {
+                    nextValue = value.slice( 0, 64 );
+                }
+
+                state.editingSong[ model ][ index ][ field ] = nextValue;
             } else if ( 'segmento' === model ) {
                 const verseIndex = parseInt( event.target.dataset.verse, 10 );
                 const segmentIndex = parseInt( event.target.dataset.segment, 10 );
@@ -1070,6 +1110,10 @@
                     return;
                 case 'verse-event-type':
                     updateVerseEventType( parseInt( event.target.dataset.index, 10 ), event.target.value );
+                    render();
+                    return;
+                case 'verse-stanza-toggle':
+                    toggleVerseStanza( parseInt( event.target.dataset.index, 10 ), event.target.checked );
                     render();
                     return;
                 case 'campo-toggle':
@@ -1271,6 +1315,19 @@
             verso.evento_armonico = next;
         }
 
+        function toggleVerseStanza( index, checked ) {
+            if ( Number.isNaN( index ) ) {
+                return;
+            }
+
+            const verso = state.editingSong.versos[ index ];
+            if ( ! verso ) {
+                return;
+            }
+
+            verso.fin_de_estrofa = !! checked;
+        }
+
         function toggleCampoActivo( index, checked ) {
             if ( Number.isNaN( index ) || ! state.campos.draft[ index ] ) {
                 return;
@@ -1334,6 +1391,8 @@
                     segmentos,
                     comentario: verso.comentario || '',
                     evento_armonico: verso.evento_armonico || null,
+                    fin_de_estrofa: !! verso.fin_de_estrofa,
+                    nombre_estrofa: verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '',
                 };
             } );
         }
@@ -1387,6 +1446,8 @@
                     segmentos: verso.segmentos,
                     comentario: verso.comentario,
                     evento_armonico: verso.evento_armonico,
+                    fin_de_estrofa: !! verso.fin_de_estrofa,
+                    nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
                 } ) ),
             };
 
@@ -1545,7 +1606,19 @@
                 }
 
                 lines.push( linea.trim() );
+
+                if ( verso.fin_de_estrofa ) {
+                    lines.push( '' );
+                    if ( verso.nombre_estrofa ) {
+                        lines.push( `--- ${ verso.nombre_estrofa } ---` );
+                        lines.push( '' );
+                    }
+                }
             } );
+
+            while ( lines.length && '' === lines[ lines.length - 1 ] ) {
+                lines.pop();
+            }
 
             return lines.join( '\n' );
         }
