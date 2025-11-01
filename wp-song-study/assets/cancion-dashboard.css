@@ -162,6 +162,28 @@
     margin-right: 4px;
 }
 
+.wpss-verse-detail label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.wpss-verse-detail label span {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.wpss-verse-detail input[type="text"],
+.wpss-verse-detail select {
+    width: 100%;
+}
+
+.wpss-verse-event {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+
 .wpss-panel--list table tbody tr {
     cursor: pointer;
 }

@@ -15,7 +15,7 @@
             view: container.dataset.view || 'dashboard',
             songs: [],
             filters: {
-                tonalidad: '',
+                tonica: '',
                 con_prestamos: '',
                 con_modulaciones: '',
             },
@@ -43,8 +43,8 @@
                 params.set( 'page', state.pagination.page );
                 params.set( 'per_page', 20 );
 
-                if ( state.filters.tonalidad ) {
-                    params.set( 'tonalidad', state.filters.tonalidad );
+                if ( state.filters.tonica ) {
+                    params.set( 'tonica', state.filters.tonica );
                 }
                 if ( '' !== state.filters.con_prestamos ) {
                     params.set( 'con_prestamos', state.filters.con_prestamos );
@@ -111,8 +111,9 @@
             return {
                 id: null,
                 titulo: '',
-                tonalidad: '',
+                tonica: '',
                 campo_armonico: '',
+                campo_armonico_predominante: '',
                 prestamos: [],
                 modulaciones: [],
                 versos: [],
@@ -124,6 +125,9 @@
         function normalizeVerseOrder() {
             state.editingSong.versos.forEach( ( verso, index ) => {
                 verso.orden = index + 1;
+                if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
+                    verso.evento_armonico = null;
+                }
             } );
         }
 
@@ -198,19 +202,19 @@
         }
 
         function renderFilters() {
-            const tonalidadOptions = data.tonalidades || [];
-            const tonalidadSelect = [ '<option value="">Todas</option>' ];
-            tonalidadOptions.forEach( ( term ) => {
-                const selected = term.slug === state.filters.tonalidad ? 'selected' : '';
-                tonalidadSelect.push( `<option value="${ escapeAttr( term.slug ) }" ${ selected }>${ escapeHtml( term.name ) }</option>` );
+            const tonicas = Array.isArray( data.tonicas ) ? data.tonicas : [];
+            const tonicaOptions = [ '<option value="">Todas</option>' ];
+            tonicas.forEach( ( nota ) => {
+                const selected = nota === state.filters.tonica ? 'selected' : '';
+                tonicaOptions.push( `<option value="${ escapeAttr( nota ) }" ${ selected }>${ escapeHtml( nota ) }</option>` );
             } );
 
             return `
                 <div class="wpss-filters">
                     <label>
-                        <span>Tonalidad</span>
-                        <select data-action="filter-tonalidad">
-                            ${ tonalidadSelect.join( '' ) }
+                        <span>Tónica</span>
+                        <select data-action="filter-tonica">
+                            ${ tonicaOptions.join( '' ) }
                         </select>
                     </label>
                     <label>
@@ -244,11 +248,13 @@
 
             const rows = state.songs.map( ( song ) => {
                 const selected = song.id === state.selectedSongId ? 'is-active' : '';
+                const tonicaLabel = song.tonica || song.tonalidad || '';
+                const campoLabel = song.campo_armonico ? ` · ${ escapeHtml( song.campo_armonico ) }` : '';
                 return `
                     <tr class="${ selected }" data-action="select-song" data-id="${ song.id }">
                         <td class="wpss-col-title">
                             <strong>${ escapeHtml( song.titulo ) }</strong>
-                            <span class="wpss-sub">${ escapeHtml( song.tonalidad || '—' ) }</span>
+                            <span class="wpss-sub">${ escapeHtml( tonicaLabel || '—' ) }${ campoLabel }</span>
                         </td>
                         <td>${ song.tiene_prestamos ? 'Sí' : 'No' }</td>
                         <td>${ song.tiene_modulaciones ? 'Sí' : 'No' }</td>
@@ -296,6 +302,13 @@
 
         function renderEditorForm() {
             const song = state.editingSong;
+            const campos = Array.isArray( data.camposArmonicos ) ? data.camposArmonicos : [];
+
+            const campoOptions = [ '<option value="">Selecciona un modo</option>' ];
+            campos.forEach( ( modo ) => {
+                const selected = modo === song.campo_armonico ? 'selected' : '';
+                campoOptions.push( `<option value="${ escapeAttr( modo ) }" ${ selected }>${ escapeHtml( modo ) }</option>` );
+            } );
 
             return `
                 <form class="wpss-editor" novalidate>
@@ -305,14 +318,20 @@
                             <input type="text" required data-model="general" data-field="titulo" value="${ escapeAttr( song.titulo ) }" />
                         </label>
                         <label>
-                            <span>Tonalidad</span>
-                            <input type="text" required data-model="general" data-field="tonalidad" value="${ escapeAttr( song.tonalidad ) }" list="wpss-tonalidades" />
+                            <span>Tónica</span>
+                            <input type="text" required data-model="general" data-field="tonica" value="${ escapeAttr( song.tonica ) }" list="wpss-tonicas" />
                         </label>
                     </div>
-                    <div class="wpss-field">
+                    <div class="wpss-field-group">
+                        <label>
+                            <span>Campo armónico (modo)</span>
+                            <select required data-model="general" data-field="campo_armonico">
+                                ${ campoOptions.join( '' ) }
+                            </select>
+                        </label>
                         <label>
                             <span>Campo armónico predominante</span>
-                            <textarea data-model="general" data-field="campo_armonico">${ escapeHtml( song.campo_armonico ) }</textarea>
+                            <textarea data-model="general" data-field="campo_armonico_predominante">${ escapeHtml( song.campo_armonico_predominante ) }</textarea>
                         </label>
                     </div>
 
@@ -423,7 +442,10 @@
                         <input type="text" data-model="versos" data-field="acorde" data-index="${ index }" value="${ escapeAttr( verso.acorde || '' ) }" />
                     </td>
                     <td>
-                        <input type="text" data-model="versos" data-field="comentario" data-index="${ index }" value="${ escapeAttr( verso.comentario || '' ) }" />
+                        ${ renderVerseEventSelect( verso, index ) }
+                    </td>
+                    <td>
+                        ${ renderVerseDetail( verso, index ) }
                     </td>
                     <td class="wpss-verse-actions">
                         <button type="button" class="button button-small" data-action="verse-up" data-index="${ index }" ${ index === 0 ? 'disabled' : '' }>↑</button>
@@ -441,7 +463,8 @@
                                 <th>#</th>
                                 <th>Verso / etiqueta</th>
                                 <th>Acorde</th>
-                                <th>Comentario</th>
+                                <th>Evento</th>
+                                <th>Detalle</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -453,17 +476,85 @@
             `;
         }
 
-        function renderDatalist() {
-            const tonalidadOptions = data.tonalidades || [];
-            if ( ! tonalidadOptions.length ) {
-                return '';
+        function renderVerseEventSelect( verso, index ) {
+            const tipo = verso.evento_armonico && verso.evento_armonico.tipo ? verso.evento_armonico.tipo : '';
+
+            return `
+                <select data-action="verse-event-type" data-index="${ index }">
+                    <option value="" ${ '' === tipo ? 'selected' : '' }>Ninguno</option>
+                    <option value="modulacion" ${ 'modulacion' === tipo ? 'selected' : '' }>Modulación</option>
+                    <option value="prestamo" ${ 'prestamo' === tipo ? 'selected' : '' }>Préstamo</option>
+                </select>
+            `;
+        }
+
+        function renderVerseDetail( verso, index ) {
+            const comentario = verso.comentario || '';
+            const evento = verso.evento_armonico || null;
+            const tipo = evento && evento.tipo ? evento.tipo : '';
+
+            let eventFields = '';
+
+            if ( 'modulacion' === tipo ) {
+                const tonicaDestino = evento.tonica_destino || '';
+                const campoDestino = evento.campo_armonico_destino || '';
+                eventFields = `
+                    <div class="wpss-verse-event">
+                        <label>
+                            <span>Tónica destino</span>
+                            <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="tonica_destino" value="${ escapeAttr( tonicaDestino ) }" list="wpss-tonicas" />
+                        </label>
+                        <label>
+                            <span>Campo destino</span>
+                            <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="campo_armonico_destino" value="${ escapeAttr( campoDestino ) }" list="wpss-campos-armonicos" />
+                        </label>
+                    </div>
+                `;
+            } else if ( 'prestamo' === tipo ) {
+                const tonicaOrigen = evento.tonica_origen || '';
+                const campoOrigen = evento.campo_armonico_origen || '';
+                eventFields = `
+                    <div class="wpss-verse-event">
+                        <label>
+                            <span>Tónica origen</span>
+                            <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="tonica_origen" value="${ escapeAttr( tonicaOrigen ) }" list="wpss-tonicas" />
+                        </label>
+                        <label>
+                            <span>Campo origen</span>
+                            <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="campo_armonico_origen" value="${ escapeAttr( campoOrigen ) }" list="wpss-campos-armonicos" />
+                        </label>
+                    </div>
+                `;
             }
 
             return `
-                <datalist id="wpss-tonalidades">
-                    ${ tonalidadOptions.map( ( term ) => `<option value="${ escapeAttr( term.name ) }"></option>` ).join( '' ) }
-                </datalist>
+                <div class="wpss-verse-detail">
+                    <label>
+                        <span>Comentario</span>
+                        <input type="text" data-model="versos" data-field="comentario" data-index="${ index }" value="${ escapeAttr( comentario ) }" />
+                    </label>
+                    ${ eventFields }
+                </div>
             `;
+        }
+
+        function renderDatalist() {
+            const tonicas = Array.isArray( data.tonicas ) ? data.tonicas : [];
+            const campos = Array.isArray( data.camposArmonicos ) ? data.camposArmonicos : [];
+
+            const tonicaList = tonicas.length ? `
+                <datalist id="wpss-tonicas">
+                    ${ tonicas.map( ( nota ) => `<option value="${ escapeAttr( nota ) }"></option>` ).join( '' ) }
+                </datalist>
+            ` : '';
+
+            const camposList = campos.length ? `
+                <datalist id="wpss-campos-armonicos">
+                    ${ campos.map( ( modo ) => `<option value="${ escapeAttr( modo ) }"></option>` ).join( '' ) }
+                </datalist>
+            ` : '';
+
+            return tonicaList + camposList;
         }
 
         function escapeHtml( string ) {
@@ -515,7 +606,7 @@
                 render();
                 break;
             case 'add-verso':
-                state.editingSong.versos.push( { orden: state.editingSong.versos.length + 1, texto: '', acorde: '', comentario: '' } );
+                state.editingSong.versos.push( { orden: state.editingSong.versos.length + 1, texto: '', acorde: '', comentario: '', evento_armonico: null } );
                 render();
                 break;
             case 'remove-verso':
@@ -542,6 +633,25 @@
         } );
 
         container.addEventListener( 'input', ( event ) => {
+            const action = event.target.dataset.action;
+
+            if ( 'verse-event-field' === action ) {
+                const index = parseInt( event.target.dataset.index, 10 );
+                const field = event.target.dataset.field;
+
+                if ( Number.isNaN( index ) || ! field ) {
+                    return;
+                }
+
+                const verso = state.editingSong.versos[ index ];
+                if ( ! verso || ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
+                    return;
+                }
+
+                verso.evento_armonico[ field ] = event.target.value;
+                return;
+            }
+
             const model = event.target.dataset.model;
             if ( ! model ) {
                 return;
@@ -568,28 +678,81 @@
 
         container.addEventListener( 'change', ( event ) => {
             const action = event.target.dataset.action;
-            if ( ! action ) {
+            if ( action ) {
+                switch ( action ) {
+                case 'filter-tonica':
+                    state.filters.tonica = event.target.value;
+                    state.pagination.page = 1;
+                    loadSongs();
+                    return;
+                case 'filter-prestamos':
+                    state.filters.con_prestamos = event.target.value;
+                    state.pagination.page = 1;
+                    loadSongs();
+                    return;
+                case 'filter-modulaciones':
+                    state.filters.con_modulaciones = event.target.value;
+                    state.pagination.page = 1;
+                    loadSongs();
+                    return;
+                case 'verse-event-type':
+                    updateVerseEventType( parseInt( event.target.dataset.index, 10 ), event.target.value );
+                    render();
+                    return;
+                }
+            }
+
+            const model = event.target.dataset.model;
+            if ( ! model ) {
                 return;
             }
 
-            switch ( action ) {
-            case 'filter-tonalidad':
-                state.filters.tonalidad = event.target.value;
-                state.pagination.page = 1;
-                loadSongs();
-                break;
-            case 'filter-prestamos':
-                state.filters.con_prestamos = event.target.value;
-                state.pagination.page = 1;
-                loadSongs();
-                break;
-            case 'filter-modulaciones':
-                state.filters.con_modulaciones = event.target.value;
-                state.pagination.page = 1;
-                loadSongs();
-                break;
+            const field = event.target.dataset.field;
+            const value = event.target.value;
+
+            if ( 'general' === model ) {
+                state.editingSong[ field ] = value;
             }
         } );
+
+        function updateVerseEventType( index, tipo ) {
+            if ( Number.isNaN( index ) ) {
+                return;
+            }
+
+            const verso = state.editingSong.versos[ index ];
+            if ( ! verso ) {
+                return;
+            }
+
+            if ( ! tipo ) {
+                verso.evento_armonico = null;
+                return;
+            }
+
+            const previous = verso.evento_armonico && 'object' === typeof verso.evento_armonico ? verso.evento_armonico : null;
+            const next = { tipo };
+
+            if ( previous && previous.tipo === tipo ) {
+                if ( 'modulacion' === tipo ) {
+                    if ( previous.tonica_destino ) {
+                        next.tonica_destino = previous.tonica_destino;
+                    }
+                    if ( previous.campo_armonico_destino ) {
+                        next.campo_armonico_destino = previous.campo_armonico_destino;
+                    }
+                } else if ( 'prestamo' === tipo ) {
+                    if ( previous.tonica_origen ) {
+                        next.tonica_origen = previous.tonica_origen;
+                    }
+                    if ( previous.campo_armonico_origen ) {
+                        next.campo_armonico_origen = previous.campo_armonico_origen;
+                    }
+                }
+            }
+
+            verso.evento_armonico = next;
+        }
 
         function reorderVerse( index, direction ) {
             const targetIndex = index + direction;
@@ -628,8 +791,9 @@
                 state.editingSong = {
                     id: song.id,
                     titulo: song.titulo || '',
-                    tonalidad: song.tonalidad || '',
+                    tonica: song.tonica || song.tonalidad || '',
                     campo_armonico: song.campo_armonico || '',
+                    campo_armonico_predominante: song.campo_armonico_predominante || '',
                     prestamos: Array.isArray( song.prestamos ) ? song.prestamos : [],
                     modulaciones: Array.isArray( song.modulaciones ) ? song.modulaciones : [],
                     versos: Array.isArray( song.versos ) ? song.versos : [],
@@ -659,8 +823,14 @@
                 return;
             }
 
-            if ( ! song.tonalidad.trim() ) {
-                setError( data.strings.tonalityRequired || 'La tonalidad es obligatoria.' );
+            if ( ! song.tonica || ! song.tonica.trim() ) {
+                setError( data.strings.tonicaRequired || 'La tónica es obligatoria.' );
+                render();
+                return;
+            }
+
+            if ( ! song.campo_armonico || ! song.campo_armonico.trim() ) {
+                setError( data.strings.modeRequired || 'El campo armónico es obligatorio.' );
                 render();
                 return;
             }
@@ -672,10 +842,11 @@
             const payload = {
                 id: song.id || null,
                 titulo: song.titulo,
-                tonalidad: song.tonalidad,
+                tonica: song.tonica,
                 campo_armonico: song.campo_armonico,
-                prestamos: song.prestamos,
-                modulaciones: song.modulaciones,
+                campo_armonico_predominante: song.campo_armonico_predominante,
+                prestamos_cancion: song.prestamos,
+                modulaciones_cancion: song.modulaciones,
                 versos: song.versos,
             };
 

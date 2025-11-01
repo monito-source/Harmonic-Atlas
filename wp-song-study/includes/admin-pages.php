@@ -103,29 +103,41 @@ function wpss_enqueue_admin_assets( $hook ) {
         wp_enqueue_style( 'wpss-cancion-dashboard', $style_url, [], $style_version );
     }
 
-    $tonalidades_terms = get_terms(
-        [
-            'taxonomy'   => 'tonalidad',
-            'hide_empty' => false,
-        ]
-    );
+    $tonicas = [
+        'C',
+        'C#',
+        'Db',
+        'D',
+        'D#',
+        'Eb',
+        'E',
+        'F',
+        'F#',
+        'Gb',
+        'G',
+        'G#',
+        'Ab',
+        'A',
+        'A#',
+        'Bb',
+        'B',
+    ];
 
-    $tonalidades = [];
-
-    if ( ! is_wp_error( $tonalidades_terms ) ) {
-        foreach ( $tonalidades_terms as $term ) {
-            $tonalidades[] = [
-                'id'   => (int) $term->term_id,
-                'name' => $term->name,
-                'slug' => $term->slug,
-            ];
-        }
-    }
+    $campos_armonicos = [
+        'jonico',
+        'dorico',
+        'frigio',
+        'lidio',
+        'mixolidio',
+        'eolico',
+        'locrio',
+    ];
 
     $localized_data = [
         'restUrl'   => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'wpssNonce' => wp_create_nonce( 'wpss_rest' ),
-        'tonalidades' => $tonalidades,
+        'tonicas'  => $tonicas,
+        'camposArmonicos' => $campos_armonicos,
         'strings'   => [
             'filtersTitle'     => __( 'Canciones registradas', 'wp-song-study' ),
             'newSong'          => __( 'Nueva canción', 'wp-song-study' ),
@@ -142,7 +154,8 @@ function wpss_enqueue_admin_assets( $hook ) {
             'loadSongError'    => __( 'No fue posible cargar la canción seleccionada.', 'wp-song-study' ),
             'loadSongsError'   => __( 'No fue posible cargar la lista de canciones.', 'wp-song-study' ),
             'titleRequired'    => __( 'El título es obligatorio.', 'wp-song-study' ),
-            'tonalityRequired' => __( 'La tonalidad es obligatoria.', 'wp-song-study' ),
+            'tonicaRequired'   => __( 'La tónica es obligatoria.', 'wp-song-study' ),
+            'modeRequired'     => __( 'El campo armónico es obligatorio.', 'wp-song-study' ),
         ],
     ];
 

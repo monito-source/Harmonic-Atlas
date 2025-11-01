@@ -76,6 +76,30 @@ function wpss_register_cpt_cancion() {
         'sanitize_callback' => 'wp_kses_post',
     ];
 
+    register_post_meta(
+        'cancion',
+        '_tonica',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'string',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_text_field',
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_campo_armonico',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'string',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_text_field',
+        ]
+    );
+
     register_post_meta( 'cancion', '_campo_armonico_predominante', $meta_single_text );
     register_post_meta( 'cancion', '_notas_generales', $meta_single_text );
 

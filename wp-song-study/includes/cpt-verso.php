@@ -93,4 +93,16 @@ function wpss_register_cpt_verso() {
             'sanitize_callback' => 'sanitize_textarea_field',
         ]
     );
+
+    register_post_meta(
+        'verso',
+        '_evento_armonico_json',
+        [
+            'type'              => 'string',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'wpss_sanitize_json_string',
+        ]
+    );
 }

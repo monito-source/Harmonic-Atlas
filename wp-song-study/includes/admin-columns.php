@@ -24,7 +24,7 @@ add_action( 'before_delete_post', 'wpss_prepare_verso_count_from_deleted_child' 
  * @return array
  */
 function wpss_manage_cancion_posts_columns( $columns ) {
-    $columns['tonalidad']   = __( 'Tonalidad', 'wp-song-study' );
+    $columns['tonalidad']   = __( 'Tónica / campo', 'wp-song-study' );
     $columns['versos']      = __( 'Versos', 'wp-song-study' );
     $columns['indicadores'] = __( 'Indicadores armónicos', 'wp-song-study' );
 
@@ -39,13 +39,23 @@ function wpss_manage_cancion_posts_columns( $columns ) {
  */
 function wpss_render_cancion_custom_columns( $column, $post_id ) {
     if ( 'tonalidad' === $column ) {
-        $terms = wp_get_post_terms( $post_id, 'tonalidad', [ 'fields' => 'names' ] );
-        if ( is_wp_error( $terms ) || empty( $terms ) ) {
+        $tonica = sanitize_text_field( get_post_meta( $post_id, '_tonica', true ) );
+        $campo  = sanitize_text_field( get_post_meta( $post_id, '_campo_armonico', true ) );
+
+        if ( '' === $tonica && '' === $campo ) {
             echo '&mdash;';
             return;
         }
 
-        echo esc_html( implode( ', ', $terms ) );
+        $parts = [];
+        if ( '' !== $tonica ) {
+            $parts[] = $tonica;
+        }
+        if ( '' !== $campo ) {
+            $parts[] = $campo;
+        }
+
+        echo esc_html( implode( ' · ', $parts ) );
         return;
     }
 
@@ -67,12 +77,12 @@ function wpss_render_cancion_custom_columns( $column, $post_id ) {
     }
 
     if ( 'indicadores' === $column ) {
-        $prestamos    = get_post_meta( $post_id, '_prestamos_tonales_json', true );
-        $modulaciones = get_post_meta( $post_id, '_modulaciones_json', true );
+        $prestamos    = (bool) get_post_meta( $post_id, '_tiene_prestamos', true );
+        $modulaciones = (bool) get_post_meta( $post_id, '_tiene_modulaciones', true );
 
         $items   = [];
-        $items[] = ! empty( $prestamos ) ? __( 'Préstamos: sí', 'wp-song-study' ) : __( 'Préstamos: no', 'wp-song-study' );
-        $items[] = ! empty( $modulaciones ) ? __( 'Modulaciones: sí', 'wp-song-study' ) : __( 'Modulaciones: no', 'wp-song-study' );
+        $items[] = $prestamos ? __( 'Préstamos: sí', 'wp-song-study' ) : __( 'Préstamos: no', 'wp-song-study' );
+        $items[] = $modulaciones ? __( 'Modulaciones: sí', 'wp-song-study' ) : __( 'Modulaciones: no', 'wp-song-study' );
 
         echo esc_html( implode( ' | ', $items ) );
     }
