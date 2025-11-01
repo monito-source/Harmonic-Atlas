@@ -56,7 +56,11 @@ function wpss_register_rest_routes() {
             'permission_callback' => 'wpss_rest_verify_permissions',
             'args'                => [
                 'id' => [
-                    'validate_callback' => 'is_numeric',
+                    'description'       => __( 'ID de la canción.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
                 ],
             ],
         ]
@@ -112,6 +116,26 @@ function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     }
 
     return true;
+}
+
+/**
+ * Valida que el parámetro ID sea un entero positivo.
+ *
+ * @param mixed           $value   Valor proporcionado para el parámetro.
+ * @param WP_REST_Request $request Solicitud REST actual.
+ * @param string          $param   Nombre del parámetro.
+ * @return true|WP_Error
+ */
+function wpss_validate_positive_id( $value, WP_REST_Request $request, $param ) {
+    if ( is_numeric( $value ) && (int) $value > 0 ) {
+        return true;
+    }
+
+    return new WP_Error(
+        'wpss_invalid_id',
+        __( 'El parámetro id debe ser un entero positivo.', 'wp-song-study' ),
+        [ 'status' => 400 ]
+    );
 }
 
 /**
@@ -221,7 +245,11 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
     $post    = get_post( $post_id );
 
     if ( ! $post || 'cancion' !== $post->post_type ) {
-        return new WP_REST_Response( [ 'message' => __( 'Canción no encontrada.', 'wp-song-study' ) ], 404 );
+        return new WP_Error(
+            'wpss_not_found',
+            __( 'Canción no encontrada.', 'wp-song-study' ),
+            [ 'status' => 404 ]
+        );
     }
 
     $tonica                 = sanitize_text_field( get_post_meta( $post_id, '_tonica', true ) );
