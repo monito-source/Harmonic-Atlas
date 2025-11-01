@@ -5,6 +5,10 @@
 
     const data = window.WPSS;
 
+    const SECTION_PREFIX = 'sec-';
+    let sectionSeed = Date.now();
+    let sectionCounter = 0;
+
     document.addEventListener( 'DOMContentLoaded', () => {
         const container = document.getElementById( 'wpss-cancion-app' );
         if ( ! container ) {
@@ -47,8 +51,6 @@
                 selectionEnd: null,
             },
         };
-
-        let sectionSeed = 0;
 
         const api = {
             async listSongs() {
@@ -170,8 +172,8 @@
         }
 
         function generateSectionId() {
-            sectionSeed += 1;
-            return `sec-${ Date.now().toString( 36 ) }-${ sectionSeed }`;
+            sectionCounter += 1;
+            return `${ SECTION_PREFIX }${ sectionSeed }-${ sectionCounter }`;
         }
 
         function getDefaultSectionName( index ) {
