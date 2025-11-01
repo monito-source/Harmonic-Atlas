@@ -1,9 +1,9 @@
 ( function() {
-    if ( 'undefined' === typeof window.wpssCancionData ) {
+    if ( 'undefined' === typeof window.WPSS ) {
         return;
     }
 
-    const data = window.wpssCancionData;
+    const data = window.WPSS;
 
     document.addEventListener( 'DOMContentLoaded', () => {
         const container = document.getElementById( 'wpss-cancion-app' );
@@ -64,24 +64,24 @@
                     params.set( 'con_modulaciones', state.filters.con_modulaciones );
                 }
 
-                return request( `${ data.restUrl }canciones?${ params.toString() }` );
+                return request( `canciones?${ params.toString() }` );
             },
             async getSong( id ) {
-                return request( `${ data.restUrl }cancion/${ id }` );
+                return request( `cancion/${ id }` );
             },
             async saveSong( payload ) {
-                return request( `${ data.restUrl }cancion`, {
+                return request( 'cancion', {
                     method: 'POST',
-                    body: JSON.stringify( payload ),
+                    body: payload,
                 } );
             },
             async listCampos() {
-                return request( `${ data.restUrl }campos-armonicos` );
+                return request( 'campos-armonicos' );
             },
             async saveCampos( campos ) {
-                return request( `${ data.restUrl }campos-armonicos`, {
+                return request( 'campos-armonicos', {
                     method: 'POST',
-                    body: JSON.stringify( { campos } ),
+                    body: { campos },
                 } );
             },
         };
@@ -103,32 +103,47 @@
         container.addEventListener( 'keyup', updateSegmentSelectionFromEvent );
         container.addEventListener( 'mouseup', updateSegmentSelectionFromEvent );
 
-        function request( url, options = {} ) {
-            const config = {
-                method: options.method || 'GET',
-                headers: {
-                    'X-WPSS-Nonce': data.wpssNonce,
-                },
+        async function request( path, options = {} ) {
+            const {
+                method = 'GET',
+                body = null,
+                asJson = true,
+            } = options;
+
+            const headers = {
+                'X-WP-Nonce': data.wpRestNonce,
+                'X-WPSS-Nonce': data.wpssNonce,
             };
 
-            if ( options.body ) {
-                config.body = options.body;
-                config.headers[ 'Content-Type' ] = 'application/json';
+            const config = {
+                method,
+                credentials: 'same-origin',
+                headers,
+            };
+
+            if ( null !== body ) {
+                if ( asJson ) {
+                    config.body = JSON.stringify( body );
+                    config.headers[ 'Content-Type' ] = 'application/json';
+                } else {
+                    config.body = body;
+                }
             }
 
-            return fetch( url, config ).then( async ( response ) => {
-                const payload = await parseResponse( response );
-                if ( ! response.ok ) {
-                    const error = new Error( 'Request failed' );
-                    error.status = response.status;
-                    error.payload = payload;
-                    throw error;
-                }
-                return {
-                    data: payload,
-                    headers: response.headers,
-                };
-            } );
+            const response = await fetch( `${ data.restUrl }${ path }`, config );
+            const payload = await parseResponse( response );
+
+            if ( ! response.ok ) {
+                const error = new Error( `REST ${ response.status }` );
+                error.status = response.status;
+                error.payload = payload;
+                throw error;
+            }
+
+            return {
+                data: payload,
+                headers: response.headers,
+            };
         }
 
         async function parseResponse( response ) {

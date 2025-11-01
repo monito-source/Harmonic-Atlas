@@ -94,7 +94,7 @@ function wpss_enqueue_admin_assets( $hook ) {
     $style_url  = WPSS_URL . 'assets/cancion-dashboard.css';
 
     $version = file_exists( $script_path ) ? filemtime( $script_path ) : wpss_get_asset_version_fallback();
-    $deps    = [];
+    $deps    = [ 'wp-api-fetch' ];
 
     wp_enqueue_script( 'wpss-cancion-dashboard', $script_url, $deps, $version, true );
 
@@ -139,12 +139,13 @@ function wpss_enqueue_admin_assets( $hook ) {
     );
 
     $localized_data = [
-        'restUrl'   => esc_url_raw( rest_url( 'wpss/v1/' ) ),
-        'wpssNonce' => wp_create_nonce( 'wpss_rest' ),
-        'tonicas'  => $tonicas,
+        'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
+        'wpRestNonce'  => wp_create_nonce( 'wp_rest' ),
+        'wpssNonce'    => wp_create_nonce( 'wpss' ),
+        'tonicas'      => $tonicas,
         'camposArmonicos' => $campos_library,
         'camposArmonicosNombres' => $campos_armonicos,
-        'strings'   => [
+        'strings'      => [
             'filtersTitle'     => __( 'Canciones registradas', 'wp-song-study' ),
             'newSong'          => __( 'Nueva canción', 'wp-song-study' ),
             'saveSong'         => __( 'Guardar canción', 'wp-song-study' ),
@@ -183,7 +184,7 @@ function wpss_enqueue_admin_assets( $hook ) {
         ],
     ];
 
-    wp_localize_script( 'wpss-cancion-dashboard', 'wpssCancionData', $localized_data );
+    wp_localize_script( 'wpss-cancion-dashboard', 'WPSS', $localized_data );
 }
 
 if ( ! function_exists( 'wpss_get_asset_version_fallback' ) ) {

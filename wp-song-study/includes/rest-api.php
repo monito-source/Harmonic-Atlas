@@ -97,14 +97,18 @@ function wpss_register_rest_routes() {
  * @return bool|WP_Error
  */
 function wpss_rest_verify_permissions( WP_REST_Request $request ) {
-    if ( ! current_user_can( 'edit_posts' ) ) {
-        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
+    $wp_nonce   = $request->get_header( 'x-wp-nonce' );
+    $wpss_nonce = $request->get_header( 'x-wpss-nonce' );
+
+    $wp_nonce_valid   = $wp_nonce && wp_verify_nonce( $wp_nonce, 'wp_rest' );
+    $wpss_nonce_valid = $wpss_nonce && wp_verify_nonce( $wpss_nonce, 'wpss' );
+
+    if ( ! $wp_nonce_valid && ! $wpss_nonce_valid ) {
+        return new WP_Error( 'wpss_rest_invalid_nonce', __( 'Nonce inválido o ausente.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
-    $nonce = $request->get_header( 'x-wpss-nonce' );
-
-    if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wpss_rest' ) ) {
-        return new WP_Error( 'wpss_rest_invalid_nonce', __( 'Nonce inválido o ausente.', 'wp-song-study' ), [ 'status' => 403 ] );
+    if ( ! current_user_can( 'edit_posts' ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
     return true;
