@@ -123,21 +123,27 @@ function wpss_enqueue_admin_assets( $hook ) {
         'B',
     ];
 
-    $campos_armonicos = [
-        'jonico',
-        'dorico',
-        'frigio',
-        'lidio',
-        'mixolidio',
-        'eolico',
-        'locrio',
-    ];
+    $campos_library = array_values( wpss_get_campos_armonicos_library() );
+    $campos_armonicos = array_values(
+        array_map(
+            static function( $campo ) {
+                return isset( $campo['nombre'] ) ? $campo['nombre'] : '';
+            },
+            array_filter(
+                $campos_library,
+                static function( $campo ) {
+                    return ! empty( $campo['activo'] );
+                }
+            )
+        )
+    );
 
     $localized_data = [
         'restUrl'   => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'wpssNonce' => wp_create_nonce( 'wpss_rest' ),
         'tonicas'  => $tonicas,
-        'camposArmonicos' => $campos_armonicos,
+        'camposArmonicos' => $campos_library,
+        'camposArmonicosNombres' => $campos_armonicos,
         'strings'   => [
             'filtersTitle'     => __( 'Canciones registradas', 'wp-song-study' ),
             'newSong'          => __( 'Nueva canción', 'wp-song-study' ),
@@ -156,6 +162,24 @@ function wpss_enqueue_admin_assets( $hook ) {
             'titleRequired'    => __( 'El título es obligatorio.', 'wp-song-study' ),
             'tonicaRequired'   => __( 'La tónica es obligatoria.', 'wp-song-study' ),
             'modeRequired'     => __( 'El campo armónico es obligatorio.', 'wp-song-study' ),
+            'segmentAdd'       => __( 'Añadir segmento', 'wp-song-study' ),
+            'segmentDuplicate' => __( 'Duplicar segmento', 'wp-song-study' ),
+            'segmentSplit'     => __( 'Dividir en el cursor', 'wp-song-study' ),
+            'libraryView'      => __( 'Campos armónicos', 'wp-song-study' ),
+            'dashboardView'    => __( 'Biblioteca', 'wp-song-study' ),
+            'readingView'      => __( 'Vista de lectura', 'wp-song-study' ),
+            'editorView'       => __( 'Editor', 'wp-song-study' ),
+            'copyAsText'       => __( 'Copiar como texto', 'wp-song-study' ),
+            'camposSaved'      => __( 'Campos armónicos actualizados.', 'wp-song-study' ),
+            'camposError'      => __( 'No fue posible guardar la biblioteca de campos armónicos.', 'wp-song-study' ),
+            'camposEmpty'      => __( 'Aún no hay campos armónicos registrados.', 'wp-song-study' ),
+            'camposAdd'        => __( 'Añadir modo', 'wp-song-study' ),
+            'camposRemove'     => __( 'Eliminar', 'wp-song-study' ),
+            'camposActive'     => __( 'Activo', 'wp-song-study' ),
+            'readingEmpty'     => __( 'Agrega versos y segmentos para visualizar la canción.', 'wp-song-study' ),
+            'segmentRequired'  => __( 'Cada verso necesita al menos un segmento con texto o acorde.', 'wp-song-study' ),
+            'segmentConsecutive' => __( 'No se permiten segmentos consecutivos sin texto.', 'wp-song-study' ),
+            'camposSlugRequired' => __( 'Cada modo necesita un identificador (slug).', 'wp-song-study' ),
         ],
     ];
 

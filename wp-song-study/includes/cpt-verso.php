@@ -84,6 +84,18 @@ function wpss_register_cpt_verso() {
 
     register_post_meta(
         'verso',
+        '_segmentos_json',
+        [
+            'type'              => 'string',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'wpss_sanitize_json_string',
+        ]
+    );
+
+    register_post_meta(
+        'verso',
         '_notas_verso',
         [
             'type'              => 'string',

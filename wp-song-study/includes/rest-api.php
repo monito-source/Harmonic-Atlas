@@ -71,6 +71,23 @@ function wpss_register_rest_routes() {
             'permission_callback' => 'wpss_rest_verify_permissions',
         ]
     );
+
+    register_rest_route(
+        'wpss/v1',
+        '/campos-armonicos',
+        [
+            [
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => 'wpss_rest_get_campos_armonicos',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => 'wpss_rest_save_campos_armonicos',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+        ]
+    );
 }
 
 /**
@@ -280,7 +297,12 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $prestamos    = wpss_sanitize_prestamos_array( $prestamos_raw );
     $modulaciones = wpss_sanitize_modulaciones_array( $modulaciones_raw );
     $versos       = wpss_sanitize_versos_array( isset( $params['versos'] ) ? (array) $params['versos'] : [] );
-    $versos       = wpss_normalize_versos_order( $versos );
+
+    if ( is_wp_error( $versos ) ) {
+        return new WP_REST_Response( [ 'message' => $versos->get_error_message() ], 400 );
+    }
+
+    $versos = wpss_normalize_versos_order( $versos );
 
     $postarr = [
         'post_type'   => 'cancion',
@@ -341,6 +363,92 @@ function wpss_decode_json_meta( $value ) {
 }
 
 /**
+ * Limita la longitud de una cadena respetando caracteres multibyte cuando es posible.
+ *
+ * @param string $value  Cadena a truncar.
+ * @param int    $length Longitud máxima.
+ * @return string
+ */
+function wpss_truncate_string( $value, $length = 64 ) {
+    if ( function_exists( 'mb_substr' ) ) {
+        return mb_substr( $value, 0, $length );
+    }
+
+    return substr( $value, 0, $length );
+}
+
+/**
+ * Sanitiza y normaliza un segmento texto-acorde individual.
+ *
+ * @param array $segmento Segmento recibido.
+ * @return array|null
+ */
+function wpss_normalize_segmento_item( $segmento ) {
+    if ( ! is_array( $segmento ) ) {
+        return null;
+    }
+
+    $texto  = isset( $segmento['texto'] ) ? sanitize_textarea_field( $segmento['texto'] ) : '';
+    $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
+
+    if ( '' !== $acorde ) {
+        $acorde = wpss_truncate_string( $acorde, 64 );
+    }
+
+    if ( '' === $texto && '' === $acorde ) {
+        return null;
+    }
+
+    return [
+        'texto'  => $texto,
+        'acorde' => $acorde,
+    ];
+}
+
+/**
+ * Sanitiza un arreglo de segmentos texto-acorde.
+ *
+ * @param array $segmentos Segmentos recibidos.
+ * @return array
+ */
+function wpss_sanitize_segmentos_array( array $segmentos ) {
+    $limpios = [];
+
+    foreach ( $segmentos as $segmento ) {
+        $normalizado = wpss_normalize_segmento_item( $segmento );
+        if ( null === $normalizado ) {
+            continue;
+        }
+
+        $limpios[] = $normalizado;
+    }
+
+    return $limpios;
+}
+
+/**
+ * Concatena el texto de los segmentos aplicando una normalización mínima de espacios finales.
+ *
+ * @param array $segmentos Segmentos sanitizados.
+ * @return string
+ */
+function wpss_implode_segmentos_text( array $segmentos ) {
+    $texto = '';
+
+    foreach ( $segmentos as $segmento ) {
+        $texto .= isset( $segmento['texto'] ) ? $segmento['texto'] : '';
+    }
+
+    if ( '' === $texto ) {
+        return '';
+    }
+
+    $texto = preg_replace( "/[ \t]+(\r?\n)/", '$1', $texto );
+
+    return rtrim( $texto );
+}
+
+/**
  * Devuelve la lista de versos de una canción ordenados.
  *
  * @param int $post_id ID de la canción.
@@ -367,15 +475,54 @@ function wpss_get_cancion_versos( $post_id ) {
     $data = [];
 
     foreach ( $versos as $verso ) {
+        $segmentos_meta = wpss_decode_json_meta( get_post_meta( $verso->ID, '_segmentos_json', true ) );
+        $segmentos      = [];
+
+        if ( ! empty( $segmentos_meta ) ) {
+            $segmentos = wpss_sanitize_segmentos_array( (array) $segmentos_meta );
+        }
+
+        if ( empty( $segmentos ) ) {
+            $texto_verso  = sanitize_textarea_field( $verso->post_content );
+            $acorde_verso = sanitize_text_field( get_post_meta( $verso->ID, '_acorde_absoluto', true ) );
+
+            if ( '' !== $acorde_verso ) {
+                $acorde_verso = wpss_truncate_string( $acorde_verso, 64 );
+            }
+
+            if ( '' !== $texto_verso || '' !== $acorde_verso ) {
+                $segmentos = [
+                    [
+                        'texto'  => $texto_verso,
+                        'acorde' => $acorde_verso,
+                    ],
+                ];
+            }
+        }
+
+        if ( empty( $segmentos ) ) {
+            $segmentos = [
+                [
+                    'texto'  => '',
+                    'acorde' => '',
+                ],
+            ];
+        }
+
         $evento_raw = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
         $evento     = wpss_sanitize_evento_armonico( $evento_raw );
 
+        $comentario = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
+        $texto_base = wpss_implode_segmentos_text( $segmentos );
+        $acorde     = isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '';
+
         $data[] = [
-            'id'        => (int) $verso->ID,
-            'orden'     => (int) get_post_meta( $verso->ID, '_orden', true ),
-            'texto'     => sanitize_textarea_field( $verso->post_content ),
-            'acorde'    => sanitize_text_field( get_post_meta( $verso->ID, '_acorde_absoluto', true ) ),
-            'comentario'=> sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) ),
+            'id'              => (int) $verso->ID,
+            'orden'           => (int) get_post_meta( $verso->ID, '_orden', true ),
+            'texto'           => $texto_base,
+            'acorde'          => $acorde,
+            'segmentos'       => $segmentos,
+            'comentario'      => $comentario,
             'evento_armonico' => $evento,
         ];
     }
@@ -566,21 +713,50 @@ function wpss_sanitize_versos_array( array $versos ) {
     $limpios = [];
 
     foreach ( $versos as $verso ) {
-        $texto      = isset( $verso['texto'] ) ? sanitize_textarea_field( $verso['texto'] ) : '';
-        $acorde     = isset( $verso['acorde'] ) ? sanitize_text_field( $verso['acorde'] ) : '';
-        $comentario = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
-        $orden      = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
-        $evento     = isset( $verso['evento_armonico'] ) ? wpss_sanitize_evento_armonico( $verso['evento_armonico'] ) : null;
-
-        if ( '' === $texto && '' === $acorde && '' === $comentario && null === $evento ) {
+        if ( ! is_array( $verso ) ) {
             continue;
         }
 
+        $orden      = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
+        $comentario = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
+        $evento     = isset( $verso['evento_armonico'] ) ? wpss_sanitize_evento_armonico( $verso['evento_armonico'] ) : null;
+
+        $segmentos_input = [];
+        if ( isset( $verso['segmentos'] ) && is_array( $verso['segmentos'] ) ) {
+            $segmentos_input = $verso['segmentos'];
+        } else {
+            $texto_legacy  = isset( $verso['texto'] ) ? sanitize_textarea_field( $verso['texto'] ) : '';
+            $acorde_legacy = isset( $verso['acorde'] ) ? sanitize_text_field( $verso['acorde'] ) : '';
+            if ( '' !== $acorde_legacy ) {
+                $acorde_legacy = wpss_truncate_string( $acorde_legacy, 64 );
+            }
+
+            if ( '' !== $texto_legacy || '' !== $acorde_legacy ) {
+                $segmentos_input = [
+                    [
+                        'texto'  => $texto_legacy,
+                        'acorde' => $acorde_legacy,
+                    ],
+                ];
+            }
+        }
+
+        $segmentos = wpss_sanitize_segmentos_array( $segmentos_input );
+
+        if ( empty( $segmentos ) ) {
+            if ( '' === $comentario && null === $evento ) {
+                continue;
+            }
+
+            return new WP_Error( 'wpss_rest_invalid_segmentos', __( 'Cada verso debe incluir al menos un segmento con texto o acorde.', 'wp-song-study' ) );
+        }
+
         $limpios[] = [
-            'orden'      => $orden,
-            'texto'      => $texto,
-            'acorde'     => $acorde,
-            'comentario' => $comentario,
+            'orden'           => $orden,
+            'segmentos'       => $segmentos,
+            'texto'           => wpss_implode_segmentos_text( $segmentos ),
+            'acorde'          => isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '',
+            'comentario'      => $comentario,
             'evento_armonico' => $evento,
         ];
     }
@@ -642,11 +818,18 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
     $existing_ids = wp_list_pluck( $existing, 'ID' );
 
     foreach ( $versos as $index => $verso ) {
+        $segmentos = isset( $verso['segmentos'] ) && is_array( $verso['segmentos'] ) ? $verso['segmentos'] : [];
+        if ( empty( $segmentos ) ) {
+            continue;
+        }
+
+        $texto_base = wpss_implode_segmentos_text( $segmentos );
+
         $verso_post = [
             'post_type'   => 'verso',
             'post_status' => 'publish',
             'post_title'  => sprintf( __( 'Verso %1$d', 'wp-song-study' ), $index + 1 ),
-            'post_content'=> $verso['texto'],
+            'post_content'=> $texto_base,
         ];
 
         if ( isset( $existing_ids[ $index ] ) ) {
@@ -665,9 +848,10 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
 
         update_post_meta( $verso_id, '_cancion_id', $post_id );
         update_post_meta( $verso_id, '_orden', $verso['orden'] );
-        update_post_meta( $verso_id, '_acorde_absoluto', $verso['acorde'] );
+        update_post_meta( $verso_id, '_acorde_absoluto', isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '' );
         update_post_meta( $verso_id, '_funcion_relativa', $verso['comentario'] );
         update_post_meta( $verso_id, '_notas_verso', '' );
+        update_post_meta( $verso_id, '_segmentos_json', wp_json_encode( $segmentos ) );
 
         if ( ! empty( $verso['evento_armonico'] ) ) {
             update_post_meta( $verso_id, '_evento_armonico_json', wp_json_encode( $verso['evento_armonico'] ) );
@@ -727,4 +911,238 @@ function wpss_calculate_song_has_modulaciones( array $modulaciones, array $verso
     }
 
     return false;
+}
+
+/**
+ * Devuelve la biblioteca base de campos armónicos.
+ *
+ * @return array
+ */
+function wpss_get_default_campos_armonicos() {
+    return [
+        'jonico' => [
+            'slug'        => 'jonico',
+            'nombre'      => __( 'Jónico', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 2 3 4 5 6 7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'dorico' => [
+            'slug'        => 'dorico',
+            'nombre'      => __( 'Dórico', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 2 b3 4 5 6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'frigio' => [
+            'slug'        => 'frigio',
+            'nombre'      => __( 'Frigio', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 b2 b3 4 5 b6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'lidio' => [
+            'slug'        => 'lidio',
+            'nombre'      => __( 'Lidio', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 2 3 #4 5 6 7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'mixolidio' => [
+            'slug'        => 'mixolidio',
+            'nombre'      => __( 'Mixolidio', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 2 3 4 5 6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'eolico' => [
+            'slug'        => 'eolico',
+            'nombre'      => __( 'Eólico', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 2 b3 4 5 b6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'locrio' => [
+            'slug'        => 'locrio',
+            'nombre'      => __( 'Locrio', 'wp-song-study' ),
+            'sistema'     => 'mayor',
+            'intervalos'  => '1 b2 b3 4 b5 b6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+        'frigio_dominante' => [
+            'slug'        => 'frigio_dominante',
+            'nombre'      => __( 'Frigio Dominante', 'wp-song-study' ),
+            'sistema'     => 'menor_armonico',
+            'intervalos'  => '1 b2 3 4 5 b6 b7',
+            'descripcion' => '',
+            'notas'       => '',
+            'activo'      => true,
+        ],
+    ];
+}
+
+/**
+ * Normaliza un elemento de campo armónico arbitrario.
+ *
+ * @param array $item Datos a limpiar.
+ * @return array|null
+ */
+function wpss_normalize_campo_armonico_item( $item ) {
+    if ( ! is_array( $item ) ) {
+        return null;
+    }
+
+    $slug_source = '';
+    if ( isset( $item['slug'] ) ) {
+        $slug_source = sanitize_title( $item['slug'] );
+    }
+
+    if ( '' === $slug_source && isset( $item['nombre'] ) ) {
+        $slug_source = sanitize_title( $item['nombre'] );
+    }
+
+    if ( '' === $slug_source ) {
+        return null;
+    }
+
+    $nombre = isset( $item['nombre'] ) ? sanitize_text_field( $item['nombre'] ) : '';
+    if ( '' === $nombre ) {
+        $nombre = ucwords( str_replace( '-', ' ', str_replace( '_', ' ', $slug_source ) ) );
+    }
+
+    $sistema = isset( $item['sistema'] ) ? sanitize_key( $item['sistema'] ) : 'otro';
+    $permitidos = [ 'mayor', 'menor_armonico', 'menor_melodico', 'otro' ];
+    if ( ! in_array( $sistema, $permitidos, true ) ) {
+        $sistema = 'otro';
+    }
+
+    $intervalos  = isset( $item['intervalos'] ) ? sanitize_textarea_field( $item['intervalos'] ) : '';
+    $descripcion = isset( $item['descripcion'] ) ? sanitize_textarea_field( $item['descripcion'] ) : '';
+    $notas       = isset( $item['notas'] ) ? sanitize_textarea_field( $item['notas'] ) : '';
+    $activo      = isset( $item['activo'] ) ? (bool) $item['activo'] : true;
+
+    return [
+        'slug'        => $slug_source,
+        'nombre'      => $nombre,
+        'sistema'     => $sistema,
+        'intervalos'  => $intervalos,
+        'descripcion' => $descripcion,
+        'notas'       => $notas,
+        'activo'      => $activo,
+    ];
+}
+
+/**
+ * Obtiene la biblioteca completa fusionando defaults y elementos guardados.
+ *
+ * @return array
+ */
+function wpss_get_campos_armonicos_library() {
+    $defaults = wpss_get_default_campos_armonicos();
+    $stored   = get_option( 'wpss_campos_armonicos', [] );
+
+    if ( ! is_array( $stored ) ) {
+        $stored = [];
+    }
+
+    $library = [];
+
+    foreach ( $stored as $item ) {
+        $campo = wpss_normalize_campo_armonico_item( $item );
+        if ( ! $campo ) {
+            continue;
+        }
+
+        $slug = $campo['slug'];
+        $base = isset( $defaults[ $slug ] ) ? $defaults[ $slug ] : [];
+        $library[ $slug ] = array_merge( $base, $campo );
+    }
+
+    foreach ( $defaults as $slug => $default ) {
+        if ( ! isset( $library[ $slug ] ) ) {
+            $library[ $slug ] = $default;
+        }
+    }
+
+    return $library;
+}
+
+/**
+ * Persiste la biblioteca enviada reemplazando los elementos por slug.
+ *
+ * @param array $items Elementos recibidos.
+ * @return array Biblioteca final.
+ */
+function wpss_save_campos_armonicos_library( array $items ) {
+    $defaults   = wpss_get_default_campos_armonicos();
+    $normalized = [];
+
+    foreach ( $items as $item ) {
+        $campo = wpss_normalize_campo_armonico_item( $item );
+        if ( ! $campo ) {
+            continue;
+        }
+
+        $slug = $campo['slug'];
+        $base = isset( $defaults[ $slug ] ) ? $defaults[ $slug ] : [];
+        $normalized[ $slug ] = array_merge( $base, $campo );
+    }
+
+    update_option( 'wpss_campos_armonicos', array_values( $normalized ), false );
+
+    return wpss_get_campos_armonicos_library();
+}
+
+/**
+ * Devuelve la biblioteca de campos armónicos vía REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_campos_armonicos( WP_REST_Request $request ) {
+    $campos = array_values( wpss_get_campos_armonicos_library() );
+
+    return rest_ensure_response( $campos );
+}
+
+/**
+ * Guarda la biblioteca de campos armónicos vía REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_save_campos_armonicos( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    if ( isset( $params['campos'] ) ) {
+        $params = $params['campos'];
+    }
+
+    $items = is_array( $params ) ? $params : [];
+
+    $library = wpss_save_campos_armonicos_library( $items );
+
+    return rest_ensure_response(
+        [
+            'ok'     => true,
+            'campos' => array_values( $library ),
+        ]
+    );
 }

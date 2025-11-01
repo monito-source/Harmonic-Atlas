@@ -114,13 +114,62 @@ function wpss_shortcode_song( $atts ) {
 
     $html .= '<ol class="wpss-verses">';
     foreach ( $versos as $verso ) {
-        $acorde = get_post_meta( $verso->ID, '_acorde_absoluto', true );
         $func   = get_post_meta( $verso->ID, '_funcion_relativa', true );
         $nota   = get_post_meta( $verso->ID, '_notas_verso', true );
+        $evento = json_decode( (string) get_post_meta( $verso->ID, '_evento_armonico_json', true ), true );
+        if ( ! is_array( $evento ) || empty( $evento['tipo'] ) ) {
+            $evento = null;
+        }
+
+        $segmentos_meta = json_decode( (string) get_post_meta( $verso->ID, '_segmentos_json', true ), true );
+        $segmentos      = [];
+
+        if ( is_array( $segmentos_meta ) ) {
+            foreach ( $segmentos_meta as $segmento ) {
+                $texto  = isset( $segmento['texto'] ) ? sanitize_textarea_field( $segmento['texto'] ) : '';
+                $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
+
+                if ( '' === $texto && '' === $acorde ) {
+                    continue;
+                }
+
+                $segmentos[] = [
+                    'texto'  => $texto,
+                    'acorde' => $acorde,
+                ];
+            }
+        }
+
+        if ( empty( $segmentos ) ) {
+            $texto  = sanitize_textarea_field( $verso->post_content );
+            $acorde = sanitize_text_field( get_post_meta( $verso->ID, '_acorde_absoluto', true ) );
+            $segmentos[] = [
+                'texto'  => $texto,
+                'acorde' => $acorde,
+            ];
+        }
 
         $html .= '<li class="wpss-verse">';
-        $html .= '<div class="wpss-verse-text">' . wp_kses_post( $verso->post_content ) . '</div>';
-        $html .= '<div class="wpss-verse-chord"><strong>' . esc_html__( 'Acorde:', 'wp-song-study' ) . '</strong> ' . esc_html( $acorde ) . '</div>';
+        $html .= '<div class="wpss-verse-text">';
+        foreach ( $segmentos as $segmento ) {
+            $html .= '<span class="wpss-song-segment">';
+            if ( ! empty( $segmento['acorde'] ) ) {
+                $html .= '<span class="wpss-song-chord">[' . esc_html( $segmento['acorde'] ) . ']</span> ';
+            }
+            $html .= esc_html( $segmento['texto'] );
+            $html .= '</span> ';
+        }
+        $html .= '</div>';
+
+        if ( $evento ) {
+            if ( 'modulacion' === $evento['tipo'] ) {
+                $destino = trim( ( $evento['tonica_destino'] ?? '' ) . ' ' . ( $evento['campo_armonico_destino'] ?? '' ) );
+                $html   .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Modulación → %s', 'wp-song-study' ), $destino ? esc_html( $destino ) : '—' ) . '</div>';
+            } elseif ( 'prestamo' === $evento['tipo'] ) {
+                $origen = trim( ( $evento['tonica_origen'] ?? '' ) . ' ' . ( $evento['campo_armonico_origen'] ?? '' ) );
+                $html  .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Préstamo ← %s', 'wp-song-study' ), $origen ? esc_html( $origen ) : '—' ) . '</div>';
+            }
+        }
 
         if ( ! empty( $func ) ) {
             $html .= '<div class="wpss-verse-function"><em>' . esc_html( $func ) . '</em></div>';

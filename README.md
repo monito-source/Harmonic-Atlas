@@ -38,13 +38,18 @@ Harmonic Atlas es un plugin de WordPress pensado como cuaderno de estudio para t
 
 ### Versos (`verso`)
 
-Cada verso se guarda como CPT hijo con los siguientes campos:
+Cada verso se guarda como CPT hijo y ahora puede incluir múltiples segmentos texto-acorde:
 
-* **Texto del verso** (editor nativo).
+* **Segmentos** (`_segmentos_json`). Cadena JSON con objetos `{ "texto": "Yo caminé ", "acorde": "Dm" }` que se concatenan al renderizar.
 * **Orden** (`_orden`). Número entero para ordenar la secuencia.
-* **Acorde absoluto** (`_acorde_absoluto`). Texto libre (por ejemplo `E♭maj7`).
+* **Acorde absoluto** (`_acorde_absoluto`). Se mantiene como referencia del primer segmento para compatibilidad.
 * **Función relativa** (`_funcion_relativa`). Opcional para numerales romanos o etiquetas como `V7/ii`.
 * **Notas adicionales** (`_notas_verso`). Observaciones o análisis puntual.
+* **Evento armónico** (`_evento_armonico_json`). Marca préstamos o modulaciones por verso.
+
+### Campos armónicos
+
+El sistema incluye una biblioteca flexible (`option wpss_campos_armonicos`) con modos activos como jónico, dórico, frigio, lidio, mixolidio, eólico, locrio y **Frigio Dominante** del menor armónico. Desde la interfaz se pueden editar nombres, sistemas, intervalos, descripciones y notas, así como crear nuevos modos personalizados.
 
 ## GUI Cancionario Armónico
 
@@ -60,8 +65,9 @@ Ambas páginas cargan una SPA (`assets/cancion-dashboard.js`) que permite:
 
 1. **Explorar y filtrar canciones** por tonalidad, presencia de préstamos o modulaciones y paginar los resultados.
 2. **Editar en una sola vista** el título, tonalidad, campo armónico predominante, préstamos tonales, modulaciones y la tabla completa de versos.
-3. **Gestionar versos dinámicamente**: añadir, eliminar y reordenar con botones de subir/bajar que preservan el campo `_orden`.
-4. **Guardar de forma atómica** canción + préstamos + modulaciones + versos mediante AJAX seguro con nonce dedicado.
+3. **Editar versos segmentados**: cada verso admite múltiples segmentos texto-acorde con duplicado, división y reordenado tanto por segmento como por verso, manteniendo `_orden` coherente.
+4. **Alternar vistas**: la pestaña *Editor* convive con una biblioteca editable de campos armónicos y una *Vista de lectura* tipo lead sheet para revisar la canción sin controles de edición.
+5. **Guardar de forma atómica** canción + préstamos + modulaciones + versos mediante AJAX seguro con nonce dedicado.
 
 > Consejo: la acción “Nueva canción” limpia el editor sin perder la lista filtrada de la biblioteca.
 
@@ -74,6 +80,8 @@ Todas las rutas se exponen bajo el namespace `wpss/v1` y requieren `current_user
 | `GET` | `/wpss/v1/canciones?tonalidad=&con_prestamos=&con_modulaciones=&page=1&per_page=20` | Lista paginada con filtros. Devuelve `id`, `titulo`, `tonalidad`, banderas y conteo de versos. Cabeceras `X-WP-Total` y `X-WP-TotalPages` indican totales. |
 | `GET` | `/wpss/v1/cancion/{id}` | Recupera la estructura completa de una canción: metas, préstamos, modulaciones y versos ordenados. |
 | `POST` | `/wpss/v1/cancion` | Crea o actualiza una canción y reemplaza su set de préstamos, modulaciones y versos en una sola operación. Responde con `{ ok, id, tiene_prestamos, tiene_modulaciones }`. |
+| `GET` | `/wpss/v1/campos-armonicos` | Devuelve la biblioteca completa de campos armónicos (defaults + personalizados) con nombre, slug, sistema, intervalos, descripciones y bandera `activo`. |
+| `POST` | `/wpss/v1/campos-armonicos` | Sobrescribe la biblioteca de campos armónicos fusionando por `slug`. Requiere `[{ slug, nombre, sistema, intervalos, descripcion, notas, activo }]`. |
 
 Payload esperado al guardar:
 
@@ -90,7 +98,15 @@ Payload esperado al guardar:
     { "seccion": "Solo pt1", "destino": "C jónico" }
   ],
   "versos": [
-    { "orden": 1, "texto": "Primera línea", "acorde": "Dmaj7", "comentario": "I" }
+    {
+      "orden": 1,
+      "segmentos": [
+        { "texto": "Primera línea ", "acorde": "Dmaj7" },
+        { "texto": "con resolución", "acorde": "G7" }
+      ],
+      "comentario": "I → IV",
+      "evento_armonico": null
+    }
   ]
 }
 ```
@@ -98,7 +114,7 @@ Payload esperado al guardar:
 ## Shortcodes disponibles
 
 * `[songs_by_key key="C-jonico"]` — Lista todas las canciones asignadas a la tonalidad indicada.
-* `[song id="123"]` — Muestra la ficha completa de una canción con versos y acordes. Si `id` se omite, utiliza el ID del post en contexto.
+* `[song id="123"]` — Muestra la ficha completa de una canción con versos segmentados, acordes incrustados y eventos armónicos. Si `id` se omite, utiliza el ID del post en contexto.
 
 ## Desarrollo
 
