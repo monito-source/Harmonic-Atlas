@@ -89,4 +89,39 @@ function wpss_register_cpt_cancion() {
 
     register_post_meta( 'cancion', '_prestamos_tonales_json', $meta_json );
     register_post_meta( 'cancion', '_modulaciones_json', $meta_json );
+
+    $meta_bool = [
+        'show_in_rest'      => true,
+        'single'            => true,
+        'type'              => 'boolean',
+        'auth_callback'     => $capability_cb,
+        'sanitize_callback' => 'wpss_sanitize_bool_meta',
+        'default'           => false,
+    ];
+
+    register_post_meta( 'cancion', '_tiene_prestamos', $meta_bool );
+    register_post_meta( 'cancion', '_tiene_modulaciones', $meta_bool );
+
+    register_post_meta(
+        'cancion',
+        '_conteo_versos',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'integer',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'absint',
+            'default'           => 0,
+        ]
+    );
+}
+
+/**
+ * Sanitiza metacampos booleanos asegurando un entero 0/1.
+ *
+ * @param mixed $value Valor recibido.
+ * @return int
+ */
+function wpss_sanitize_bool_meta( $value ) {
+    return (int) (bool) $value;
 }

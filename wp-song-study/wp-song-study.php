@@ -21,6 +21,10 @@ if ( ! defined( 'WPSS_URL' ) ) {
     define( 'WPSS_URL', plugin_dir_url( __FILE__ ) );
 }
 
+if ( ! defined( 'WPSS_VERSION' ) ) {
+    define( 'WPSS_VERSION', '0.1.0' );
+}
+
 /**
  * Carga el archivo de traducciones.
  */
@@ -34,6 +38,7 @@ require_once WPSS_PATH . 'includes/cpt-cancion.php';
 require_once WPSS_PATH . 'includes/cpt-verso.php';
 require_once WPSS_PATH . 'includes/admin-columns.php';
 require_once WPSS_PATH . 'includes/shortcodes.php';
+require_once WPSS_PATH . 'includes/admin-pages.php';
 require_once WPSS_PATH . 'includes/rest-api.php';
 
 /**

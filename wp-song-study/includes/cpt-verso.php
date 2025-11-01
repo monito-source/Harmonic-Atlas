@@ -76,10 +76,21 @@ function wpss_register_cpt_verso() {
         'single'            => true,
         'show_in_rest'      => true,
         'auth_callback'     => $capability_cb,
-        'sanitize_callback' => 'wp_kses_post',
+        'sanitize_callback' => 'sanitize_text_field',
     ];
 
     register_post_meta( 'verso', '_acorde_absoluto', $meta_text );
     register_post_meta( 'verso', '_funcion_relativa', $meta_text );
-    register_post_meta( 'verso', '_notas_verso', $meta_text );
+
+    register_post_meta(
+        'verso',
+        '_notas_verso',
+        [
+            'type'              => 'string',
+            'single'            => true,
+            'show_in_rest'      => true,
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_textarea_field',
+        ]
+    );
 }
