@@ -2,18 +2,16 @@
 
 # [Unreleased]
 ### Added
-- Versos soportan múltiples segmentos texto-acorde persistidos en `_segmentos_json` con migración retrocompatible.
-- Nuevo modo predeterminado **Frigio Dominante** y biblioteca editable de campos armónicos (REST `GET/POST /wpss/v1/campos-armonicos`).
-- SPA con pestañas para Editor, Vista de lectura y Campos armónicos, incluyendo validaciones de segmentos y botón “Copiar como texto”.
-- Vista pública `[song]` actualizada para mostrar segmentos y eventos por verso.
-- Separadores de estrofa opcionales por verso con etiqueta editable para secciones como “Coro” o “Puente”, visibles en el editor, la vista de lectura y el portapapeles.
+- Secciones nombrables persistidas en `_secciones_json` y `section_id` por verso, incluidas en los endpoints `GET/POST /wpss/v1/cancion`.
+- Gestor de secciones en la SPA para añadir, renombrar, reordenar o eliminar agrupaciones y asignar versos mediante selectores dedicados.
+- Vista de lectura y exportación de texto agrupadas por sección con encabezados reutilizables.
 
 ### Changed
-- Interfaz de versos reorganizada con controles para duplicar, dividir y reordenar segmentos.
-- Documentación ampliada con ejemplos de segmentos y guía de la biblioteca de campos armónicos.
+- UI de versos actualizada para trabajar con asignaciones de sección en lugar de toggles de fin de estrofa.
+- Documentación extendida con contrato REST de secciones, guía de la nueva UI y escenarios de prueba manual.
 
 ### Fixed
-- Rehidratación robusta de `_segmentos_json` al cargar versos (unslash/deserialización/JSON) con registro de corrupciones antes de caer en la ruta retrocompatible, preservando la segmentación guardada.
+- Rehidratación de `_segmentos_json` sin perder caracteres UTF-8 ni barras invertidas al leer metadatos legados.
 
 ## [0.1.0] - 2024-05-31
 ### Added

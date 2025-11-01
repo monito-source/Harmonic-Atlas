@@ -185,57 +185,39 @@
     width: 100%;
 }
 
-.wpss-verse-stanza {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px dashed #dcdcde;
+.wpss-sections-manager {
     display: grid;
-    gap: 12px;
+    gap: 16px;
 }
 
-.wpss-verse-stanza__toggle {
-    display: inline-flex;
+.wpss-section-row {
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    padding: 16px;
+    background: #f6f7f7;
+}
+
+.wpss-section-row__header {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.wpss-section-row__actions .button + .button {
+    margin-left: 4px;
+}
+
+.wpss-section-row label span {
+    display: block;
+    margin-bottom: 4px;
     font-weight: 600;
 }
 
-.wpss-verse-stanza__toggle input {
+.wpss-section-row__title {
+    font-size: 16px;
     margin: 0;
-}
-
-.wpss-verse-stanza__label input:disabled {
-    background: #f6f7f7;
-    color: #646970;
-}
-
-.wpss-stanza-preview,
-.wpss-reading__stanza {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: #646970;
-}
-
-.wpss-reading__stanza {
-    margin-top: 8px;
-}
-
-.wpss-stanza-sep {
-    flex: 1;
-    border-top: 1px solid #ccd0d4;
-    height: 0;
-    display: block;
-}
-
-.wpss-stanza-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #1d2327;
-    white-space: nowrap;
 }
 
 .wpss-verse-event {
@@ -355,9 +337,28 @@
     margin-bottom: 16px;
 }
 
+.wpss-reading__sections {
+    display: grid;
+    gap: 24px;
+}
+
+.wpss-reading__section {
+    padding: 12px 0;
+    border-top: 1px solid #dcdcde;
+}
+
+.wpss-reading__section:first-of-type {
+    border-top: none;
+}
+
+.wpss-section-title {
+    margin: 0 0 12px;
+    font-size: 18px;
+}
+
 .wpss-reading__verses {
     margin: 0;
-    padding-left: 20px;
+    padding-left: 24px;
     display: grid;
     gap: 12px;
 }

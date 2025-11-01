@@ -258,6 +258,9 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
     $prestamos_cancion      = wpss_decode_json_meta( get_post_meta( $post_id, '_prestamos_tonales_json', true ) );
     $modulaciones_cancion   = wpss_decode_json_meta( get_post_meta( $post_id, '_modulaciones_json', true ) );
 
+    $versos = wpss_get_cancion_versos( $post_id );
+    list( $secciones, $versos ) = wpss_prepare_sections_for_output( $post_id, $versos );
+
     $data = [
         'id'                         => (int) $post_id,
         'titulo'                     => get_the_title( $post_id ),
@@ -269,7 +272,8 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
         'modulaciones_cancion'       => $modulaciones_cancion,
         'prestamos'                  => $prestamos_cancion,
         'modulaciones'               => $modulaciones_cancion,
-        'versos'                     => wpss_get_cancion_versos( $post_id ),
+        'secciones'                  => $secciones,
+        'versos'                     => $versos,
         'tiene_prestamos'            => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
         'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
     ];
@@ -328,11 +332,22 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     $prestamos    = wpss_sanitize_prestamos_array( $prestamos_raw );
     $modulaciones = wpss_sanitize_modulaciones_array( $modulaciones_raw );
-    $versos       = wpss_sanitize_versos_array( isset( $params['versos'] ) ? (array) $params['versos'] : [] );
+
+    $secciones_input = isset( $params['secciones'] ) ? (array) $params['secciones'] : [];
+    $secciones       = wpss_sanitize_secciones_array( $secciones_input );
+    $section_ids     = wp_list_pluck( $secciones, 'id' );
+
+    $versos = wpss_sanitize_versos_array(
+        isset( $params['versos'] ) ? (array) $params['versos'] : [],
+        $section_ids
+    );
 
     if ( is_wp_error( $versos ) ) {
         return new WP_REST_Response( [ 'message' => $versos->get_error_message() ], 400 );
     }
+
+    list( $secciones, $versos ) = wpss_ensure_sections_for_versos( $secciones, $versos );
+    $versos = wpss_apply_legacy_stanza_markers( $versos, $secciones );
 
     $versos = wpss_normalize_versos_order( $versos );
 
@@ -365,6 +380,13 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         return new WP_REST_Response( [ 'message' => $versos_result->get_error_message() ], 500 );
     }
 
+    $secciones_json = wp_json_encode( $secciones, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+    if ( false === $secciones_json ) {
+        $secciones_json = wp_json_encode( $secciones );
+    }
+
+    update_post_meta( $post_id, '_secciones_json', $secciones_json );
+
     $tiene_prestamos    = wpss_calculate_song_has_prestamos( $prestamos, $versos );
     $tiene_modulaciones = wpss_calculate_song_has_modulaciones( $modulaciones, $versos );
 
@@ -377,6 +399,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         'id'                 => (int) $post_id,
         'tiene_prestamos'    => $tiene_prestamos,
         'tiene_modulaciones' => $tiene_modulaciones,
+        'secciones'          => $secciones,
     ];
 
     return rest_ensure_response( $response );
@@ -407,23 +430,47 @@ function wpss_get_segmentos_from_meta( $verso_id ) {
         return null;
     }
 
-    $raw = wp_unslash( $raw );
-    $raw = maybe_unserialize( $raw );
+    if ( is_array( $raw ) ) {
+        return $raw;
+    }
+
+    $candidates = [];
 
     if ( is_string( $raw ) ) {
-        $decoded = json_decode( $raw, true );
+        $candidates[] = $raw;
+    }
+
+    $maybe_unserialized = maybe_unserialize( $raw );
+    if ( $maybe_unserialized !== $raw ) {
+        if ( is_array( $maybe_unserialized ) ) {
+            return $maybe_unserialized;
+        }
+
+        if ( is_string( $maybe_unserialized ) ) {
+            $candidates[] = $maybe_unserialized;
+        }
+    }
+
+    $unslashed = wp_unslash( $raw );
+    if ( $unslashed !== $raw ) {
+        if ( is_array( $unslashed ) ) {
+            return $unslashed;
+        }
+
+        if ( is_string( $unslashed ) ) {
+            $candidates[] = $unslashed;
+        }
+    }
+
+    foreach ( $candidates as $candidate ) {
+        $decoded = json_decode( $candidate, true );
 
         if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
             return $decoded;
         }
-
-        error_log( 'wpss: segmentos corruptos en verso ' . $verso_id );
-        return null;
     }
 
-    if ( is_array( $raw ) ) {
-        return $raw;
-    }
+    error_log( 'wpss: segmentos corruptos en verso ' . $verso_id );
 
     return null;
 }
@@ -515,6 +562,241 @@ function wpss_implode_segmentos_text( array $segmentos ) {
 }
 
 /**
+ * Genera un identificador único para secciones nuevas.
+ *
+ * @return string
+ */
+function wpss_generate_unique_section_id() {
+    $id = sanitize_key( uniqid( 'sec-', false ) );
+
+    if ( '' === $id ) {
+        $id = 'sec-' . wp_rand( 1000, 9999 );
+    }
+
+    return $id;
+}
+
+/**
+ * Normaliza el arreglo de secciones asegurando IDs únicos y nombres válidos.
+ *
+ * @param array $secciones Secciones recibidas.
+ * @return array
+ */
+function wpss_sanitize_secciones_array( array $secciones ) {
+    $normalizadas = [];
+    $ids_usados   = [];
+
+    foreach ( $secciones as $index => $seccion ) {
+        if ( ! is_array( $seccion ) ) {
+            continue;
+        }
+
+        $id = '';
+        if ( isset( $seccion['id'] ) ) {
+            $id = sanitize_key( $seccion['id'] );
+        }
+
+        if ( '' === $id ) {
+            $id = wpss_generate_unique_section_id();
+        }
+
+        while ( isset( $ids_usados[ $id ] ) ) {
+            $id = wpss_generate_unique_section_id();
+        }
+
+        $nombre = isset( $seccion['nombre'] ) ? sanitize_text_field( $seccion['nombre'] ) : '';
+        $nombre = wpss_truncate_string( $nombre, 64 );
+
+        if ( '' === $nombre ) {
+            /* translators: %d: section number */
+            $nombre = sprintf( __( 'Sección %d', 'wp-song-study' ), count( $normalizadas ) + 1 );
+        }
+
+        $ids_usados[ $id ]   = true;
+        $normalizadas[] = [
+            'id'     => $id,
+            'nombre' => $nombre,
+        ];
+    }
+
+    return $normalizadas;
+}
+
+/**
+ * Deriva secciones y asignaciones de versos a partir de los campos legacy.
+ *
+ * @param array $versos Versos con datos legacy.
+ * @return array[] Array con dos elementos: secciones y versos actualizados.
+ */
+function wpss_derive_sections_from_versos( array $versos ) {
+    if ( empty( $versos ) ) {
+        return [ [], $versos ];
+    }
+
+    $secciones       = [];
+    $asignaciones    = [];
+    $seccion_indice  = 1;
+    $seccion_actual  = 'sec-1';
+    $seccion_nombre  = __( 'Sección 1', 'wp-song-study' );
+    $secciones[]     = [
+        'id'     => $seccion_actual,
+        'nombre' => $seccion_nombre,
+    ];
+    $asignaciones[ $seccion_actual ] = 0;
+
+    foreach ( $versos as &$verso ) {
+        $verso['section_id'] = $seccion_actual;
+        $asignaciones[ $seccion_actual ]++;
+
+        if ( empty( $verso['fin_de_estrofa'] ) ) {
+            continue;
+        }
+
+        $seccion_indice++;
+        $seccion_actual = 'sec-' . $seccion_indice;
+
+        $nombre_sugerido = isset( $verso['nombre_estrofa'] ) ? (string) $verso['nombre_estrofa'] : '';
+        $nombre_sugerido = sanitize_text_field( $nombre_sugerido );
+        $nombre_sugerido = wpss_truncate_string( $nombre_sugerido, 64 );
+
+        if ( '' === $nombre_sugerido ) {
+            /* translators: %d: section number */
+            $nombre_sugerido = sprintf( __( 'Sección %d', 'wp-song-study' ), $seccion_indice );
+        }
+
+        $secciones[] = [
+            'id'     => $seccion_actual,
+            'nombre' => $nombre_sugerido,
+        ];
+        $asignaciones[ $seccion_actual ] = 0;
+    }
+    unset( $verso );
+
+    $secciones = array_values(
+        array_filter(
+            $secciones,
+            static function( $seccion ) use ( $asignaciones ) {
+                return ! empty( $asignaciones[ $seccion['id'] ] );
+            }
+        )
+    );
+
+    if ( empty( $secciones ) ) {
+        $secciones = [
+            [
+                'id'     => 'sec-1',
+                'nombre' => __( 'Sección 1', 'wp-song-study' ),
+            ],
+        ];
+
+        foreach ( $versos as &$verso ) {
+            $verso['section_id'] = 'sec-1';
+        }
+        unset( $verso );
+    }
+
+    return [ $secciones, $versos ];
+}
+
+/**
+ * Garantiza que existan secciones válidas y que los versos apunten a ellas.
+ *
+ * @param array $secciones Secciones sanitizadas.
+ * @param array $versos    Versos sanitizados.
+ * @return array[]
+ */
+function wpss_ensure_sections_for_versos( array $secciones, array $versos ) {
+    if ( empty( $secciones ) ) {
+        return wpss_derive_sections_from_versos( $versos );
+    }
+
+    $ids = wp_list_pluck( $secciones, 'id' );
+
+    if ( empty( $ids ) ) {
+        return wpss_derive_sections_from_versos( $versos );
+    }
+
+    $primera = $ids[0];
+
+    foreach ( $versos as &$verso ) {
+        $section_id = isset( $verso['section_id'] ) ? sanitize_key( $verso['section_id'] ) : '';
+        if ( '' === $section_id || ! in_array( $section_id, $ids, true ) ) {
+            $section_id = $primera;
+        }
+        $verso['section_id'] = $section_id;
+    }
+    unset( $verso );
+
+    return [ $secciones, $versos ];
+}
+
+/**
+ * Rellena los campos legacy de fin de estrofa y nombre derivados de las secciones.
+ *
+ * @param array $versos     Versos con section_id.
+ * @param array $secciones  Secciones ordenadas.
+ * @return array
+ */
+function wpss_apply_legacy_stanza_markers( array $versos, array $secciones ) {
+    if ( empty( $versos ) ) {
+        return $versos;
+    }
+
+    foreach ( $versos as &$verso ) {
+        $verso['fin_de_estrofa'] = false;
+        $verso['nombre_estrofa'] = '';
+    }
+    unset( $verso );
+
+    foreach ( $secciones as $index => $seccion ) {
+        $id = $seccion['id'];
+        $versos_seccion = array_keys(
+            array_filter(
+                $versos,
+                static function( $verso ) use ( $id ) {
+                    return isset( $verso['section_id'] ) && $verso['section_id'] === $id;
+                }
+            )
+        );
+
+        if ( empty( $versos_seccion ) ) {
+            continue;
+        }
+
+        $ultimo_indice = end( $versos_seccion );
+        if ( false === $ultimo_indice ) {
+            continue;
+        }
+
+        if ( isset( $versos[ $ultimo_indice ] ) ) {
+            $versos[ $ultimo_indice ]['fin_de_estrofa'] = ( $index < count( $secciones ) - 1 );
+            if ( $index < count( $secciones ) - 1 ) {
+                $versos[ $ultimo_indice ]['nombre_estrofa'] = $secciones[ $index + 1 ]['nombre'];
+            }
+        }
+    }
+
+    return $versos;
+}
+
+/**
+ * Prepara secciones y versos para la salida REST combinando metadatos y compatibilidad legacy.
+ *
+ * @param int   $post_id ID de la canción.
+ * @param array $versos  Versos base.
+ * @return array[]
+ */
+function wpss_prepare_sections_for_output( $post_id, array $versos ) {
+    $secciones_meta = wpss_decode_json_meta( get_post_meta( $post_id, '_secciones_json', true ) );
+    $secciones      = wpss_sanitize_secciones_array( $secciones_meta );
+
+    list( $secciones, $versos_actualizados ) = wpss_ensure_sections_for_versos( $secciones, $versos );
+    $versos_actualizados = wpss_apply_legacy_stanza_markers( $versos_actualizados, $secciones );
+
+    return [ $secciones, $versos_actualizados ];
+}
+
+/**
  * Devuelve la lista de versos de una canción ordenados.
  *
  * @param int $post_id ID de la canción.
@@ -575,14 +857,15 @@ function wpss_get_cancion_versos( $post_id ) {
             ];
         }
 
-        $evento_raw      = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
-        $evento          = wpss_sanitize_evento_armonico( $evento_raw );
-        $comentario      = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
-        $fin_de_estrofa  = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
-        $nombre_estrofa  = sanitize_text_field( get_post_meta( $verso->ID, '_nombre_estrofa', true ) );
-        $nombre_estrofa  = wpss_truncate_string( $nombre_estrofa, 64 );
-        $texto_base      = wpss_implode_segmentos_text( $segmentos );
-        $acorde          = isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '';
+        $evento_raw     = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
+        $evento         = wpss_sanitize_evento_armonico( $evento_raw );
+        $comentario     = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
+        $section_id     = sanitize_key( get_post_meta( $verso->ID, '_section_id', true ) );
+        $fin_de_estrofa = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
+        $nombre_estrofa = sanitize_text_field( get_post_meta( $verso->ID, '_nombre_estrofa', true ) );
+        $nombre_estrofa = wpss_truncate_string( $nombre_estrofa, 64 );
+        $texto_base     = wpss_implode_segmentos_text( $segmentos );
+        $acorde         = isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '';
 
         $data[] = [
             'id'              => (int) $verso->ID,
@@ -592,6 +875,7 @@ function wpss_get_cancion_versos( $post_id ) {
             'segmentos'       => $segmentos,
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'section_id'      => $section_id,
             'fin_de_estrofa'  => $fin_de_estrofa,
             'nombre_estrofa'  => $nombre_estrofa,
         ];
@@ -779,7 +1063,7 @@ function wpss_sanitize_evento_armonico( $evento ) {
  * @param array $versos Datos recibidos.
  * @return array
  */
-function wpss_sanitize_versos_array( array $versos ) {
+function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
     $limpios = [];
 
     foreach ( $versos as $verso ) {
@@ -825,6 +1109,15 @@ function wpss_sanitize_versos_array( array $versos ) {
             $nombre_estrofa = '';
         }
 
+        $section_id = '';
+        if ( isset( $verso['section_id'] ) ) {
+            $section_id = sanitize_key( $verso['section_id'] );
+        }
+
+        if ( ! empty( $section_ids ) && '' !== $section_id && ! in_array( $section_id, $section_ids, true ) ) {
+            return new WP_Error( 'wpss_rest_invalid_section', __( 'Cada verso debe referenciar una sección válida.', 'wp-song-study' ) );
+        }
+
         if ( empty( $segmentos ) ) {
             if ( '' === $comentario && null === $evento ) {
                 continue;
@@ -840,6 +1133,7 @@ function wpss_sanitize_versos_array( array $versos ) {
             'acorde'          => isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '',
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'section_id'      => $section_id,
             'fin_de_estrofa'  => (bool) $fin_de_estrofa,
             'nombre_estrofa'  => $nombre_estrofa,
         ];
@@ -941,6 +1235,13 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
         }
 
         update_post_meta( $verso_id, '_segmentos_json', $segmentos_json );
+
+        $section_meta = isset( $verso['section_id'] ) ? sanitize_key( $verso['section_id'] ) : '';
+        if ( '' !== $section_meta ) {
+            update_post_meta( $verso_id, '_section_id', $section_meta );
+        } else {
+            delete_post_meta( $verso_id, '_section_id' );
+        }
 
         if ( ! empty( $verso['fin_de_estrofa'] ) ) {
             update_post_meta( $verso_id, '_fin_de_estrofa', 1 );

@@ -20,6 +20,7 @@ Harmonic Atlas es un plugin de WordPress pensado como cuaderno de estudio para t
 * **Notas generales** (`_notas_generales`). Campo opcional para observaciones.
 * **Préstamos tonales** (`_prestamos_tonales_json`). Cadena JSON con objetos `{ "origen": "C eólico", "descripcion": "iv, bVI", "notas": "Color especial" }`.
 * **Modulaciones** (`_modulaciones_json`). Cadena JSON con objetos `{ "seccion": "Puente", "destino": "E mixolidio" }`.
+* **Secciones** (`_secciones_json`). Cadena JSON con objetos `{ "id": "sec-1", "nombre": "Intro" }` que definen el orden y la etiqueta de cada agrupación de versos.
 * **Banderas** (`_tiene_prestamos`, `_tiene_modulaciones`). Booleanos que facilitan filtros rápidos en la GUI y REST.
 * **Conteo de versos** (`_conteo_versos`). Entero actualizado automáticamente tras cada guardado.
 
@@ -46,8 +47,8 @@ Cada verso se guarda como CPT hijo y ahora puede incluir múltiples segmentos te
 * **Función relativa** (`_funcion_relativa`). Opcional para numerales romanos o etiquetas como `V7/ii`.
 * **Notas adicionales** (`_notas_verso`). Observaciones o análisis puntual.
 * **Evento armónico** (`_evento_armonico_json`). Marca préstamos o modulaciones por verso.
-* **Fin de estrofa** (`_fin_de_estrofa`). Bandera booleana para insertar un separador visual tras el verso en la vista de lectura y exportación.
-* **Nombre de estrofa** (`_nombre_estrofa`). Texto (máx. 64 caracteres) opcional que se muestra junto al separador para etiquetar secciones como “Coro” o “Puente”. Solo se persiste cuando `fin_de_estrofa` es verdadero.
+* **Sección** (`_section_id`). Identificador estable que enlaza el verso con una sección nombrable y permite reordenar o reasignar versos desde la UI.
+* **Fin de estrofa** (`_fin_de_estrofa`) y **Nombre de estrofa** (`_nombre_estrofa`). Se mantienen como campos legacy derivados automáticamente de las secciones para compatibilidad con vistas antiguas.
 
 ### Campos armónicos
 
@@ -68,7 +69,7 @@ Ambas páginas cargan una SPA (`assets/cancion-dashboard.js`) que permite:
 1. **Explorar y filtrar canciones** por tonalidad, presencia de préstamos o modulaciones y paginar los resultados.
 2. **Editar en una sola vista** el título, tonalidad, campo armónico predominante, préstamos tonales, modulaciones y la tabla completa de versos.
 3. **Editar versos segmentados**: cada verso admite múltiples segmentos texto-acorde con duplicado, división y reordenado tanto por segmento como por verso, manteniendo `_orden` coherente y respetando los segmentos guardados en `_segmentos_json` al recargar.
-4. **Marcar separadores de estrofa**: activa la casilla *Fin de estrofa* en cada verso para insertar una línea divisoria y, si lo deseas, asigna un nombre de sección (Coro, Puente, etc.) que se replica en la vista de lectura y en la exportación de texto.
+4. **Gestionar secciones nombrables**: crea, renombra, reordena o elimina secciones desde un gestor dedicado y asigna cada verso a una sección (Intro, Verso 1, Coro, etc.). La vista de lectura y la exportación agrupan automáticamente los versos bajo su encabezado correspondiente.
 5. **Alternar vistas**: la pestaña *Editor* convive con una biblioteca editable de campos armónicos y una *Vista de lectura* tipo lead sheet para revisar la canción sin controles de edición.
 6. **Guardar de forma atómica** canción + préstamos + modulaciones + versos mediante AJAX seguro con nonce dedicado.
 
@@ -86,7 +87,7 @@ Todas las rutas se exponen bajo el namespace `wpss/v1` y requieren `current_user
 | `GET` | `/wpss/v1/campos-armonicos` | Devuelve la biblioteca completa de campos armónicos (defaults + personalizados) con nombre, slug, sistema, intervalos, descripciones y bandera `activo`. |
 | `POST` | `/wpss/v1/campos-armonicos` | Sobrescribe la biblioteca de campos armónicos fusionando por `slug`. Requiere `[{ slug, nombre, sistema, intervalos, descripcion, notas, activo }]`. |
 
-Las respuestas de `GET /wpss/v1/cancion/{id}` devuelven cada verso con su arreglo `segmentos` ya normalizado, además de las banderas `fin_de_estrofa` (booleano) y `nombre_estrofa` (string opcional) para renderizar separadores en el cliente. El endpoint de guardado valida que cada verso incluya al menos un segmento con texto o acorde antes de aceptar la solicitud.
+Las respuestas de `GET /wpss/v1/cancion/{id}` devuelven cada verso con su arreglo `segmentos` ya normalizado, el campo `section_id` que apunta a las secciones incluidas en `secciones`, y los flags legacy `fin_de_estrofa`/`nombre_estrofa` derivados automáticamente. El endpoint de guardado valida que cada verso incluya al menos un segmento con texto o acorde y que todos los `section_id` existan en la colección de secciones enviada.
 
 Payload esperado al guardar:
 
@@ -102,6 +103,10 @@ Payload esperado al guardar:
   "modulaciones": [
     { "seccion": "Solo pt1", "destino": "C jónico" }
   ],
+  "secciones": [
+    { "id": "sec-1", "nombre": "Verso" },
+    { "id": "sec-2", "nombre": "Coro" }
+  ],
   "versos": [
     {
       "orden": 1,
@@ -111,8 +116,16 @@ Payload esperado al guardar:
       ],
       "comentario": "I → IV",
       "evento_armonico": null,
-      "fin_de_estrofa": true,
-      "nombre_estrofa": "Coro"
+      "section_id": "sec-1"
+    },
+    {
+      "orden": 2,
+      "segmentos": [
+        { "texto": "Entrada del coro", "acorde": "G" }
+      ],
+      "comentario": "",
+      "evento_armonico": null,
+      "section_id": "sec-2"
     }
   ]
 }
@@ -132,13 +145,13 @@ Payload esperado al guardar:
 ## Pruebas manuales sugeridas
 
 1. Abrir **Cancionario Armónico > Dashboard / Biblioteca** y verificar que la lista cargue con filtros y paginación.
-2. Crear una canción nueva con préstamos, modulaciones y al menos tres versos; guardar y confirmar mensaje de éxito sin recargar la página.
-3. Reordenar versos usando las flechas y confirmar que el orden se respeta tras guardar y recargar el registro.
+2. Crear una canción nueva con préstamos, modulaciones y al menos tres versos; añadir dos secciones (por ejemplo Intro y Coro), asignar cada verso a una sección, guardar y confirmar tras recargar que los nombres y el orden de las secciones se preservan.
+3. Reordenar secciones y versos usando las flechas, volver a guardar y validar que tanto las asignaciones como el orden persisten en el editor y en la vista de lectura.
 4. Usar los filtros de la biblioteca para mostrar solo canciones con préstamos y validar que los indicadores correspondan.
-5. Editar una canción existente desde la lista, modificar campos y guardar verificando que los cambios se reflejen en la tabla.
-6. Revisar las peticiones REST en el inspector para comprobar cabeceras `X-WPSS-Nonce` y respuestas `{ ok, id, tiene_* }`.
-7. Dividir un verso en múltiples segmentos con acordes distintos, guardar la canción, recargar el editor y confirmar que cada segmento reaparece tal como se guardó.
-8. Marcar *Fin de estrofa* en un verso, asignar un nombre de estrofa, guardar y verificar que la línea divisoria y la etiqueta se rendericen tanto en la vista de lectura como en la exportación “Copiar como texto”.
-9. Abrir una canción previa sin `_segmentos_json`, comprobar que genera un segmento único, dividirla en el editor, guardar y confirmar que al recargar obtiene los segmentos reales.
+5. Editar una canción existente desde la lista, modificar campos (incluidos los nombres de sección) y guardar verificando que los cambios se reflejen en la tabla.
+6. Revisar las peticiones REST en el inspector para comprobar cabeceras `X-WPSS-Nonce`, la presencia de `secciones`/`section_id` en `GET /cancion/{id}` y respuestas `{ ok, id, tiene_* }` al guardar.
+7. Dividir un verso en múltiples segmentos con caracteres acentuados/ñ, guardar la canción, recargar el editor y confirmar que cada segmento reaparece con su texto UTF-8 intacto.
+8. Usar la exportación “Copiar como texto” y la vista de lectura para verificar que los versos se agrupan por sección con sus encabezados correspondientes.
+9. Abrir una canción previa sin `_segmentos_json`, comprobar que genera un segmento único, dividirla en el editor, guardar y confirmar que al recargar obtiene los segmentos reales y se crean secciones derivadas automáticamente.
 
 Consulta `CHANGELOG.md` para detalles de versiones.

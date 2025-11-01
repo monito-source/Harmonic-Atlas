@@ -48,6 +48,8 @@
             },
         };
 
+        let sectionSeed = 0;
+
         const api = {
             async listSongs() {
                 const params = new URLSearchParams();
@@ -167,6 +169,59 @@
             }
         }
 
+        function generateSectionId() {
+            sectionSeed += 1;
+            return `sec-${ Date.now().toString( 36 ) }-${ sectionSeed }`;
+        }
+
+        function getDefaultSectionName( index ) {
+            const position = index + 1;
+            return `Sección ${ position }`;
+        }
+
+        function createSection( nombre = '', index = 0 ) {
+            const label = nombre && nombre.trim() ? nombre.trim().slice( 0, 64 ) : getDefaultSectionName( index );
+            return {
+                id: generateSectionId(),
+                nombre: label,
+            };
+        }
+
+        function normalizeSectionsFromApi( secciones ) {
+            if ( ! Array.isArray( secciones ) ) {
+                return [];
+            }
+
+            const used = new Set();
+
+            return secciones.map( ( seccion, index ) => {
+                let id = seccion && seccion.id ? String( seccion.id ) : generateSectionId();
+                let nombre = seccion && seccion.nombre ? String( seccion.nombre ) : '';
+
+                id = id.trim();
+                nombre = nombre.trim();
+
+                if ( ! id ) {
+                    id = generateSectionId();
+                }
+
+                while ( used.has( id ) ) {
+                    id = generateSectionId();
+                }
+
+                used.add( id );
+
+                if ( ! nombre ) {
+                    nombre = getDefaultSectionName( index );
+                }
+
+                return {
+                    id,
+                    nombre: nombre.slice( 0, 64 ),
+                };
+            } );
+        }
+
         function createEmptySong() {
             return {
                 id: null,
@@ -177,6 +232,7 @@
                 prestamos: [],
                 modulaciones: [],
                 versos: [],
+                secciones: [ createSection( '', 0 ) ],
                 tiene_prestamos: false,
                 tiene_modulaciones: false,
             };
@@ -186,12 +242,13 @@
             return { texto: '', acorde: '' };
         }
 
-        function createEmptyVerse( orden ) {
+        function createEmptyVerse( orden, sectionId ) {
             return {
                 orden: orden || 1,
                 segmentos: [ createEmptySegment() ],
                 comentario: '',
                 evento_armonico: null,
+                section_id: sectionId || '',
                 fin_de_estrofa: false,
                 nombre_estrofa: '',
             };
@@ -212,28 +269,189 @@
         function normalizeVerseOrder() {
             if ( ! Array.isArray( state.editingSong.versos ) ) {
                 state.editingSong.versos = [];
+            } else {
+                state.editingSong.versos.sort( ( a, b ) => ( a.orden || 0 ) - ( b.orden || 0 ) );
+                state.editingSong.versos.forEach( ( verso, index ) => {
+                    verso.orden = index + 1;
+                    if ( ! Array.isArray( verso.segmentos ) || ! verso.segmentos.length ) {
+                        verso.segmentos = [ createEmptySegment() ];
+                    } else {
+                        verso.segmentos = verso.segmentos.map( ( segmento ) => ( {
+                            texto: segmento && segmento.texto ? segmento.texto : '',
+                            acorde: segmento && segmento.acorde ? segmento.acorde : '',
+                        } ) );
+                    }
+
+                    if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
+                        verso.evento_armonico = null;
+                    }
+
+                    verso.section_id = verso.section_id ? String( verso.section_id ) : '';
+                    verso.fin_de_estrofa = !! verso.fin_de_estrofa;
+                    verso.nombre_estrofa = verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '';
+                } );
+            }
+
+            ensureSectionsIntegrity();
+        }
+
+        function ensureSectionsIntegrity() {
+            if ( ! state.editingSong ) {
                 return;
             }
 
-            state.editingSong.versos.sort( ( a, b ) => ( a.orden || 0 ) - ( b.orden || 0 ) );
-            state.editingSong.versos.forEach( ( verso, index ) => {
-                verso.orden = index + 1;
-                if ( ! Array.isArray( verso.segmentos ) || ! verso.segmentos.length ) {
-                    verso.segmentos = [ createEmptySegment() ];
-                } else {
-                    verso.segmentos = verso.segmentos.map( ( segmento ) => ( {
-                        texto: segmento && segmento.texto ? segmento.texto : '',
-                        acorde: segmento && segmento.acorde ? segmento.acorde : '',
-                    } ) );
+            let secciones = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            const used = new Set();
+
+            secciones = secciones.map( ( seccion, index ) => {
+                let id = seccion && seccion.id ? String( seccion.id ).trim() : '';
+                let nombre = seccion && seccion.nombre ? String( seccion.nombre ).trim() : '';
+
+                if ( ! id ) {
+                    id = generateSectionId();
                 }
 
-                if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
-                    verso.evento_armonico = null;
+                while ( used.has( id ) ) {
+                    id = generateSectionId();
                 }
 
-                verso.fin_de_estrofa = !! verso.fin_de_estrofa;
-                verso.nombre_estrofa = verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '';
+                used.add( id );
+
+                if ( ! nombre ) {
+                    nombre = getDefaultSectionName( index );
+                }
+
+                return {
+                    id,
+                    nombre: nombre.slice( 0, 64 ),
+                };
             } );
+
+            if ( ! secciones.length ) {
+                secciones = [ createSection( '', 0 ) ];
+            }
+
+            state.editingSong.secciones = secciones;
+
+            const ids = secciones.map( ( seccion ) => seccion.id );
+            const fallbackId = ids[ 0 ];
+
+            if ( Array.isArray( state.editingSong.versos ) ) {
+                state.editingSong.versos.forEach( ( verso ) => {
+                    if ( ! verso.section_id || ! ids.includes( verso.section_id ) ) {
+                        verso.section_id = fallbackId;
+                    }
+                } );
+            }
+
+            syncLegacyFromSections();
+        }
+
+        function syncLegacyFromSections() {
+            if ( ! state.editingSong || ! Array.isArray( state.editingSong.versos ) ) {
+                return;
+            }
+
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+
+            state.editingSong.versos.forEach( ( verso ) => {
+                verso.fin_de_estrofa = false;
+                verso.nombre_estrofa = '';
+            } );
+
+            if ( ! sections.length ) {
+                return;
+            }
+
+            sections.forEach( ( section, index ) => {
+                const versosSeccion = state.editingSong.versos.filter( ( verso ) => verso.section_id === section.id );
+                if ( ! versosSeccion.length ) {
+                    return;
+                }
+
+                const ultimo = versosSeccion[ versosSeccion.length - 1 ];
+                if ( ! ultimo ) {
+                    return;
+                }
+
+                if ( index < sections.length - 1 ) {
+                    ultimo.fin_de_estrofa = true;
+                    ultimo.nombre_estrofa = sections[ index + 1 ].nombre || '';
+                }
+            } );
+        }
+
+        function addSection() {
+            if ( ! Array.isArray( state.editingSong.secciones ) ) {
+                state.editingSong.secciones = [];
+            }
+
+            const index = state.editingSong.secciones.length;
+            state.editingSong.secciones.push( {
+                id: generateSectionId(),
+                nombre: getDefaultSectionName( index ),
+            } );
+
+            ensureSectionsIntegrity();
+        }
+
+        function removeSection( index ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.secciones ) ) {
+                return;
+            }
+
+            if ( state.editingSong.secciones.length <= 1 || ! state.editingSong.secciones[ index ] ) {
+                return;
+            }
+
+            const removed = state.editingSong.secciones.splice( index, 1 )[ 0 ];
+            const fallback = state.editingSong.secciones[ 0 ] ? state.editingSong.secciones[ 0 ].id : '';
+
+            if ( removed && Array.isArray( state.editingSong.versos ) ) {
+                state.editingSong.versos.forEach( ( verso ) => {
+                    if ( verso.section_id === removed.id ) {
+                        verso.section_id = fallback;
+                    }
+                } );
+            }
+
+            ensureSectionsIntegrity();
+        }
+
+        function reorderSection( index, direction ) {
+            if ( Number.isNaN( index ) || ! direction || ! Array.isArray( state.editingSong.secciones ) ) {
+                return;
+            }
+
+            const target = index + direction;
+            if ( target < 0 || target >= state.editingSong.secciones.length ) {
+                return;
+            }
+
+            const sections = state.editingSong.secciones;
+            const temp = sections[ index ];
+            sections[ index ] = sections[ target ];
+            sections[ target ] = temp;
+
+            ensureSectionsIntegrity();
+        }
+
+        function renameSection( index, value ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.secciones ) || ! state.editingSong.secciones[ index ] ) {
+                return;
+            }
+
+            state.editingSong.secciones[ index ].nombre = value ? value.slice( 0, 64 ) : '';
+            ensureSectionsIntegrity();
+        }
+
+        function updateVerseSection( index, sectionId ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.versos ) || ! state.editingSong.versos[ index ] ) {
+                return;
+            }
+
+            state.editingSong.versos[ index ].section_id = sectionId;
+            ensureSectionsIntegrity();
         }
 
         function refreshCampoNames() {
@@ -545,6 +763,14 @@
 
                     <div class="wpss-section">
                         <header>
+                            <h3>Secciones</h3>
+                            <button type="button" class="button button-secondary" data-action="add-section">Añadir sección</button>
+                        </header>
+                        ${ renderSectionsManager() }
+                    </div>
+
+                    <div class="wpss-section">
+                        <header>
                             <h3>Versos</h3>
                             <button type="button" class="button button-secondary" data-action="add-verso">Añadir verso</button>
                         </header>
@@ -612,6 +838,34 @@
                                     <input type="text" data-model="modulaciones" data-field="destino" data-index="${ index }" value="${ escapeAttr( modulacion.destino || '' ) }" />
                                 </label>
                             </div>
+                        </div>
+                    ` ).join( '' ) }
+                </div>
+            `;
+        }
+
+        function renderSectionsManager() {
+            const secciones = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            if ( ! secciones.length ) {
+                return `<p class="wpss-empty">${ escapeHtml( data.strings.sectionsEmpty || 'Sin secciones registradas.' ) }</p>`;
+            }
+
+            return `
+                <div class="wpss-sections-manager">
+                    ${ secciones.map( ( seccion, index ) => `
+                        <div class="wpss-section-row">
+                            <div class="wpss-section-row__header">
+                                <strong class="wpss-section-row__title">${ escapeHtml( seccion.nombre || getDefaultSectionName( index ) ) }</strong>
+                                <div class="wpss-section-row__actions">
+                                    <button type="button" class="button button-small" data-action="section-up" data-index="${ index }" ${ 0 === index ? 'disabled' : '' }>↑</button>
+                                    <button type="button" class="button button-small" data-action="section-down" data-index="${ index }" ${ index === secciones.length - 1 ? 'disabled' : '' }>↓</button>
+                                    <button type="button" class="button button-link-delete" data-action="remove-section" data-index="${ index }" ${ secciones.length <= 1 ? 'disabled' : '' }>${ escapeHtml( data.strings.camposRemove || 'Eliminar' ) }</button>
+                                </div>
+                            </div>
+                            <label>
+                                <span>Nombre</span>
+                                <input type="text" data-model="section" data-index="${ index }" value="${ escapeAttr( seccion.nombre || '' ) }" maxlength="64" />
+                            </label>
                         </div>
                     ` ).join( '' ) }
                 </div>
@@ -690,16 +944,13 @@
             const comentario = verso.comentario || '';
             const evento = verso.evento_armonico || null;
             const tipo = evento && evento.tipo ? evento.tipo : '';
-            const stanzaLabel = verso.nombre_estrofa ? escapeHtml( verso.nombre_estrofa ) : '';
-            const stanzaDisabled = verso.fin_de_estrofa ? '' : 'disabled';
-            const stanzaPreview = verso.fin_de_estrofa
-                ? `
-                    <div class="wpss-stanza-preview">
-                        <span class="wpss-stanza-sep" aria-hidden="true"></span>
-                        ${ stanzaLabel ? `<span class="wpss-stanza-label">${ stanzaLabel }</span>` : '' }
-                    </div>
-                `
-                : '';
+            const secciones = Array.isArray( state.editingSong.secciones ) && state.editingSong.secciones.length
+                ? state.editingSong.secciones
+                : [ { id: '', nombre: getDefaultSectionName( 0 ) } ];
+
+            const sectionOptions = secciones.map( ( seccion ) => `
+                <option value="${ escapeAttr( seccion.id ) }" ${ seccion.id === verso.section_id ? 'selected' : '' }>${ escapeHtml( seccion.nombre ) }</option>
+            ` ).join( '' );
 
             let eventFields = '';
 
@@ -738,6 +989,12 @@
             return `
                 <div class="wpss-verse-detail">
                     <label>
+                        <span>Sección</span>
+                        <select data-action="verse-section" data-index="${ index }">
+                            ${ sectionOptions }
+                        </select>
+                    </label>
+                    <label>
                         <span>Comentario</span>
                         <input type="text" data-model="versos" data-field="comentario" data-index="${ index }" value="${ escapeAttr( comentario ) }" />
                     </label>
@@ -750,17 +1007,6 @@
                         </select>
                     </label>
                     ${ eventFields }
-                    <div class="wpss-verse-stanza">
-                        <label class="wpss-verse-stanza__toggle">
-                            <input type="checkbox" data-action="verse-stanza-toggle" data-index="${ index }" ${ verso.fin_de_estrofa ? 'checked' : '' } />
-                            <span>Fin de estrofa</span>
-                        </label>
-                        <label class="wpss-verse-stanza__label">
-                            <span>Nombre de estrofa (opcional)</span>
-                            <input type="text" data-model="versos" data-field="nombre_estrofa" data-index="${ index }" value="${ escapeAttr( verso.nombre_estrofa || '' ) }" maxlength="64" ${ stanzaDisabled } placeholder="Coro, Puente…" />
-                        </label>
-                        ${ stanzaPreview }
-                    </div>
                 </div>
             `;
         }
@@ -839,6 +1085,8 @@
                 return `<p class="wpss-empty">${ escapeHtml( data.strings.readingEmpty || 'Sin contenido para mostrar.' ) }</p>`;
             }
 
+            const groups = groupVersesBySection();
+
             return `
                 <div class="wpss-reading">
                     <div class="wpss-reading__header">
@@ -847,9 +1095,16 @@
                         <p><strong>Campo armónico:</strong> ${ escapeHtml( song.campo_armonico || '—' ) }</p>
                         <button type="button" class="button" data-action="copy-reading">${ escapeHtml( data.strings.copyAsText || 'Copiar como texto' ) }</button>
                     </div>
-                    <ol class="wpss-reading__verses">
-                        ${ song.versos.map( ( verso ) => renderReadingVerse( verso ) ).join( '' ) }
-                    </ol>
+                    <div class="wpss-reading__sections">
+                        ${ groups.map( ( group ) => `
+                            <section class="wpss-reading__section">
+                                <h4 class="wpss-section-title">${ escapeHtml( group.section.nombre || getDefaultSectionName( 0 ) ) }</h4>
+                                <ol class="wpss-reading__verses">
+                                    ${ group.versos.map( ( verso ) => renderReadingVerse( verso ) ).join( '' ) }
+                                </ol>
+                            </section>
+                        ` ).join( '' ) }
+                    </div>
                 </div>
             `;
         }
@@ -864,22 +1119,49 @@
 
             const evento = renderEventoChip( verso.evento_armonico );
             const comentario = verso.comentario ? `<span class="wpss-reading__comment">${ escapeHtml( verso.comentario ) }</span>` : '';
-            const stanza = verso.fin_de_estrofa
-                ? `
-                    <div class="wpss-reading__stanza">
-                        <span class="wpss-stanza-sep" aria-hidden="true"></span>
-                        ${ verso.nombre_estrofa ? `<span class="wpss-stanza-label">${ escapeHtml( verso.nombre_estrofa ) }</span>` : '' }
-                    </div>
-                `
-                : '';
 
             return `
                 <li>
                     <div class="wpss-reading__line">${ partes }</div>
                     <div class="wpss-reading__meta">${ evento } ${ comentario }</div>
-                    ${ stanza }
                 </li>
             `;
+        }
+
+        function groupVersesBySection() {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            const versos = Array.isArray( state.editingSong.versos ) ? state.editingSong.versos : [];
+
+            if ( ! sections.length ) {
+                return versos.length
+                    ? [ { section: { id: '', nombre: getDefaultSectionName( 0 ) }, versos } ]
+                    : [];
+            }
+
+            const map = new Map();
+            sections.forEach( ( section ) => {
+                map.set( section.id, [] );
+            } );
+
+            const fallback = sections[ 0 ] ? sections[ 0 ].id : '';
+
+            versos.forEach( ( verso ) => {
+                const sectionId = map.has( verso.section_id ) ? verso.section_id : fallback;
+                if ( ! map.has( sectionId ) ) {
+                    map.set( sectionId, [] );
+                }
+                map.get( sectionId ).push( verso );
+            } );
+
+            const groups = [];
+            sections.forEach( ( section ) => {
+                const groupVerses = map.get( section.id ) || [];
+                if ( groupVerses.length ) {
+                    groups.push( { section, versos: groupVerses } );
+                }
+            } );
+
+            return groups;
         }
 
         function renderEventoChip( evento ) {
@@ -951,8 +1233,29 @@
                 state.editingSong.modulaciones.splice( parseInt( target.dataset.index, 10 ), 1 );
                 render();
                 break;
+            case 'add-section':
+                addSection();
+                render();
+                break;
+            case 'remove-section':
+                removeSection( parseInt( target.dataset.index, 10 ) );
+                render();
+                break;
+            case 'section-up':
+                reorderSection( parseInt( target.dataset.index, 10 ), -1 );
+                render();
+                break;
+            case 'section-down':
+                reorderSection( parseInt( target.dataset.index, 10 ), 1 );
+                render();
+                break;
             case 'add-verso':
-                state.editingSong.versos.push( createEmptyVerse( state.editingSong.versos.length + 1 ) );
+                {
+                    const primarySection = Array.isArray( state.editingSong.secciones ) && state.editingSong.secciones[ 0 ]
+                        ? state.editingSong.secciones[ 0 ].id
+                        : '';
+                    state.editingSong.versos.push( createEmptyVerse( state.editingSong.versos.length + 1, primarySection ) );
+                }
                 normalizeVerseOrder();
                 render();
                 break;
@@ -1060,6 +1363,33 @@
                 }
 
                 state.editingSong[ model ][ index ][ field ] = nextValue;
+            } else if ( 'section' === model ) {
+                const index = parseInt( event.target.dataset.index, 10 );
+                if ( Number.isNaN( index ) ) {
+                    return;
+                }
+
+                renameSection( index, value );
+
+                const section = state.editingSong.secciones[ index ];
+                const row = event.target.closest( '.wpss-section-row' );
+                if ( row ) {
+                    const title = row.querySelector( '.wpss-section-row__title' );
+                    if ( title && section ) {
+                        title.textContent = section.nombre;
+                    }
+                }
+
+                if ( section ) {
+                    container.querySelectorAll( 'select[data-action="verse-section"]' ).forEach( ( select ) => {
+                        Array.from( select.options ).forEach( ( option ) => {
+                            const match = state.editingSong.secciones.find( ( item ) => item.id === option.value );
+                            if ( match ) {
+                                option.textContent = match.nombre;
+                            }
+                        } );
+                    } );
+                }
             } else if ( 'segmento' === model ) {
                 const verseIndex = parseInt( event.target.dataset.verse, 10 );
                 const segmentIndex = parseInt( event.target.dataset.segment, 10 );
@@ -1108,12 +1438,12 @@
                     state.pagination.page = 1;
                     loadSongs();
                     return;
-                case 'verse-event-type':
-                    updateVerseEventType( parseInt( event.target.dataset.index, 10 ), event.target.value );
+                case 'verse-section':
+                    updateVerseSection( parseInt( event.target.dataset.index, 10 ), event.target.value );
                     render();
                     return;
-                case 'verse-stanza-toggle':
-                    toggleVerseStanza( parseInt( event.target.dataset.index, 10 ), event.target.checked );
+                case 'verse-event-type':
+                    updateVerseEventType( parseInt( event.target.dataset.index, 10 ), event.target.value );
                     render();
                     return;
                 case 'campo-toggle':
@@ -1315,19 +1645,6 @@
             verso.evento_armonico = next;
         }
 
-        function toggleVerseStanza( index, checked ) {
-            if ( Number.isNaN( index ) ) {
-                return;
-            }
-
-            const verso = state.editingSong.versos[ index ];
-            if ( ! verso ) {
-                return;
-            }
-
-            verso.fin_de_estrofa = !! checked;
-        }
-
         function toggleCampoActivo( index, checked ) {
             if ( Number.isNaN( index ) || ! state.campos.draft[ index ] ) {
                 return;
@@ -1359,6 +1676,7 @@
                     prestamos: Array.isArray( song.prestamos ) ? song.prestamos : [],
                     modulaciones: Array.isArray( song.modulaciones ) ? song.modulaciones : [],
                     versos: normalizeVersesFromApi( song.versos ),
+                    secciones: normalizeSectionsFromApi( song.secciones ),
                     tiene_prestamos: !! song.tiene_prestamos,
                     tiene_modulaciones: !! song.tiene_modulaciones,
                 };
@@ -1391,6 +1709,7 @@
                     segmentos,
                     comentario: verso.comentario || '',
                     evento_armonico: verso.evento_armonico || null,
+                    section_id: verso.section_id ? String( verso.section_id ) : '',
                     fin_de_estrofa: !! verso.fin_de_estrofa,
                     nombre_estrofa: verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '',
                 };
@@ -1441,11 +1760,13 @@
                 campo_armonico_predominante: song.campo_armonico_predominante,
                 prestamos_cancion: song.prestamos,
                 modulaciones_cancion: song.modulaciones,
+                secciones: song.secciones,
                 versos: song.versos.map( ( verso ) => ( {
                     orden: verso.orden,
                     segmentos: verso.segmentos,
                     comentario: verso.comentario,
                     evento_armonico: verso.evento_armonico,
+                    section_id: verso.section_id || '',
                     fin_de_estrofa: !! verso.fin_de_estrofa,
                     nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
                 } ) ),
@@ -1583,37 +1904,40 @@
             lines.push( `Campo armónico: ${ song.campo_armonico || '—' }` );
             lines.push( '' );
 
-            song.versos.forEach( ( verso ) => {
-                const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
-                const partes = segmentos.map( ( segmento ) => {
-                    const acorde = segmento.acorde ? `[${ segmento.acorde }]` : '';
-                    return `${ acorde } ${ segmento.texto || '' }`.trim();
-                } ).join( ' ' ).trim();
+            const groups = groupVersesBySection();
 
-                let linea = partes;
-                if ( verso.evento_armonico && verso.evento_armonico.tipo ) {
-                    if ( 'modulacion' === verso.evento_armonico.tipo ) {
-                        const destino = [ verso.evento_armonico.tonica_destino || '', verso.evento_armonico.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
-                        linea += ` \u2014 Modulación → ${ destino || '—' }`;
-                    } else if ( 'prestamo' === verso.evento_armonico.tipo ) {
-                        const origen = [ verso.evento_armonico.tonica_origen || '', verso.evento_armonico.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
-                        linea += ` \u2014 Préstamo ← ${ origen || '—' }`;
-                    }
-                }
-
-                if ( verso.comentario ) {
-                    linea += ` (${ verso.comentario })`;
-                }
-
-                lines.push( linea.trim() );
-
-                if ( verso.fin_de_estrofa ) {
+            groups.forEach( ( group, index ) => {
+                if ( index > 0 ) {
                     lines.push( '' );
-                    if ( verso.nombre_estrofa ) {
-                        lines.push( `--- ${ verso.nombre_estrofa } ---` );
-                        lines.push( '' );
-                    }
                 }
+
+                const nombreSeccion = group.section.nombre || getDefaultSectionName( index );
+                lines.push( nombreSeccion );
+
+                group.versos.forEach( ( verso ) => {
+                    const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
+                    const partes = segmentos.map( ( segmento ) => {
+                        const acorde = segmento.acorde ? `[${ segmento.acorde }]` : '';
+                        return `${ acorde } ${ segmento.texto || '' }`.trim();
+                    } ).join( ' ' ).trim();
+
+                    let linea = partes;
+                    if ( verso.evento_armonico && verso.evento_armonico.tipo ) {
+                        if ( 'modulacion' === verso.evento_armonico.tipo ) {
+                            const destino = [ verso.evento_armonico.tonica_destino || '', verso.evento_armonico.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
+                            linea += ` \u2014 Modulación → ${ destino || '—' }`;
+                        } else if ( 'prestamo' === verso.evento_armonico.tipo ) {
+                            const origen = [ verso.evento_armonico.tonica_origen || '', verso.evento_armonico.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
+                            linea += ` \u2014 Préstamo ← ${ origen || '—' }`;
+                        }
+                    }
+
+                    if ( verso.comentario ) {
+                        linea += ` (${ verso.comentario })`;
+                    }
+
+                    lines.push( linea.trim() );
+                } );
             } );
 
             while ( lines.length && '' === lines[ lines.length - 1 ] ) {
