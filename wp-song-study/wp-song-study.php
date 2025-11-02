@@ -34,6 +34,7 @@ function wpss_load_textdomain() {
 add_action( 'plugins_loaded', 'wpss_load_textdomain' );
 
 require_once WPSS_PATH . 'includes/tax-tonalidad.php';
+require_once WPSS_PATH . 'includes/tax-coleccion.php';
 require_once WPSS_PATH . 'includes/cpt-cancion.php';
 require_once WPSS_PATH . 'includes/cpt-verso.php';
 require_once WPSS_PATH . 'includes/admin-columns.php';
@@ -46,6 +47,7 @@ require_once WPSS_PATH . 'includes/rest-api.php';
  */
 function wpss_register_content_types() {
     wpss_register_tonalidad_tax();
+    wpss_register_coleccion_tax();
     wpss_register_cpt_cancion();
     wpss_register_cpt_verso();
 }

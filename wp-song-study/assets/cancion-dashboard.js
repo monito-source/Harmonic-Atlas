@@ -23,6 +23,7 @@
                 tonica: '',
                 con_prestamos: '',
                 con_modulaciones: '',
+                coleccion: '',
             },
             pagination: {
                 page: 1,
@@ -50,23 +51,69 @@
                 selectionStart: null,
                 selectionEnd: null,
             },
+            collections: {
+                items: [],
+                loading: false,
+                error: null,
+                feedback: null,
+                activeId: null,
+                active: null,
+                saving: false,
+                deleting: false,
+                detailLoading: false,
+                catalog: [],
+                catalogLoading: false,
+            },
+            readingMode: 'inline',
+            readingQueue: {
+                ids: [],
+                index: 0,
+                coleccionId: null,
+                nombre: '',
+            },
         };
 
         const api = {
-            async listSongs() {
+            async listSongs( overrides = {}, includeFilters = true ) {
                 const params = new URLSearchParams();
-                params.set( 'page', state.pagination.page );
-                params.set( 'per_page', 20 );
+                const page = overrides.page ? overrides.page : state.pagination.page;
+                const perPage = overrides.per_page ? overrides.per_page : 20;
 
-                if ( state.filters.tonica ) {
-                    params.set( 'tonica', state.filters.tonica );
+                params.set( 'page', page );
+                params.set( 'per_page', perPage );
+
+                if ( includeFilters ) {
+                    if ( state.filters.tonica ) {
+                        params.set( 'tonica', state.filters.tonica );
+                    }
+                    if ( '' !== state.filters.con_prestamos ) {
+                        params.set( 'con_prestamos', state.filters.con_prestamos );
+                    }
+                    if ( '' !== state.filters.con_modulaciones ) {
+                        params.set( 'con_modulaciones', state.filters.con_modulaciones );
+                    }
+                    if ( state.filters.coleccion ) {
+                        params.set( 'coleccion', state.filters.coleccion );
+                    }
                 }
-                if ( '' !== state.filters.con_prestamos ) {
-                    params.set( 'con_prestamos', state.filters.con_prestamos );
-                }
-                if ( '' !== state.filters.con_modulaciones ) {
-                    params.set( 'con_modulaciones', state.filters.con_modulaciones );
-                }
+
+                Object.keys( overrides ).forEach( ( key ) => {
+                    if ( [ 'page', 'per_page' ].includes( key ) ) {
+                        return;
+                    }
+
+                    const value = overrides[ key ];
+                    if ( null === value || 'undefined' === typeof value ) {
+                        return;
+                    }
+
+                    if ( '' === value ) {
+                        params.delete( key );
+                        return;
+                    }
+
+                    params.set( key, value );
+                } );
 
                 return request( `canciones?${ params.toString() }` );
             },
@@ -88,6 +135,23 @@
                     body: { campos },
                 } );
             },
+            async listCollections() {
+                return request( 'colecciones' );
+            },
+            async getCollection( id ) {
+                return request( `coleccion/${ id }` );
+            },
+            async saveCollection( payload ) {
+                return request( 'coleccion', {
+                    method: 'POST',
+                    body: payload,
+                } );
+            },
+            async deleteCollection( id ) {
+                return request( `coleccion/${ id }`, {
+                    method: 'DELETE',
+                } );
+            },
         };
 
         if ( 'new' === state.view ) {
@@ -99,6 +163,7 @@
         refreshCampoNames();
         render();
         loadSongs();
+        loadCollections();
 
         container.addEventListener( 'click', handleClick );
         container.addEventListener( 'input', handleInput );
@@ -237,6 +302,7 @@
                 secciones: [ createSection( '', 0 ) ],
                 tiene_prestamos: false,
                 tiene_modulaciones: false,
+                colecciones: [],
             };
         }
 
@@ -256,6 +322,43 @@
             };
         }
 
+        function padEndSafe( value, length ) {
+            let result = String( value );
+            if ( 'function' === typeof result.padEnd ) {
+                return result.padEnd( length, ' ' );
+            }
+
+            while ( result.length < length ) {
+                result += ' ';
+            }
+
+            return result;
+        }
+
+        function formatSegmentsForStackedMode( segmentos ) {
+            if ( ! Array.isArray( segmentos ) || ! segmentos.length ) {
+                return { chords: '', lyrics: '' };
+            }
+
+            const chordsParts = [];
+            const lyricsParts = [];
+
+            segmentos.forEach( ( segmento, index ) => {
+                const texto = segmento && segmento.texto ? segmento.texto : '';
+                const acorde = segmento && segmento.acorde ? segmento.acorde : '';
+                const width = Math.max( texto.length, acorde.length );
+                const padding = index === segmentos.length - 1 ? width : width + 2;
+
+                chordsParts.push( acorde ? padEndSafe( acorde, padding ) : padEndSafe( '', padding ) );
+                lyricsParts.push( padEndSafe( texto, padding ) );
+            } );
+
+            return {
+                chords: chordsParts.join( '' ).trimEnd(),
+                lyrics: lyricsParts.join( '' ).trimEnd(),
+            };
+        }
+
         function createEmptyCampo() {
             return {
                 slug: '',
@@ -266,6 +369,71 @@
                 notas: '',
                 activo: true,
             };
+        }
+
+        function createEmptyCollection() {
+            return {
+                id: null,
+                nombre: '',
+                descripcion: '',
+                orden: [],
+                items: [],
+            };
+        }
+
+        function normalizeSongCollections( colecciones ) {
+            if ( ! Array.isArray( colecciones ) ) {
+                return [];
+            }
+
+            const seen = new Set();
+
+            return colecciones.reduce( ( acc, item ) => {
+                if ( ! item ) {
+                    return acc;
+                }
+
+                const id = parseInt( item.id || item.term_id || item, 10 );
+                if ( Number.isNaN( id ) || id <= 0 || seen.has( id ) ) {
+                    return acc;
+                }
+
+                seen.add( id );
+
+                acc.push( {
+                    id,
+                    nombre: item.nombre || item.name || '',
+                    descripcion: item.descripcion || item.description || '',
+                } );
+
+                return acc;
+            }, [] );
+        }
+
+        function toggleSongCollection( termId, checked ) {
+            const id = parseInt( termId, 10 );
+            if ( Number.isNaN( id ) || id <= 0 ) {
+                return;
+            }
+
+            if ( ! Array.isArray( state.editingSong.colecciones ) ) {
+                state.editingSong.colecciones = [];
+            }
+
+            const existingIndex = state.editingSong.colecciones.findIndex( ( item ) => item.id === id );
+
+            if ( checked ) {
+                if ( existingIndex === -1 ) {
+                    const collection = state.collections.items.find( ( item ) => item.id === id );
+                    state.editingSong.colecciones.push( {
+                        id,
+                        nombre: collection ? collection.nombre : '',
+                        descripcion: collection ? collection.descripcion : '',
+                    } );
+                }
+            } else if ( existingIndex > -1 ) {
+                state.editingSong.colecciones.splice( existingIndex, 1 );
+            }
         }
 
         function normalizeVerseOrder() {
@@ -473,6 +641,7 @@
             state.feedback = null;
             state.error = null;
             state.activeTab = 'editor';
+            clearReadingQueue();
             normalizeVerseOrder();
             render();
         }
@@ -560,6 +729,7 @@
                 { id: 'editor', label: data.strings.editorView || 'Editor' },
                 { id: 'reading', label: data.strings.readingView || 'Vista de lectura' },
                 { id: 'campos', label: data.strings.libraryView || 'Campos armónicos' },
+                { id: 'colecciones', label: data.strings.collectionsTab || 'Colecciones' },
             ];
 
             return `
@@ -572,6 +742,19 @@
         }
 
         function renderStatus() {
+            if ( 'colecciones' === state.activeTab ) {
+                if ( state.collections.detailLoading ) {
+                    return `<div class="notice notice-info"><p>${ escapeHtml( data.strings.collectionsLoading || 'Cargando colecciones…' ) }</p></div>`;
+                }
+                if ( state.collections.feedback ) {
+                    return `<div class="notice notice-success"><p>${ escapeHtml( state.collections.feedback ) }</p></div>`;
+                }
+                if ( state.collections.error ) {
+                    return `<div class="notice notice-error"><p>${ escapeHtml( state.collections.error ) }</p></div>`;
+                }
+                return '';
+            }
+
             if ( 'campos' === state.activeTab ) {
                 if ( state.campos.saving ) {
                     return `<div class="notice notice-info"><p>${ escapeHtml( data.strings.saving || 'Guardando…' ) }</p></div>`;
@@ -608,6 +791,8 @@
                 return renderReadingView();
             case 'campos':
                 return renderCamposLibrary();
+            case 'colecciones':
+                return renderCollectionsManager();
             default:
                 return renderEditorForm();
             }
@@ -620,6 +805,16 @@
                 const selected = nota === state.filters.tonica ? 'selected' : '';
                 tonicaOptions.push( `<option value="${ escapeAttr( nota ) }" ${ selected }>${ escapeHtml( nota ) }</option>` );
             } );
+
+            const collectionOptions = [ `<option value="">${ escapeHtml( data.strings.collectionsAll || 'Todas' ) }</option>` ];
+            state.collections.items.forEach( ( collection ) => {
+                const selected = String( collection.id ) === String( state.filters.coleccion ) ? 'selected' : '';
+                collectionOptions.push( `<option value="${ escapeAttr( collection.id ) }" ${ selected }>${ escapeHtml( collection.nombre ) }</option>` );
+            } );
+
+            const collectionDisabled = state.collections.loading ? 'disabled' : '';
+            const viewDisabled = state.filters.coleccion ? '' : 'disabled';
+            const collectionNote = state.collections.loading ? `<p class="wpss-filters__hint">${ escapeHtml( data.strings.collectionsLoading || 'Cargando colecciones…' ) }</p>` : '';
 
             return `
                 <div class="wpss-filters">
@@ -645,7 +840,17 @@
                             <option value="0" ${ '0' === String( state.filters.con_modulaciones ) ? 'selected' : '' }>Sin modulaciones</option>
                         </select>
                     </label>
+                    <label class="wpss-filter--collection">
+                        <span>${ escapeHtml( data.strings.collectionsFilter || 'Colección' ) }</span>
+                        <select data-action="filter-coleccion" ${ collectionDisabled }>
+                            ${ collectionOptions.join( '' ) }
+                        </select>
+                    </label>
+                    <div class="wpss-filters__actions">
+                        <button type="button" class="button button-secondary" data-action="view-collection" ${ viewDisabled }>${ escapeHtml( data.strings.collectionsView || 'Ver colección' ) }</button>
+                    </div>
                 </div>
+                ${ collectionNote }
             `;
         }
 
@@ -662,11 +867,15 @@
                 const selected = song.id === state.selectedSongId ? 'is-active' : '';
                 const tonicaLabel = song.tonica || song.tonalidad || '';
                 const campoLabel = song.campo_armonico ? ` · ${ escapeHtml( song.campo_armonico ) }` : '';
+                const collectionChips = Array.isArray( song.colecciones ) && song.colecciones.length
+                    ? `<div class="wpss-collection-chips">${ song.colecciones.map( ( col ) => `<span class="wpss-collection-chip">${ escapeHtml( col.nombre || `#${ col.id }` ) }</span>` ).join( '' ) }</div>`
+                    : '';
                 return `
                     <tr class="${ selected }" data-action="select-song" data-id="${ song.id }">
                         <td class="wpss-col-title">
                             <strong>${ escapeHtml( song.titulo ) }</strong>
                             <span class="wpss-sub">${ escapeHtml( tonicaLabel || '—' ) }${ campoLabel }</span>
+                            ${ collectionChips }
                         </td>
                         <td>${ song.tiene_prestamos ? 'Sí' : 'No' }</td>
                         <td>${ song.tiene_modulaciones ? 'Sí' : 'No' }</td>
@@ -746,6 +955,10 @@
                             <textarea data-model="general" data-field="campo_armonico_predominante">${ escapeHtml( song.campo_armonico_predominante ) }</textarea>
                         </label>
                     </div>
+                    <div class="wpss-field">
+                        <span>${ escapeHtml( data.strings.collectionsLabel || 'Colecciones' ) }</span>
+                        ${ renderSongCollectionsField() }
+                    </div>
 
                     <div class="wpss-section">
                         <header>
@@ -779,6 +992,138 @@
                         ${ renderVersos() }
                     </div>
                 </form>
+            `;
+        }
+
+        function renderSongCollectionsField() {
+            const assignedIds = new Set(
+                ( Array.isArray( state.editingSong.colecciones ) ? state.editingSong.colecciones : [] )
+                    .map( ( item ) => Number( item.id ) )
+            );
+
+            if ( state.collections.loading && ! state.collections.items.length ) {
+                return `<p class="wpss-empty">${ escapeHtml( data.strings.collectionsLoading || 'Cargando colecciones…' ) }</p>`;
+            }
+
+            if ( ! state.collections.items.length ) {
+                return `<p class="wpss-empty">${ escapeHtml( data.strings.collectionsEmpty || 'Aún no hay colecciones disponibles.' ) }</p>`;
+            }
+
+            const disabled = state.collections.loading ? 'disabled' : '';
+
+            return `
+                <div class="wpss-collections-field">
+                    ${ state.collections.items.map( ( collection ) => {
+                        const checked = assignedIds.has( Number( collection.id ) ) ? 'checked' : '';
+                        return `
+                            <label class="wpss-collections-field__item">
+                                <input type="checkbox" data-action="toggle-song-collection" data-id="${ collection.id }" ${ checked } ${ disabled } />
+                                <span>${ escapeHtml( collection.nombre ) }</span>
+                            </label>
+                        `;
+                    } ).join( '' ) }
+                </div>
+            `;
+        }
+
+        function renderCollectionsManager() {
+            const collections = state.collections;
+            const items = Array.isArray( collections.items ) ? collections.items : [];
+            const active = collections.active || createEmptyCollection();
+            const activeId = collections.activeId;
+
+            const sidebar = items.length
+                ? items.map( ( item ) => {
+                    const isActive = String( item.id ) === String( activeId ) ? 'is-active' : '';
+                    return `
+                        <li class="${ isActive }">
+                            <button type="button" class="wpss-collections__item" data-action="collection-select" data-id="${ item.id }">
+                                <span>${ escapeHtml( item.nombre ) }</span>
+                                <span class="wpss-collections__badge">${ item.items_count || 0 }</span>
+                            </button>
+                        </li>
+                    `;
+                } ).join( '' )
+                : `<li class="wpss-empty">${ escapeHtml( data.strings.collectionsListEmpty || 'Aún no hay colecciones.' ) }</li>`;
+
+            const availableOptions = ( collections.catalog || [] )
+                .filter( ( song ) => ! active.orden.includes( song.id ) )
+                .map( ( song ) => `<option value="${ escapeAttr( song.id ) }">${ escapeHtml( song.titulo || `#${ song.id }` ) }</option>` )
+                .join( '' );
+
+            const catalogDisabled = collections.catalogLoading || ! availableOptions ? 'disabled' : '';
+            const catalogNote = collections.catalogLoading
+                ? `<p class="wpss-collections__hint">${ escapeHtml( data.strings.collectionsCatalogLoading || 'Cargando canciones…' ) }</p>`
+                : '';
+
+            const songsList = active.orden.length
+                ? `
+                    <ol class="wpss-collection-songs">
+                        ${ active.orden.map( ( id, index ) => {
+                            const entry = active.items.find( ( item ) => item.id === id );
+                            const label = entry ? entry.titulo : `#${ id }`;
+                            const upDisabled = index === 0 ? 'disabled' : '';
+                            const downDisabled = index === active.orden.length - 1 ? 'disabled' : '';
+
+                            return `
+                                <li>
+                                    <span class="wpss-collection-songs__label">${ escapeHtml( label ) }</span>
+                                    <div class="wpss-collection-songs__actions">
+                                        <button type="button" class="button button-secondary" data-action="collection-up" data-index="${ index }" ${ upDisabled }>▲</button>
+                                        <button type="button" class="button button-secondary" data-action="collection-down" data-index="${ index }" ${ downDisabled }>▼</button>
+                                        <button type="button" class="button-link-delete" data-action="collection-remove-song" data-index="${ index }">${ escapeHtml( data.strings.camposRemove || 'Eliminar' ) }</button>
+                                    </div>
+                                </li>
+                            `;
+                        } ).join( '' ) }
+                    </ol>
+                `
+                : `<p class="wpss-empty">${ escapeHtml( data.strings.collectionNoSongs || 'Añade canciones a la colección.' ) }</p>`;
+
+            const saveDisabled = collections.saving ? 'disabled' : '';
+            const deleteDisabled = ! active.id || collections.deleting ? 'disabled' : '';
+
+            return `
+                <div class="wpss-collections">
+                    <aside class="wpss-collections__sidebar">
+                        <div class="wpss-collections__sidebar-header">
+                            <h3>${ escapeHtml( data.strings.collectionsSidebar || 'Colecciones' ) }</h3>
+                            <button type="button" class="button" data-action="collection-new">${ escapeHtml( data.strings.collectionNew || 'Nueva colección' ) }</button>
+                        </div>
+                        <ul class="wpss-collections__list">
+                            ${ sidebar }
+                        </ul>
+                        <button type="button" class="button button-link" data-action="collection-refresh">${ escapeHtml( data.strings.collectionRefresh || 'Actualizar lista' ) }</button>
+                    </aside>
+                    <div class="wpss-collections__editor ${ collections.detailLoading ? 'is-loading' : '' }">
+                        <div class="wpss-field-group">
+                            <label>
+                                <span>${ escapeHtml( data.strings.collectionName || 'Nombre' ) }</span>
+                                <input type="text" data-model="collection" data-field="nombre" value="${ escapeAttr( active.nombre || '' ) }" ${ collections.detailLoading ? 'disabled' : '' } />
+                            </label>
+                            <label>
+                                <span>${ escapeHtml( data.strings.collectionDescription || 'Descripción' ) }</span>
+                                <textarea data-model="collection" data-field="descripcion" ${ collections.detailLoading ? 'disabled' : '' }>${ escapeHtml( active.descripcion || '' ) }</textarea>
+                            </label>
+                        </div>
+                        <div class="wpss-collections__songs">
+                            <h4>${ escapeHtml( data.strings.collectionSongs || 'Canciones' ) }</h4>
+                            <div class="wpss-collections__add">
+                                <select data-role="collection-catalog" ${ catalogDisabled }>
+                                    <option value="">${ escapeHtml( data.strings.collectionSelectSong || 'Selecciona una canción' ) }</option>
+                                    ${ availableOptions }
+                                </select>
+                                <button type="button" class="button" data-action="collection-add-song" ${ catalogDisabled }>${ escapeHtml( data.strings.collectionAddSong || 'Añadir a la colección' ) }</button>
+                            </div>
+                            ${ catalogNote }
+                            ${ songsList }
+                        </div>
+                        <div class="wpss-collections__actions">
+                            <button type="button" class="button button-primary" data-action="collection-save" ${ saveDisabled }>${ collections.saving ? escapeHtml( data.strings.saving || 'Guardando…' ) : escapeHtml( data.strings.collectionSave || 'Guardar colección' ) }</button>
+                            <button type="button" class="button button-secondary" data-action="collection-delete" ${ deleteDisabled }>${ collections.deleting ? escapeHtml( data.strings.saving || 'Guardando…' ) : escapeHtml( data.strings.collectionDelete || 'Eliminar colección' ) }</button>
+                        </div>
+                    </div>
+                </div>
             `;
         }
 
@@ -1089,14 +1434,40 @@
 
             const groups = groupVersesBySection();
 
+            const modeButtons = `
+                <div class="wpss-reading__modes">
+                    <button type="button" class="button button-secondary ${ 'inline' === state.readingMode ? 'is-active' : '' }" data-action="set-reading-mode" data-mode="inline">${ escapeHtml( data.strings.readingModeInline || 'Acordes inline' ) }</button>
+                    <button type="button" class="button button-secondary ${ 'stacked' === state.readingMode ? 'is-active' : '' }" data-action="set-reading-mode" data-mode="stacked">${ escapeHtml( data.strings.readingModeStacked || 'Acordes arriba' ) }</button>
+                </div>
+            `;
+
+            const queue = state.readingQueue;
+            const queueControls = queue.ids.length
+                ? `
+                    <div class="wpss-reading__queue">
+                        <button type="button" class="button button-secondary" data-action="reading-prev" ${ queue.index <= 0 ? 'disabled' : '' }>${ escapeHtml( data.strings.readingPrev || 'Anterior' ) }</button>
+                        <span>${ escapeHtml( data.strings.readingProgress || 'Canción' ) } ${ queue.index + 1 } / ${ queue.ids.length }</span>
+                        <button type="button" class="button button-secondary" data-action="reading-next" ${ queue.index >= queue.ids.length - 1 ? 'disabled' : '' }>${ escapeHtml( data.strings.readingNext || 'Siguiente' ) }</button>
+                        <button type="button" class="button" data-action="reading-exit">${ escapeHtml( data.strings.readingExit || 'Salir' ) }</button>
+                    </div>
+                `
+                : '';
+
             return `
                 <div class="wpss-reading">
                     <div class="wpss-reading__header">
-                        <h3>${ escapeHtml( song.titulo || data.strings.newSong ) }</h3>
-                        <p><strong>Tónica:</strong> ${ escapeHtml( song.tonica || '—' ) }</p>
-                        <p><strong>Campo armónico:</strong> ${ escapeHtml( song.campo_armonico || '—' ) }</p>
-                        <button type="button" class="button" data-action="copy-reading">${ escapeHtml( data.strings.copyAsText || 'Copiar como texto' ) }</button>
+                        <div>
+                            <h3>${ escapeHtml( song.titulo || data.strings.newSong ) }</h3>
+                            <p><strong>Tónica:</strong> ${ escapeHtml( song.tonica || '—' ) }</p>
+                            <p><strong>Campo armónico:</strong> ${ escapeHtml( song.campo_armonico || '—' ) }</p>
+                            ${ queue.nombre ? `<p><strong>${ escapeHtml( data.strings.collectionCurrent || 'Colección' ) }:</strong> ${ escapeHtml( queue.nombre ) }</p>` : '' }
+                        </div>
+                        <div class="wpss-reading__actions">
+                            ${ modeButtons }
+                            <button type="button" class="button" data-action="copy-reading">${ escapeHtml( data.strings.copyAsText || 'Copiar como texto' ) }</button>
+                        </div>
                     </div>
+                    ${ queueControls }
                     <div class="wpss-reading__sections">
                         ${ groups.map( ( group ) => `
                             <section class="wpss-reading__section">
@@ -1113,19 +1484,34 @@
 
         function renderReadingVerse( verso ) {
             const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
+            const evento = renderEventoChip( verso.evento_armonico );
+            const comentario = verso.comentario ? `<span class="wpss-reading__comment">${ escapeHtml( verso.comentario ) }</span>` : '';
+            const metaContent = [ evento, comentario ].filter( Boolean ).join( ' ' );
+            const meta = metaContent ? `<div class="wpss-reading__meta">${ metaContent }</div>` : '';
+
+            if ( 'stacked' === state.readingMode ) {
+                const lines = formatSegmentsForStackedMode( segmentos );
+                const chordsLine = escapeHtml( lines.chords );
+                const lyricsLine = escapeHtml( lines.lyrics );
+
+                return `
+                    <li>
+                        <pre class="wpss-reading__stack">${ chordsLine }\n${ lyricsLine }</pre>
+                        ${ meta }
+                    </li>
+                `;
+            }
+
             const partes = segmentos.map( ( segmento ) => {
                 const acorde = segmento.acorde ? `<span class="wpss-reading__chord">[${ escapeHtml( segmento.acorde ) }]</span>` : '';
                 const texto = escapeHtml( segmento.texto || '' );
                 return `${ acorde } ${ texto }`;
             } ).join( '' ).trim();
 
-            const evento = renderEventoChip( verso.evento_armonico );
-            const comentario = verso.comentario ? `<span class="wpss-reading__comment">${ escapeHtml( verso.comentario ) }</span>` : '';
-
             return `
                 <li>
                     <div class="wpss-reading__line">${ partes }</div>
-                    <div class="wpss-reading__meta">${ evento } ${ comentario }</div>
+                    ${ meta }
                 </li>
             `;
         }
@@ -1182,6 +1568,42 @@
             }
 
             return '';
+        }
+
+        function buildEventoTexto( evento ) {
+            if ( ! evento || ! evento.tipo ) {
+                return '';
+            }
+
+            if ( 'modulacion' === evento.tipo ) {
+                const destino = [ evento.tonica_destino || '', evento.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
+                return `Modulación → ${ destino || '—' }`;
+            }
+
+            if ( 'prestamo' === evento.tipo ) {
+                const origen = [ evento.tonica_origen || '', evento.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
+                return `Préstamo ← ${ origen || '—' }`;
+            }
+
+            return '';
+        }
+
+        function buildVerseMetaText( verso ) {
+            if ( ! verso ) {
+                return '';
+            }
+
+            const parts = [];
+            const eventoTexto = buildEventoTexto( verso.evento_armonico );
+            if ( eventoTexto ) {
+                parts.push( eventoTexto );
+            }
+
+            if ( verso.comentario ) {
+                parts.push( `(${ verso.comentario })` );
+            }
+
+            return parts.join( ' ' ).trim();
         }
 
         function renderDatalist() {
@@ -1319,6 +1741,65 @@
             case 'copy-reading':
                 copyReadingText();
                 break;
+            case 'view-collection':
+                if ( state.filters.coleccion ) {
+                    startReadingCollection( parseInt( state.filters.coleccion, 10 ) );
+                }
+                break;
+            case 'set-reading-mode':
+                setReadingMode( target.dataset.mode );
+                break;
+            case 'reading-prev':
+                goToPrevInQueue();
+                break;
+            case 'reading-next':
+                goToNextInQueue();
+                break;
+            case 'reading-exit':
+                clearReadingQueue();
+                render();
+                break;
+            case 'collection-new':
+                state.collections.activeId = null;
+                state.collections.active = createEmptyCollection();
+                state.collections.feedback = null;
+                render();
+                break;
+            case 'collection-select':
+                setActiveCollection( parseInt( target.dataset.id, 10 ) );
+                break;
+            case 'collection-save':
+                handleCollectionSave();
+                break;
+            case 'collection-delete':
+                handleCollectionDelete();
+                break;
+            case 'collection-add-song':
+                {
+                    const select = container.querySelector( '[data-role="collection-catalog"]' );
+                    if ( select && select.value ) {
+                        addSongToActiveCollection( select.value );
+                        select.value = '';
+                        render();
+                    }
+                }
+                break;
+            case 'collection-remove-song':
+                removeSongFromActiveCollection( parseInt( target.dataset.index, 10 ) );
+                render();
+                break;
+            case 'collection-up':
+                moveSongInActiveCollection( parseInt( target.dataset.index, 10 ), -1 );
+                render();
+                break;
+            case 'collection-down':
+                moveSongInActiveCollection( parseInt( target.dataset.index, 10 ), 1 );
+                render();
+                break;
+            case 'collection-refresh':
+                loadCollections();
+                ensureCollectionsCatalog();
+                break;
             default:
                 break;
             }
@@ -1392,6 +1873,8 @@
                         } );
                     } );
                 }
+            } else if ( 'collection' === model ) {
+                updateActiveCollectionField( field, value );
             } else if ( 'segmento' === model ) {
                 const verseIndex = parseInt( event.target.dataset.verse, 10 );
                 const segmentIndex = parseInt( event.target.dataset.segment, 10 );
@@ -1440,6 +1923,11 @@
                     state.pagination.page = 1;
                     loadSongs();
                     return;
+                case 'filter-coleccion':
+                    state.filters.coleccion = event.target.value;
+                    state.pagination.page = 1;
+                    loadSongs();
+                    return;
                 case 'verse-section':
                     updateVerseSection( parseInt( event.target.dataset.index, 10 ), event.target.value );
                     render();
@@ -1450,6 +1938,9 @@
                     return;
                 case 'campo-toggle':
                     toggleCampoActivo( parseInt( event.target.dataset.index, 10 ), event.target.checked );
+                    return;
+                case 'toggle-song-collection':
+                    toggleSongCollection( event.target.dataset.id, event.target.checked );
                     return;
                 default:
                     break;
@@ -1464,6 +1955,8 @@
                 if ( ! Number.isNaN( index ) && state.campos.draft[ index ] ) {
                     state.campos.draft[ index ][ event.target.dataset.field ] = event.target.value;
                 }
+            } else if ( 'collection' === model ) {
+                updateActiveCollectionField( event.target.dataset.field, event.target.value );
             }
         }
 
@@ -1501,6 +1994,13 @@
                 state.campos.feedback = null;
                 state.campos.error = null;
                 state.campos.draft = deepClone( state.campos.library );
+            } else if ( 'colecciones' === tab ) {
+                state.collections.feedback = null;
+                state.collections.error = null;
+                if ( ! state.collections.items.length && ! state.collections.loading ) {
+                    loadCollections();
+                }
+                ensureCollectionsCatalog();
             }
             render();
         }
@@ -1655,16 +2155,26 @@
             state.campos.draft[ index ].activo = !! checked;
         }
 
-        function selectSong( id ) {
+        function selectSong( id, options = {} ) {
             if ( state.songLoading || state.saving || ! id ) {
                 return;
             }
 
+            const targetTab = options.targetTab || 'editor';
+            const silent = !! options.silent;
+            const preserveQueue = !! options.preserveQueue;
+
+            if ( ! preserveQueue ) {
+                clearReadingQueue();
+            }
+
             state.songLoading = true;
             state.selectedSongId = id;
-            state.feedback = null;
+            if ( ! silent ) {
+                state.feedback = null;
+            }
             state.error = null;
-            state.activeTab = 'editor';
+            state.activeTab = targetTab;
             render();
 
             api.getSong( id ).then( ( response ) => {
@@ -1681,9 +2191,12 @@
                     secciones: normalizeSectionsFromApi( song.secciones ),
                     tiene_prestamos: !! song.tiene_prestamos,
                     tiene_modulaciones: !! song.tiene_modulaciones,
+                    colecciones: normalizeSongCollections( song.colecciones ),
                 };
                 normalizeVerseOrder();
-                setFeedback( data.strings.songLoaded || 'Canción cargada.' );
+                if ( ! silent ) {
+                    setFeedback( data.strings.songLoaded || 'Canción cargada.' );
+                }
             } ).catch( () => {
                 setError( data.strings.loadSongError || 'No fue posible cargar la canción seleccionada.' );
             } ).finally( () => {
@@ -1772,6 +2285,7 @@
                     fin_de_estrofa: !! verso.fin_de_estrofa,
                     nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
                 } ) ),
+                colecciones: Array.isArray( song.colecciones ) ? song.colecciones.map( ( item ) => item.id ) : [],
             };
 
             api.saveSong( payload ).then( ( response ) => {
@@ -1779,9 +2293,11 @@
                 state.editingSong.id = body.id;
                 state.editingSong.tiene_prestamos = !! body.tiene_prestamos;
                 state.editingSong.tiene_modulaciones = !! body.tiene_modulaciones;
+                state.editingSong.colecciones = normalizeSongCollections( body.colecciones );
                 state.selectedSongId = body.id;
                 setFeedback( data.strings.saved || 'Cambios guardados.' );
                 loadSongs();
+                loadCollections();
             } ).catch( ( error ) => {
                 const message = ( error.payload && error.payload.message ) ? error.payload.message : data.strings.error;
                 setError( message || 'Ocurrió un error al guardar.' );
@@ -1904,6 +2420,9 @@
             lines.push( song.titulo || data.strings.newSong );
             lines.push( `Tónica: ${ song.tonica || '—' }` );
             lines.push( `Campo armónico: ${ song.campo_armonico || '—' }` );
+            if ( state.readingQueue && state.readingQueue.nombre ) {
+                lines.push( `${ data.strings.collectionCurrent || 'Colección' }: ${ state.readingQueue.nombre } (${ state.readingQueue.index + 1 } / ${ state.readingQueue.ids.length })` );
+            }
             lines.push( '' );
 
             const groups = groupVersesBySection();
@@ -1918,27 +2437,32 @@
 
                 group.versos.forEach( ( verso ) => {
                     const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
-                    const partes = segmentos.map( ( segmento ) => {
-                        const acorde = segmento.acorde ? `[${ segmento.acorde }]` : '';
-                        return `${ acorde } ${ segmento.texto || '' }`.trim();
-                    } ).join( ' ' ).trim();
 
-                    let linea = partes;
-                    if ( verso.evento_armonico && verso.evento_armonico.tipo ) {
-                        if ( 'modulacion' === verso.evento_armonico.tipo ) {
-                            const destino = [ verso.evento_armonico.tonica_destino || '', verso.evento_armonico.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
-                            linea += ` \u2014 Modulación → ${ destino || '—' }`;
-                        } else if ( 'prestamo' === verso.evento_armonico.tipo ) {
-                            const origen = [ verso.evento_armonico.tonica_origen || '', verso.evento_armonico.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
-                            linea += ` \u2014 Préstamo ← ${ origen || '—' }`;
+                    if ( 'stacked' === state.readingMode ) {
+                        const formatted = formatSegmentsForStackedMode( segmentos );
+                        if ( formatted.chords ) {
+                            lines.push( formatted.chords );
                         }
-                    }
+                        lines.push( formatted.lyrics );
 
-                    if ( verso.comentario ) {
-                        linea += ` (${ verso.comentario })`;
-                    }
+                        const meta = buildVerseMetaText( verso );
+                        if ( meta ) {
+                            lines.push( meta );
+                        }
+                    } else {
+                        const partes = segmentos.map( ( segmento ) => {
+                            const acorde = segmento.acorde ? `[${ segmento.acorde }]` : '';
+                            return `${ acorde } ${ segmento.texto || '' }`.trim();
+                        } ).join( ' ' ).trim();
 
-                    lines.push( linea.trim() );
+                        let linea = partes;
+                        const meta = buildVerseMetaText( verso );
+                        if ( meta ) {
+                            linea += ` \u2014 ${ meta }`;
+                        }
+
+                        lines.push( linea.trim() );
+                    }
                 } );
             } );
 
@@ -1962,7 +2486,12 @@
             render();
 
             api.listSongs().then( ( response ) => {
-                state.songs = Array.isArray( response.data ) ? response.data : [];
+                state.songs = Array.isArray( response.data )
+                    ? response.data.map( ( item ) => ( {
+                        ...item,
+                        colecciones: normalizeSongCollections( item.colecciones ),
+                    } ) )
+                    : [];
                 state.pagination.totalItems = parseInt( response.headers.get( 'X-WP-Total' ), 10 ) || state.songs.length;
                 state.pagination.totalPages = parseInt( response.headers.get( 'X-WP-TotalPages' ), 10 ) || 1;
             } ).catch( () => {
@@ -1971,6 +2500,394 @@
                 state.listLoading = false;
                 render();
             } );
+        }
+
+        function loadCollections() {
+            if ( state.collections.loading ) {
+                return;
+            }
+
+            state.collections.loading = true;
+            state.collections.error = null;
+            render();
+
+            api.listCollections().then( ( response ) => {
+                const items = Array.isArray( response.data ) ? response.data : [];
+                state.collections.items = items;
+
+                if ( state.filters.coleccion ) {
+                    const exists = items.some( ( item ) => String( item.id ) === String( state.filters.coleccion ) );
+                    if ( ! exists ) {
+                        state.filters.coleccion = '';
+                    }
+                }
+            } ).catch( () => {
+                state.collections.error = data.strings.collectionsLoadError || 'No fue posible obtener las colecciones.';
+            } ).finally( () => {
+                state.collections.loading = false;
+                render();
+            } );
+        }
+
+        async function ensureCollectionsCatalog() {
+            if ( state.collections.catalogLoading || state.collections.catalog.length ) {
+                return;
+            }
+
+            state.collections.catalogLoading = true;
+            render();
+
+            const perPage = 100;
+            let page = 1;
+            const aggregated = [];
+
+            try {
+                while ( true ) {
+                    const response = await api.listSongs( { page, per_page: perPage }, false );
+                    const songs = Array.isArray( response.data ) ? response.data : [];
+                    aggregated.push( ...songs.map( ( song ) => ( {
+                        id: song.id,
+                        titulo: song.titulo || '',
+                    } ) ) );
+
+                    const totalPages = parseInt( response.headers.get( 'X-WP-TotalPages' ), 10 ) || 1;
+                    if ( page >= totalPages || songs.length < perPage ) {
+                        break;
+                    }
+                    page += 1;
+                }
+
+                const map = new Map();
+                aggregated.forEach( ( item ) => {
+                    if ( item && item.id ) {
+                        map.set( item.id, item );
+                    }
+                } );
+
+                state.collections.catalog = Array.from( map.values() );
+                syncActiveCollectionItems();
+            } catch ( error ) {
+                state.collections.error = data.strings.collectionsCatalogError || 'No fue posible cargar el catálogo de canciones.';
+            } finally {
+                state.collections.catalogLoading = false;
+                render();
+            }
+        }
+
+        function normalizeCollectionDetail( detail ) {
+            const base = createEmptyCollection();
+
+            if ( ! detail ) {
+                return base;
+            }
+
+            base.id = detail.id || null;
+            base.nombre = detail.nombre || '';
+            base.descripcion = detail.descripcion || '';
+
+            const orden = Array.isArray( detail.orden )
+                ? detail.orden.map( ( id ) => parseInt( id, 10 ) ).filter( ( id ) => ! Number.isNaN( id ) && id > 0 )
+                : [];
+
+            const items = Array.isArray( detail.items )
+                ? detail.items.map( ( item ) => ( {
+                    id: item.id,
+                    titulo: item.titulo || '',
+                } ) )
+                : [];
+
+            base.orden = orden.length ? orden : items.map( ( item ) => item.id );
+            base.items = items;
+
+            return base;
+        }
+
+        function setActiveCollection( id ) {
+            if ( state.collections.detailLoading ) {
+                return;
+            }
+
+            if ( ! id ) {
+                state.collections.activeId = null;
+                state.collections.active = createEmptyCollection();
+                state.collections.feedback = null;
+                render();
+                return;
+            }
+
+            state.collections.detailLoading = true;
+            state.collections.activeId = id;
+            state.collections.feedback = null;
+            render();
+
+            api.getCollection( id ).then( ( response ) => {
+                state.collections.active = normalizeCollectionDetail( response.data );
+                syncActiveCollectionItems();
+                state.collections.error = null;
+            } ).catch( () => {
+                state.collections.error = data.strings.collectionLoadError || 'No fue posible cargar la colección seleccionada.';
+                state.collections.activeId = null;
+                state.collections.active = createEmptyCollection();
+            } ).finally( () => {
+                state.collections.detailLoading = false;
+                render();
+            } );
+        }
+
+        function updateActiveCollectionField( field, value ) {
+            if ( ! state.collections.active ) {
+                state.collections.active = createEmptyCollection();
+            }
+
+            state.collections.active[ field ] = value;
+            state.collections.feedback = null;
+        }
+
+        function addSongToActiveCollection( songId ) {
+            if ( ! state.collections.active ) {
+                return;
+            }
+
+            const id = parseInt( songId, 10 );
+            if ( Number.isNaN( id ) || id <= 0 ) {
+                return;
+            }
+
+            if ( state.collections.active.orden.includes( id ) ) {
+                return;
+            }
+
+            state.collections.active.orden.push( id );
+
+            const catalogItem = state.collections.catalog.find( ( item ) => item.id === id );
+            if ( catalogItem && ! state.collections.active.items.find( ( item ) => item.id === id ) ) {
+                state.collections.active.items.push( { id, titulo: catalogItem.titulo } );
+            }
+
+            syncActiveCollectionItems();
+        }
+
+        function removeSongFromActiveCollection( index ) {
+            if ( ! state.collections.active ) {
+                return;
+            }
+
+            if ( index < 0 || index >= state.collections.active.orden.length ) {
+                return;
+            }
+
+            const removedId = state.collections.active.orden.splice( index, 1 )[ 0 ];
+            state.collections.active.items = state.collections.active.items.filter( ( item ) => item.id !== removedId );
+            syncActiveCollectionItems();
+        }
+
+        function moveSongInActiveCollection( index, direction ) {
+            if ( ! state.collections.active ) {
+                return;
+            }
+
+            const target = index + direction;
+            if ( target < 0 || target >= state.collections.active.orden.length ) {
+                return;
+            }
+
+            const ids = state.collections.active.orden;
+            const temp = ids[ index ];
+            ids[ index ] = ids[ target ];
+            ids[ target ] = temp;
+
+            syncActiveCollectionItems();
+        }
+
+        function syncActiveCollectionItems() {
+            if ( ! state.collections.active ) {
+                return;
+            }
+
+            const ids = state.collections.active.orden;
+            const map = new Map();
+            state.collections.active.items.forEach( ( item ) => {
+                map.set( item.id, item );
+            } );
+
+            state.collections.active.items = ids.map( ( id ) => {
+                if ( map.has( id ) ) {
+                    return map.get( id );
+                }
+
+                const catalogItem = state.collections.catalog.find( ( entry ) => entry.id === id );
+                return catalogItem ? { id, titulo: catalogItem.titulo } : { id, titulo: `#${ id }` };
+            } );
+        }
+
+        function handleCollectionSave() {
+            if ( state.collections.saving || ! state.collections.active ) {
+                return;
+            }
+
+            const payload = {
+                id: state.collections.active.id,
+                nombre: ( state.collections.active.nombre || '' ).trim(),
+                descripcion: state.collections.active.descripcion || '',
+                orden: state.collections.active.orden,
+            };
+
+            if ( ! payload.nombre ) {
+                state.collections.error = data.strings.collectionNameRequired || 'El nombre de la colección es obligatorio.';
+                render();
+                return;
+            }
+
+            state.collections.saving = true;
+            state.collections.error = null;
+            render();
+
+            api.saveCollection( payload ).then( ( response ) => {
+                const detail = normalizeCollectionDetail( response.data );
+                state.collections.active = detail;
+                syncActiveCollectionItems();
+                state.collections.activeId = detail.id;
+                state.collections.feedback = data.strings.collectionSaved || 'Colección guardada.';
+                state.collections.error = null;
+
+                const existingIndex = state.collections.items.findIndex( ( item ) => item.id === detail.id );
+                if ( existingIndex > -1 ) {
+                    state.collections.items[ existingIndex ] = {
+                        id: detail.id,
+                        nombre: detail.nombre,
+                        descripcion: detail.descripcion,
+                        items_count: detail.orden.length,
+                    };
+                } else {
+                    state.collections.items.push( {
+                        id: detail.id,
+                        nombre: detail.nombre,
+                        descripcion: detail.descripcion,
+                        items_count: detail.orden.length,
+                    } );
+                }
+
+                loadSongs();
+            } ).catch( ( error ) => {
+                const message = ( error && error.payload && error.payload.message )
+                    ? error.payload.message
+                    : ( data.strings.collectionSaveError || 'No fue posible guardar la colección.' );
+                state.collections.error = message;
+            } ).finally( () => {
+                state.collections.saving = false;
+                render();
+            } );
+        }
+
+        function handleCollectionDelete() {
+            if ( state.collections.deleting || ! state.collections.active || ! state.collections.active.id ) {
+                return;
+            }
+
+            if ( ! window.confirm( data.strings.collectionDeleteConfirm || '¿Eliminar la colección seleccionada?' ) ) {
+                return;
+            }
+
+            state.collections.deleting = true;
+            state.collections.error = null;
+            render();
+
+            const deletedId = state.collections.active.id;
+
+            api.deleteCollection( deletedId ).then( () => {
+                state.collections.items = state.collections.items.filter( ( item ) => item.id !== deletedId );
+                state.collections.feedback = data.strings.collectionDeleted || 'Colección eliminada.';
+                state.collections.active = createEmptyCollection();
+                state.collections.activeId = null;
+                if ( state.filters.coleccion && String( state.filters.coleccion ) === String( deletedId ) ) {
+                    state.filters.coleccion = '';
+                    loadSongs();
+                }
+                if ( state.readingQueue.coleccionId && String( state.readingQueue.coleccionId ) === String( deletedId ) ) {
+                    clearReadingQueue();
+                }
+            } ).catch( ( error ) => {
+                const message = ( error && error.payload && error.payload.message )
+                    ? error.payload.message
+                    : ( data.strings.collectionDeleteError || 'No fue posible eliminar la colección.' );
+                state.collections.error = message;
+            } ).finally( () => {
+                state.collections.deleting = false;
+                render();
+            } );
+        }
+
+        function clearReadingQueue() {
+            state.readingQueue = {
+                ids: [],
+                index: 0,
+                coleccionId: null,
+                nombre: '',
+            };
+        }
+
+        function setReadingMode( mode ) {
+            if ( ! mode || state.readingMode === mode ) {
+                return;
+            }
+
+            state.readingMode = mode;
+            render();
+        }
+
+        function startReadingCollection( coleccionId ) {
+            if ( ! coleccionId ) {
+                return;
+            }
+
+            state.collections.detailLoading = true;
+            state.error = null;
+            render();
+
+            api.getCollection( coleccionId ).then( ( response ) => {
+                const detail = normalizeCollectionDetail( response.data );
+                if ( ! detail.orden.length ) {
+                    state.error = data.strings.collectionEmpty || 'La colección no tiene canciones asignadas.';
+                    return;
+                }
+
+                state.readingQueue = {
+                    ids: detail.orden.slice(),
+                    index: 0,
+                    coleccionId: detail.id,
+                    nombre: detail.nombre || '',
+                };
+
+                state.activeTab = 'reading';
+                selectSong( detail.orden[ 0 ], { targetTab: 'reading', silent: true, preserveQueue: true } );
+            } ).catch( () => {
+                state.error = data.strings.collectionLoadError || 'No fue posible cargar la colección seleccionada.';
+            } ).finally( () => {
+                state.collections.detailLoading = false;
+                render();
+            } );
+        }
+
+        function goToReadingIndex( index ) {
+            if ( ! state.readingQueue.ids.length ) {
+                return;
+            }
+
+            if ( index < 0 || index >= state.readingQueue.ids.length ) {
+                return;
+            }
+
+            state.readingQueue.index = index;
+            const songId = state.readingQueue.ids[ index ];
+            selectSong( songId, { targetTab: 'reading', silent: true, preserveQueue: true } );
+        }
+
+        function goToNextInQueue() {
+            goToReadingIndex( state.readingQueue.index + 1 );
+        }
+
+        function goToPrevInQueue() {
+            goToReadingIndex( state.readingQueue.index - 1 );
         }
 
         function escapeHtml( string ) {

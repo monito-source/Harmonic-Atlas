@@ -45,15 +45,36 @@
 
 .wpss-filters {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 12px;
     margin-bottom: 16px;
+    align-items: end;
 }
 
 .wpss-filters label span {
     display: block;
     margin-bottom: 4px;
     font-weight: 600;
+}
+
+.wpss-filter--collection select {
+    width: 100%;
+}
+
+.wpss-filters__actions {
+    display: flex;
+    align-items: flex-end;
+}
+
+.wpss-filters__actions .button {
+    width: 100%;
+}
+
+.wpss-filters__hint {
+    grid-column: 1 / -1;
+    color: #646970;
+    font-size: 12px;
+    margin: 0;
 }
 
 .wpss-table-wrapper {
@@ -94,6 +115,23 @@
     margin-top: 4px;
 }
 
+.wpss-collection-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.wpss-collection-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #555d66;
+    font-size: 11px;
+}
+
 .wpss-panel--editor {
     flex: 1 1 auto;
 }
@@ -110,6 +148,20 @@
 
 .wpss-field textarea {
     min-height: 80px;
+}
+
+.wpss-collections-field {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 8px;
+}
+
+.wpss-collections-field__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
 }
 
 .wpss-section {
@@ -331,7 +383,30 @@
 
 .wpss-reading__header {
     display: flex;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.wpss-reading__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.wpss-reading__modes {
+    display: flex;
+    gap: 8px;
+}
+
+.wpss-reading__modes .button.is-active {
+    box-shadow: inset 0 0 0 2px #2271b1;
+}
+
+.wpss-reading__queue {
+    display: flex;
     align-items: center;
     gap: 12px;
     margin-bottom: 16px;
@@ -373,6 +448,15 @@
     margin-top: 4px;
 }
 
+.wpss-reading__stack {
+    background: #f6f7f7;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 15px;
+    white-space: pre-wrap;
+}
+
 .wpss-reading__chord {
     font-weight: 600;
     margin-right: 4px;
@@ -390,6 +474,129 @@
 
 .wpss-reading__comment {
     font-style: italic;
+}
+
+.wpss-collections {
+    display: flex;
+    gap: 24px;
+}
+
+.wpss-collections__sidebar {
+    flex: 0 0 240px;
+    border-right: 1px solid #dcdcde;
+    padding-right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.wpss-collections__sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.wpss-collections__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.wpss-collections__item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: #f6f7f7;
+    cursor: pointer;
+    text-align: left;
+}
+
+.wpss-collections__list li.is-active .wpss-collections__item {
+    border-color: #2271b1;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px #2271b1;
+}
+
+.wpss-collections__badge {
+    background: #e9f5ff;
+    color: #1d4ed8;
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 12px;
+}
+
+.wpss-collections__editor {
+    flex: 1 1 auto;
+    display: grid;
+    gap: 24px;
+}
+
+.wpss-collections__editor.is-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.wpss-collections__songs {
+    display: grid;
+    gap: 12px;
+}
+
+.wpss-collections__add {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.wpss-collections__add select {
+    flex: 1 1 auto;
+}
+
+.wpss-collections__hint {
+    color: #646970;
+    font-size: 12px;
+    margin: 0;
+}
+
+.wpss-collection-songs {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.wpss-collection-songs li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.wpss-collection-songs__label {
+    font-weight: 600;
+}
+
+.wpss-collection-songs__actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.wpss-collections__actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
 }
 
 .wpss-song-segment {
