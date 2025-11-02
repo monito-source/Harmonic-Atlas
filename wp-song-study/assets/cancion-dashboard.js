@@ -65,6 +65,7 @@
                 catalogLoading: false,
             },
             readingMode: 'inline',
+            readingFollowStructure: false,
             readingQueue: {
                 ids: [],
                 index: 0,
@@ -289,6 +290,147 @@
             } );
         }
 
+        function buildDefaultStructureFromSections( secciones ) {
+            if ( ! Array.isArray( secciones ) ) {
+                return [];
+            }
+
+            return secciones
+                .map( ( seccion ) => {
+                    if ( ! seccion || ! seccion.id ) {
+                        return null;
+                    }
+
+                    return { ref: String( seccion.id ) };
+                } )
+                .filter( Boolean );
+        }
+
+        function structureRefsMatchDefault( estructura, defaultStructure ) {
+            const refsA = Array.isArray( estructura )
+                ? estructura.map( ( call ) => ( call && call.ref ? String( call.ref ) : '' ) )
+                : [];
+            const refsB = Array.isArray( defaultStructure )
+                ? defaultStructure.map( ( call ) => ( call && call.ref ? String( call.ref ) : '' ) )
+                : [];
+
+            if ( refsA.length !== refsB.length ) {
+                return false;
+            }
+
+            for ( let index = 0; index < refsA.length; index += 1 ) {
+                if ( refsA[ index ] !== refsB[ index ] ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        function structureHasAnnotations( estructura ) {
+            if ( ! Array.isArray( estructura ) ) {
+                return false;
+            }
+
+            return estructura.some( ( call ) => {
+                if ( ! call ) {
+                    return false;
+                }
+
+                const variant = call.variante ? String( call.variante ).trim() : '';
+                const notes = call.notas ? String( call.notas ).trim() : '';
+
+                return !! ( variant || notes );
+            } );
+        }
+
+        function normalizeStructureFromApi( estructura, secciones, personalizada ) {
+            const sections = Array.isArray( secciones ) ? secciones : [];
+            const defaultStructure = buildDefaultStructureFromSections( sections );
+            const validIds = new Set( defaultStructure.map( ( call ) => call.ref ) );
+            const sanitized = [];
+
+            if ( Array.isArray( estructura ) ) {
+                estructura.forEach( ( item ) => {
+                    if ( ! item ) {
+                        return;
+                    }
+
+                    const ref = item.ref ? String( item.ref ) : '';
+                    if ( ! ref || ! validIds.has( ref ) ) {
+                        return;
+                    }
+
+                    const call = { ref };
+
+                    if ( item.variante ) {
+                        call.variante = String( item.variante ).slice( 0, 16 );
+                    }
+
+                    if ( item.notas ) {
+                        call.notas = String( item.notas ).slice( 0, 128 );
+                    }
+
+                    sanitized.push( call );
+                } );
+            }
+
+            if ( ! sanitized.length ) {
+                return {
+                    estructura: defaultStructure,
+                    personalizada: false,
+                };
+            }
+
+            const matchesDefault = structureRefsMatchDefault( sanitized, defaultStructure );
+            const hasAnnotations = structureHasAnnotations( sanitized );
+            const isPersonalizada = !! personalizada || ! matchesDefault || hasAnnotations;
+
+            return {
+                estructura: sanitized,
+                personalizada: isPersonalizada,
+            };
+        }
+
+        function createStructureCall( ref = '' ) {
+            return {
+                ref: ref ? String( ref ) : '',
+                variante: '',
+                notas: '',
+            };
+        }
+
+        function buildStructurePayload( estructura ) {
+            if ( ! Array.isArray( estructura ) ) {
+                return [];
+            }
+
+            return estructura
+                .map( ( call ) => {
+                    if ( ! call || ! call.ref ) {
+                        return null;
+                    }
+
+                    const ref = String( call.ref );
+                    if ( ! ref ) {
+                        return null;
+                    }
+
+                    const payload = { ref };
+
+                    if ( call.variante && call.variante.trim() ) {
+                        payload.variante = call.variante.trim().slice( 0, 16 );
+                    }
+
+                    if ( call.notas && call.notas.trim() ) {
+                        payload.notas = call.notas.trim().slice( 0, 128 );
+                    }
+
+                    return payload;
+                } )
+                .filter( Boolean );
+        }
+
         function createEmptySong() {
             return {
                 id: null,
@@ -303,6 +445,8 @@
                 tiene_prestamos: false,
                 tiene_modulaciones: false,
                 colecciones: [],
+                estructura: [],
+                estructuraPersonalizada: false,
             };
         }
 
@@ -514,6 +658,7 @@
                 } );
             }
 
+            syncStructureWithSections();
             syncLegacyFromSections();
         }
 
@@ -549,6 +694,190 @@
                     ultimo.nombre_estrofa = sections[ index + 1 ].nombre || '';
                 }
             } );
+        }
+
+        function syncStructureWithSections() {
+            const song = state.editingSong;
+            if ( ! song ) {
+                return;
+            }
+
+            const sections = Array.isArray( song.secciones ) ? song.secciones : [];
+            if ( ! sections.length ) {
+                song.estructura = [];
+                song.estructuraPersonalizada = false;
+                return;
+            }
+
+            const defaultStructure = buildDefaultStructureFromSections( sections );
+            const validIds = new Set( defaultStructure.map( ( call ) => call.ref ) );
+            let structure = Array.isArray( song.estructura ) ? song.estructura : [];
+
+            structure = structure
+                .map( ( call ) => {
+                    if ( ! call || ! call.ref || ! validIds.has( call.ref ) ) {
+                        return null;
+                    }
+
+                    const normalized = { ref: String( call.ref ) };
+
+                    if ( call.variante ) {
+                        normalized.variante = String( call.variante ).slice( 0, 16 );
+                    }
+
+                    if ( call.notas ) {
+                        normalized.notas = String( call.notas ).slice( 0, 128 );
+                    }
+
+                    return normalized;
+                } )
+                .filter( Boolean );
+
+            if ( ! song.estructuraPersonalizada ) {
+                song.estructura = defaultStructure;
+                return;
+            }
+
+            if ( ! structure.length ) {
+                song.estructura = defaultStructure;
+                song.estructuraPersonalizada = false;
+                return;
+            }
+
+            song.estructura = structure;
+        }
+
+        function resetStructureToDefault() {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            state.editingSong.estructuraPersonalizada = false;
+            state.editingSong.estructura = buildDefaultStructureFromSections( sections );
+            syncStructureWithSections();
+        }
+
+        function toggleStructurePersonalizada( enabled ) {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            if ( ! sections.length ) {
+                state.editingSong.estructuraPersonalizada = false;
+                state.editingSong.estructura = [];
+                return;
+            }
+
+            state.editingSong.estructuraPersonalizada = !! enabled;
+
+            if ( ! enabled ) {
+                state.editingSong.estructura = buildDefaultStructureFromSections( sections );
+            } else if ( ! Array.isArray( state.editingSong.estructura ) || ! state.editingSong.estructura.length ) {
+                state.editingSong.estructura = buildDefaultStructureFromSections( sections );
+            }
+
+            syncStructureWithSections();
+        }
+
+        function addStructureCall( ref ) {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            if ( ! sections.length ) {
+                return;
+            }
+
+            const fallbackRef = sections[ 0 ] ? sections[ 0 ].id : '';
+            const targetRef = ref || fallbackRef;
+
+            if ( ! Array.isArray( state.editingSong.estructura ) ) {
+                state.editingSong.estructura = [];
+            }
+
+            state.editingSong.estructura.push( createStructureCall( targetRef ) );
+            state.editingSong.estructuraPersonalizada = true;
+            syncStructureWithSections();
+        }
+
+        function duplicateStructureCall( index ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.estructura ) ) {
+                return;
+            }
+
+            const call = state.editingSong.estructura[ index ];
+            if ( ! call || ! call.ref ) {
+                return;
+            }
+
+            const copy = {
+                ref: call.ref,
+                variante: call.variante ? String( call.variante ).slice( 0, 16 ) : '',
+                notas: call.notas ? String( call.notas ).slice( 0, 128 ) : '',
+            };
+
+            state.editingSong.estructura.splice( index + 1, 0, copy );
+            state.editingSong.estructuraPersonalizada = true;
+            syncStructureWithSections();
+        }
+
+        function removeStructureCall( index ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.estructura ) ) {
+                return;
+            }
+
+            state.editingSong.estructura.splice( index, 1 );
+
+            if ( ! state.editingSong.estructura.length ) {
+                state.editingSong.estructuraPersonalizada = false;
+            }
+
+            syncStructureWithSections();
+        }
+
+        function moveStructureCall( index, direction ) {
+            if ( Number.isNaN( index ) || ! direction || ! Array.isArray( state.editingSong.estructura ) ) {
+                return;
+            }
+
+            const target = index + direction;
+            if ( target < 0 || target >= state.editingSong.estructura.length ) {
+                return;
+            }
+
+            const estructura = state.editingSong.estructura;
+            const temp = estructura[ index ];
+            estructura[ index ] = estructura[ target ];
+            estructura[ target ] = temp;
+
+            state.editingSong.estructuraPersonalizada = true;
+            syncStructureWithSections();
+        }
+
+        function setStructureCallRef( index, ref ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.estructura ) ) {
+                return;
+            }
+
+            const call = state.editingSong.estructura[ index ];
+            if ( ! call ) {
+                return;
+            }
+
+            call.ref = ref ? String( ref ) : '';
+            state.editingSong.estructuraPersonalizada = true;
+            syncStructureWithSections();
+        }
+
+        function updateStructureCallField( index, field, value ) {
+            if ( Number.isNaN( index ) || ! Array.isArray( state.editingSong.estructura ) ) {
+                return;
+            }
+
+            const call = state.editingSong.estructura[ index ];
+            if ( ! call ) {
+                return;
+            }
+
+            if ( 'variante' === field ) {
+                call.variante = value ? String( value ).slice( 0, 16 ) : '';
+            } else if ( 'notas' === field ) {
+                call.notas = value ? String( value ).slice( 0, 128 ) : '';
+            }
+
+            state.editingSong.estructuraPersonalizada = true;
+            syncStructureWithSections();
         }
 
         function addSection() {
@@ -642,6 +971,7 @@
             state.error = null;
             state.activeTab = 'editor';
             clearReadingQueue();
+            state.readingFollowStructure = false;
             normalizeVerseOrder();
             render();
         }
@@ -985,6 +1315,10 @@
                     </div>
 
                     <div class="wpss-section">
+                        ${ renderStructurePanel() }
+                    </div>
+
+                    <div class="wpss-section">
                         <header>
                             <h3>Versos</h3>
                             <button type="button" class="button button-secondary" data-action="add-verso">Añadir verso</button>
@@ -1219,6 +1553,112 @@
             `;
         }
 
+        function renderStructurePanel() {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+            const editable = !! state.editingSong.estructuraPersonalizada;
+            const toggleDisabled = sections.length ? '' : 'disabled';
+            const toggleChecked = editable ? 'checked' : '';
+            const addDisabled = ! editable || ! sections.length ? 'disabled' : '';
+            const resetDisabled = editable ? '' : 'disabled';
+
+            const chips = renderStructureChips( estructura, sections );
+
+            const list = estructura.length
+                ? `<ol class="wpss-structure__list">${ estructura.map( ( call, index ) => renderStructureCallRow( call, index, sections, editable, estructura.length ) ).join( '' ) }</ol>`
+                : `<p class="wpss-empty">${ escapeHtml( data.strings.structureEmpty || 'Aún no hay llamadas registradas.' ) }</p>`;
+
+            return `
+                <div class="wpss-structure">
+                    <header class="wpss-structure__header">
+                        <h3>${ escapeHtml( data.strings.structureTitle || 'Estructura' ) }</h3>
+                        <button type="button" class="button button-secondary" data-action="estructura-add-call" ${ addDisabled }>${ escapeHtml( data.strings.structureAddCall || 'Añadir llamada' ) }</button>
+                    </header>
+                    <div class="wpss-structure__toggle">
+                        <label class="wpss-toggle">
+                            <input type="checkbox" data-action="toggle-estructura-personalizada" ${ toggleChecked } ${ toggleDisabled } />
+                            <span>${ escapeHtml( data.strings.structureToggleLabel || 'Usar estructura personalizada' ) }</span>
+                        </label>
+                        <button type="button" class="button button-link" data-action="estructura-reset" ${ resetDisabled }>${ escapeHtml( data.strings.structureReset || 'Restablecer al orden por secciones' ) }</button>
+                    </div>
+                    <div class="wpss-structure__summary">
+                        <span class="wpss-structure__summary-label">${ escapeHtml( data.strings.structurePreviewLabel || 'Resumen' ) }</span>
+                        <div class="wpss-structure__chips">${ chips }</div>
+                    </div>
+                    ${ list }
+                </div>
+            `;
+        }
+
+        function renderStructureChips( estructura, sections ) {
+            if ( ! Array.isArray( estructura ) || ! estructura.length ) {
+                return `<span class="wpss-structure__chip is-empty">—</span>`;
+            }
+
+            return estructura
+                .map( ( call ) => `<span class="wpss-structure__chip">${ escapeHtml( getStructureDisplayLabel( call, sections ) ) }</span>` )
+                .join( '' );
+        }
+
+        function getStructureDisplayLabel( call, sections ) {
+            if ( call && call.variante && call.variante.trim() ) {
+                return call.variante.trim();
+            }
+
+            if ( call && call.ref ) {
+                const match = sections.find( ( section ) => section && section.id === call.ref );
+                if ( match && match.nombre ) {
+                    return match.nombre;
+                }
+                return call.ref;
+            }
+
+            return data.strings.structureSelectLabel || 'Sección';
+        }
+
+        function renderStructureCallRow( call, index, sections, editable, total ) {
+            const options = sections.map( ( section ) => {
+                const selected = section.id === call.ref ? 'selected' : '';
+                return `<option value="${ escapeAttr( section.id ) }" ${ selected }>${ escapeHtml( section.nombre ) }</option>`;
+            } ).join( '' );
+
+            const upDisabled = ! editable || 0 === index ? 'disabled' : '';
+            const downDisabled = ! editable || index === total - 1 ? 'disabled' : '';
+            const duplicateDisabled = editable ? '' : 'disabled';
+            const removeDisabled = editable ? '' : 'disabled';
+            const selectDisabled = editable ? '' : 'disabled';
+
+            return `
+                <li class="wpss-structure-call">
+                    <div class="wpss-structure-call__header">
+                        <span class="wpss-structure__chip">${ escapeHtml( getStructureDisplayLabel( call, sections ) ) }</span>
+                        <div class="wpss-structure-call__actions">
+                            <button type="button" class="button button-small" data-action="estructura-move-up" data-index="${ index }" ${ upDisabled }>${ escapeHtml( data.strings.structureMoveUp || 'Subir' ) }</button>
+                            <button type="button" class="button button-small" data-action="estructura-move-down" data-index="${ index }" ${ downDisabled }>${ escapeHtml( data.strings.structureMoveDown || 'Bajar' ) }</button>
+                            <button type="button" class="button button-small" data-action="estructura-duplicate-call" data-index="${ index }" ${ duplicateDisabled }>${ escapeHtml( data.strings.structureDuplicateCall || 'Duplicar' ) }</button>
+                            <button type="button" class="button button-link-delete" data-action="estructura-remove-call" data-index="${ index }" ${ removeDisabled }>${ escapeHtml( data.strings.structureRemoveCall || 'Eliminar' ) }</button>
+                        </div>
+                    </div>
+                    <div class="wpss-structure-call__fields">
+                        <label>
+                            <span>${ escapeHtml( data.strings.structureSelectLabel || 'Sección' ) }</span>
+                            <select data-action="estructura-ref" data-index="${ index }" ${ selectDisabled }>
+                                ${ options }
+                            </select>
+                        </label>
+                        <label>
+                            <span>${ escapeHtml( data.strings.structureVariantLabel || 'Variante' ) }</span>
+                            <input type="text" data-model="estructura" data-field="variante" data-index="${ index }" value="${ escapeAttr( call.variante || '' ) }" maxlength="16" ${ selectDisabled } />
+                        </label>
+                        <label>
+                            <span>${ escapeHtml( data.strings.structureNotesLabel || 'Notas' ) }</span>
+                            <input type="text" data-model="estructura" data-field="notas" data-index="${ index }" value="${ escapeAttr( call.notas || '' ) }" maxlength="128" ${ selectDisabled } />
+                        </label>
+                    </div>
+                </li>
+            `;
+        }
+
         function renderVersos() {
             const versos = state.editingSong.versos;
             if ( ! versos.length ) {
@@ -1432,12 +1872,19 @@
                 return `<p class="wpss-empty">${ escapeHtml( data.strings.readingEmpty || 'Sin contenido para mostrar.' ) }</p>`;
             }
 
-            const groups = groupVersesBySection();
+            const groups = buildReadingGroups();
 
             const modeButtons = `
                 <div class="wpss-reading__modes">
                     <button type="button" class="button button-secondary ${ 'inline' === state.readingMode ? 'is-active' : '' }" data-action="set-reading-mode" data-mode="inline">${ escapeHtml( data.strings.readingModeInline || 'Acordes inline' ) }</button>
                     <button type="button" class="button button-secondary ${ 'stacked' === state.readingMode ? 'is-active' : '' }" data-action="set-reading-mode" data-mode="stacked">${ escapeHtml( data.strings.readingModeStacked || 'Acordes arriba' ) }</button>
+                </div>
+            `;
+
+            const structureButtons = `
+                <div class="wpss-reading__structure">
+                    <button type="button" class="button button-secondary ${ state.readingFollowStructure ? '' : 'is-active' }" data-action="set-reading-structure" data-follow="sections">${ escapeHtml( data.strings.readingFollowSections || 'Ordenar por secciones' ) }</button>
+                    <button type="button" class="button button-secondary ${ state.readingFollowStructure ? 'is-active' : '' }" data-action="set-reading-structure" data-follow="structure">${ escapeHtml( data.strings.readingFollowStructure || 'Seguir estructura' ) }</button>
                 </div>
             `;
 
@@ -1462,24 +1909,30 @@
                             <p><strong>Campo armónico:</strong> ${ escapeHtml( song.campo_armonico || '—' ) }</p>
                             ${ queue.nombre ? `<p><strong>${ escapeHtml( data.strings.collectionCurrent || 'Colección' ) }:</strong> ${ escapeHtml( queue.nombre ) }</p>` : '' }
                         </div>
-                        <div class="wpss-reading__actions">
-                            ${ modeButtons }
-                            <button type="button" class="button" data-action="copy-reading">${ escapeHtml( data.strings.copyAsText || 'Copiar como texto' ) }</button>
-                        </div>
-                    </div>
-                    ${ queueControls }
-                    <div class="wpss-reading__sections">
-                        ${ groups.map( ( group ) => `
-                            <section class="wpss-reading__section">
-                                <h4 class="wpss-section-title">${ escapeHtml( group.section.nombre || getDefaultSectionName( 0 ) ) }</h4>
-                                <ol class="wpss-reading__verses">
-                                    ${ group.versos.map( ( verso ) => renderReadingVerse( verso ) ).join( '' ) }
-                                </ol>
-                            </section>
-                        ` ).join( '' ) }
+                    <div class="wpss-reading__actions">
+                        ${ modeButtons }
+                        ${ structureButtons }
+                        <button type="button" class="button" data-action="copy-reading">${ escapeHtml( data.strings.copyAsText || 'Copiar como texto' ) }</button>
                     </div>
                 </div>
-            `;
+                ${ queueControls }
+                <div class="wpss-reading__sections">
+                    ${ groups.map( ( group ) => {
+                        const heading = group.variant ? `${ group.title } (${ group.variant })` : group.title;
+                        const notes = group.notes ? `<p class="wpss-reading__notes">${ escapeHtml( group.notes ) }</p>` : '';
+
+                        return `
+                        <section class="wpss-reading__section">
+                            <h4 class="wpss-section-title">${ escapeHtml( heading ) }</h4>
+                            ${ notes }
+                            <ol class="wpss-reading__verses">
+                                ${ Array.isArray( group.versos ) ? group.versos.map( ( verso ) => renderReadingVerse( verso ) ).join( '' ) : '' }
+                            </ol>
+                        </section>
+                    `; } ).join( '' ) }
+                </div>
+            </div>
+        `;
         }
 
         function renderReadingVerse( verso ) {
@@ -1514,6 +1967,71 @@
                     ${ meta }
                 </li>
             `;
+        }
+
+        function buildReadingGroups() {
+            if ( state.readingFollowStructure ) {
+                return groupVersesByStructure();
+            }
+
+            const base = groupVersesBySection();
+
+            return base.map( ( group, index ) => ( {
+                title: group.section && group.section.nombre ? group.section.nombre : getDefaultSectionName( index ),
+                variant: '',
+                notes: '',
+                versos: group.versos,
+            } ) );
+        }
+
+        function groupVersesByStructure() {
+            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+            const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+            const versos = Array.isArray( state.editingSong.versos ) ? state.editingSong.versos : [];
+
+            if ( ! sections.length ) {
+                return [];
+            }
+
+            if ( ! estructura.length ) {
+                return groupVersesBySection().map( ( group, index ) => ( {
+                    title: group.section && group.section.nombre ? group.section.nombre : getDefaultSectionName( index ),
+                    variant: '',
+                    notes: '',
+                    versos: group.versos,
+                } ) );
+            }
+
+            const sectionMap = new Map();
+            sections.forEach( ( section, index ) => {
+                sectionMap.set( section.id, { ...section, index } );
+            } );
+
+            const fallback = sections[ 0 ];
+            const versesBySection = new Map();
+
+            versos.forEach( ( verso ) => {
+                const sectionId = sectionMap.has( verso.section_id ) ? verso.section_id : fallback.id;
+                if ( ! versesBySection.has( sectionId ) ) {
+                    versesBySection.set( sectionId, [] );
+                }
+                versesBySection.get( sectionId ).push( verso );
+            } );
+
+            return estructura.map( ( call, index ) => {
+                const info = sectionMap.get( call.ref ) || { ...fallback, index: 0 };
+                const baseTitle = info && info.nombre ? info.nombre : getDefaultSectionName( info && 'index' in info ? info.index : index );
+                const variant = call && call.variante ? String( call.variante ).slice( 0, 16 ) : '';
+                const notes = call && call.notas ? String( call.notas ).slice( 0, 128 ) : '';
+                const versosSeccion = versesBySection.get( call.ref ) || [];
+
+                return {
+                    title: baseTitle,
+                    variant,
+                    notes,
+                    versos: versosSeccion,
+                };
+            } );
         }
 
         function groupVersesBySection() {
@@ -1673,6 +2191,30 @@
                 reorderSection( parseInt( target.dataset.index, 10 ), 1 );
                 render();
                 break;
+            case 'estructura-add-call':
+                addStructureCall();
+                render();
+                break;
+            case 'estructura-duplicate-call':
+                duplicateStructureCall( parseInt( target.dataset.index, 10 ) );
+                render();
+                break;
+            case 'estructura-remove-call':
+                removeStructureCall( parseInt( target.dataset.index, 10 ) );
+                render();
+                break;
+            case 'estructura-move-up':
+                moveStructureCall( parseInt( target.dataset.index, 10 ), -1 );
+                render();
+                break;
+            case 'estructura-move-down':
+                moveStructureCall( parseInt( target.dataset.index, 10 ), 1 );
+                render();
+                break;
+            case 'estructura-reset':
+                resetStructureToDefault();
+                render();
+                break;
             case 'add-verso':
                 {
                     const primarySection = Array.isArray( state.editingSong.secciones ) && state.editingSong.secciones[ 0 ]
@@ -1758,6 +2300,9 @@
             case 'reading-exit':
                 clearReadingQueue();
                 render();
+                break;
+            case 'set-reading-structure':
+                setReadingStructureMode( target.dataset.follow );
                 break;
             case 'collection-new':
                 state.collections.activeId = null;
@@ -1873,6 +2418,31 @@
                         } );
                     } );
                 }
+            } else if ( 'estructura' === model ) {
+                const index = parseInt( event.target.dataset.index, 10 );
+                const fieldName = event.target.dataset.field;
+                if ( Number.isNaN( index ) || ! fieldName ) {
+                    return;
+                }
+
+                updateStructureCallField( index, fieldName, value );
+
+                const row = event.target.closest( '.wpss-structure-call' );
+                if ( row ) {
+                    const chip = row.querySelector( '.wpss-structure__chip' );
+                    if ( chip ) {
+                        const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+                        const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+                        chip.textContent = getStructureDisplayLabel( estructura[ index ], sections );
+                    }
+                }
+
+                const summary = container.querySelector( '.wpss-structure__chips' );
+                if ( summary ) {
+                    const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+                    const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+                    summary.innerHTML = renderStructureChips( estructura, sections );
+                }
             } else if ( 'collection' === model ) {
                 updateActiveCollectionField( field, value );
             } else if ( 'segmento' === model ) {
@@ -1941,6 +2511,30 @@
                     return;
                 case 'toggle-song-collection':
                     toggleSongCollection( event.target.dataset.id, event.target.checked );
+                    return;
+                case 'toggle-estructura-personalizada':
+                    toggleStructurePersonalizada( event.target.checked );
+                    render();
+                    return;
+                case 'estructura-ref':
+                    setStructureCallRef( parseInt( event.target.dataset.index, 10 ), event.target.value );
+                    {
+                        const summary = container.querySelector( '.wpss-structure__chips' );
+                        if ( summary ) {
+                            const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+                            const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+                            summary.innerHTML = renderStructureChips( estructura, sections );
+                        }
+                        const row = event.target.closest( '.wpss-structure-call' );
+                        if ( row ) {
+                            const chip = row.querySelector( '.wpss-structure__chip' );
+                            if ( chip ) {
+                                const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
+                                const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
+                                chip.textContent = getStructureDisplayLabel( estructura[ parseInt( event.target.dataset.index, 10 ) ], sections );
+                            }
+                        }
+                    }
                     return;
                 default:
                     break;
@@ -2179,6 +2773,12 @@
 
             api.getSong( id ).then( ( response ) => {
                 const song = response.data || {};
+                const seccionesNormalizadas = normalizeSectionsFromApi( song.secciones );
+                const estructuraInfo = normalizeStructureFromApi(
+                    Array.isArray( song.estructura ) ? song.estructura : [],
+                    seccionesNormalizadas,
+                    song.estructura_personalizada
+                );
                 state.editingSong = {
                     id: song.id,
                     titulo: song.titulo || '',
@@ -2188,12 +2788,15 @@
                     prestamos: Array.isArray( song.prestamos ) ? song.prestamos : [],
                     modulaciones: Array.isArray( song.modulaciones ) ? song.modulaciones : [],
                     versos: normalizeVersesFromApi( song.versos ),
-                    secciones: normalizeSectionsFromApi( song.secciones ),
+                    secciones: seccionesNormalizadas,
                     tiene_prestamos: !! song.tiene_prestamos,
                     tiene_modulaciones: !! song.tiene_modulaciones,
                     colecciones: normalizeSongCollections( song.colecciones ),
+                    estructura: estructuraInfo.estructura,
+                    estructuraPersonalizada: estructuraInfo.personalizada,
                 };
                 normalizeVerseOrder();
+                syncStructureWithSections();
                 if ( ! silent ) {
                     setFeedback( data.strings.songLoaded || 'Canción cargada.' );
                 }
@@ -2267,6 +2870,9 @@
             setFeedback( data.strings.saving || 'Guardando…', 'info' );
             render();
 
+            syncStructureWithSections();
+            const estructuraPayload = buildStructurePayload( song.estructura );
+
             const payload = {
                 id: song.id || null,
                 titulo: song.titulo,
@@ -2286,6 +2892,8 @@
                     nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
                 } ) ),
                 colecciones: Array.isArray( song.colecciones ) ? song.colecciones.map( ( item ) => item.id ) : [],
+                estructura: estructuraPayload,
+                estructura_personalizada: !! song.estructuraPersonalizada,
             };
 
             api.saveSong( payload ).then( ( response ) => {
@@ -2294,6 +2902,17 @@
                 state.editingSong.tiene_prestamos = !! body.tiene_prestamos;
                 state.editingSong.tiene_modulaciones = !! body.tiene_modulaciones;
                 state.editingSong.colecciones = normalizeSongCollections( body.colecciones );
+                if ( Array.isArray( body.secciones ) ) {
+                    state.editingSong.secciones = normalizeSectionsFromApi( body.secciones );
+                }
+                const structureInfo = normalizeStructureFromApi(
+                    Array.isArray( body.estructura ) ? body.estructura : [],
+                    state.editingSong.secciones,
+                    body.estructura_personalizada
+                );
+                state.editingSong.estructura = structureInfo.estructura;
+                state.editingSong.estructuraPersonalizada = structureInfo.personalizada;
+                syncStructureWithSections();
                 state.selectedSongId = body.id;
                 setFeedback( data.strings.saved || 'Cambios guardados.' );
                 loadSongs();
@@ -2425,17 +3044,22 @@
             }
             lines.push( '' );
 
-            const groups = groupVersesBySection();
+            const groups = buildReadingGroups();
 
             groups.forEach( ( group, index ) => {
                 if ( index > 0 ) {
                     lines.push( '' );
                 }
 
-                const nombreSeccion = group.section.nombre || getDefaultSectionName( index );
-                lines.push( nombreSeccion );
+                const heading = group.variant ? `${ group.title } (${ group.variant })` : group.title;
+                lines.push( heading );
 
-                group.versos.forEach( ( verso ) => {
+                if ( group.notes ) {
+                    const prefix = data.strings.structureNotesPrefix || 'Notas';
+                    lines.push( `${ prefix }: ${ group.notes }` );
+                }
+
+                ( Array.isArray( group.versos ) ? group.versos : [] ).forEach( ( verso ) => {
                     const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
 
                     if ( 'stacked' === state.readingMode ) {
@@ -2833,6 +3457,25 @@
 
             state.readingMode = mode;
             render();
+        }
+
+        function setReadingStructureMode( mode ) {
+            if ( 'structure' === mode ) {
+                if ( state.readingFollowStructure ) {
+                    return;
+                }
+                state.readingFollowStructure = true;
+                render();
+                return;
+            }
+
+            if ( 'sections' === mode ) {
+                if ( ! state.readingFollowStructure ) {
+                    return;
+                }
+                state.readingFollowStructure = false;
+                render();
+            }
         }
 
         function startReadingCollection( coleccionId ) {

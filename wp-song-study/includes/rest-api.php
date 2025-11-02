@@ -474,6 +474,33 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
     $versos = wpss_get_cancion_versos( $post_id );
     list( $secciones, $versos ) = wpss_prepare_sections_for_output( $post_id, $versos );
 
+    $estructura_meta         = get_post_meta( $post_id, '_estructura_json', true );
+    $estructura               = wpss_get_default_estructura( $secciones );
+    $estructura_personalizada = false;
+
+    if ( ! empty( $estructura_meta ) ) {
+        $estructura_raw = is_array( $estructura_meta ) ? $estructura_meta : wpss_decode_json_meta( $estructura_meta );
+        $had_orphans    = false;
+        $estructura_tmp = wpss_sanitize_estructura_array( $estructura_raw, $secciones, true, 'filter', $had_orphans );
+
+        if ( $had_orphans ) {
+            error_log( 'wpss: estructura con refs huérfanas en cancion ' . $post_id );
+        }
+
+        if ( is_array( $estructura_tmp ) && ! empty( $estructura_tmp ) ) {
+            $es_default  = wpss_is_default_structure( $estructura_tmp, $secciones );
+            $tiene_notas = wpss_estructura_has_annotations( $estructura_tmp );
+
+            if ( $es_default && ! $tiene_notas ) {
+                $estructura               = wpss_get_default_estructura( $secciones );
+                $estructura_personalizada = false;
+            } else {
+                $estructura               = $estructura_tmp;
+                $estructura_personalizada = true;
+            }
+        }
+    }
+
     $data = [
         'id'                         => (int) $post_id,
         'titulo'                     => get_the_title( $post_id ),
@@ -490,6 +517,8 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
         'tiene_prestamos'            => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
         'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
         'colecciones'                => wpss_get_song_colecciones( $post_id ),
+        'estructura'                 => $estructura,
+        'estructura_personalizada'   => $estructura_personalizada,
     ];
 
     return rest_ensure_response( $data );
@@ -551,6 +580,20 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $secciones       = wpss_sanitize_secciones_array( $secciones_input );
     $section_ids     = wp_list_pluck( $secciones, 'id' );
 
+    $estructura_input = [];
+    if ( array_key_exists( 'estructura', $params ) && is_array( $params['estructura'] ) ) {
+        $estructura_input = $params['estructura'];
+    }
+
+    $estructura_personalizada_flag = false;
+    if ( array_key_exists( 'estructura_personalizada', $params ) ) {
+        $estructura_personalizada_flag = (bool) $params['estructura_personalizada'];
+    } elseif ( array_key_exists( 'estructuraPersonalizada', $params ) ) {
+        $estructura_personalizada_flag = (bool) $params['estructuraPersonalizada'];
+    } elseif ( array_key_exists( 'estructura', $params ) ) {
+        $estructura_personalizada_flag = true;
+    }
+
     $versos = wpss_sanitize_versos_array(
         isset( $params['versos'] ) ? (array) $params['versos'] : [],
         $section_ids
@@ -561,6 +604,23 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     }
 
     list( $secciones, $versos ) = wpss_ensure_sections_for_versos( $secciones, $versos );
+
+    $estructura_sanitizada = wpss_sanitize_estructura_array( $estructura_input, $secciones, $estructura_personalizada_flag );
+    if ( is_wp_error( $estructura_sanitizada ) ) {
+        return new WP_REST_Response( [ 'message' => $estructura_sanitizada->get_error_message() ], 400 );
+    }
+
+    $estructura_default = wpss_get_default_estructura( $secciones );
+    $estructura_es_default = wpss_is_default_structure( $estructura_sanitizada, $secciones );
+    $estructura_tiene_notas = wpss_estructura_has_annotations( $estructura_sanitizada );
+
+    if ( ! $estructura_personalizada_flag || ( $estructura_es_default && ! $estructura_tiene_notas ) ) {
+        $estructura_sanitizada        = $estructura_default;
+        $estructura_personalizada_flag = false;
+    } else {
+        $estructura_personalizada_flag = true;
+    }
+
     $versos = wpss_apply_legacy_stanza_markers( $versos, $secciones );
 
     $versos = wpss_normalize_versos_order( $versos );
@@ -601,6 +661,18 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     update_post_meta( $post_id, '_secciones_json', $secciones_json );
 
+    if ( $estructura_personalizada_flag ) {
+        $estructura_json = wp_json_encode( $estructura_sanitizada, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        if ( false === $estructura_json ) {
+            $estructura_json = wp_json_encode( $estructura_sanitizada );
+        }
+
+        update_post_meta( $post_id, '_estructura_json', $estructura_json );
+    } else {
+        delete_post_meta( $post_id, '_estructura_json' );
+        $estructura_sanitizada = $estructura_default;
+    }
+
     $tiene_prestamos    = wpss_calculate_song_has_prestamos( $prestamos, $versos );
     $tiene_modulaciones = wpss_calculate_song_has_modulaciones( $modulaciones, $versos );
 
@@ -635,6 +707,8 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         'tiene_prestamos'    => $tiene_prestamos,
         'tiene_modulaciones' => $tiene_modulaciones,
         'secciones'          => $secciones,
+        'estructura'         => $estructura_sanitizada,
+        'estructura_personalizada' => (bool) $estructura_personalizada_flag,
         'colecciones'        => wpss_get_song_colecciones( $post_id ),
     ];
 
@@ -856,6 +930,180 @@ function wpss_sanitize_secciones_array( array $secciones ) {
     }
 
     return $normalizadas;
+}
+
+/**
+ * Genera la estructura por defecto a partir del orden de las secciones.
+ *
+ * @param array $secciones Secciones sanitizadas.
+ * @return array
+ */
+function wpss_get_default_estructura( array $secciones ) {
+    $estructura = [];
+
+    foreach ( $secciones as $seccion ) {
+        if ( ! is_array( $seccion ) ) {
+            continue;
+        }
+
+        $id = isset( $seccion['id'] ) ? sanitize_key( $seccion['id'] ) : '';
+
+        if ( '' === $id ) {
+            continue;
+        }
+
+        $estructura[] = [ 'ref' => $id ];
+    }
+
+    return $estructura;
+}
+
+/**
+ * Determina si la estructura contiene anotaciones adicionales.
+ *
+ * @param array $estructura Estructura sanitizada.
+ * @return bool
+ */
+function wpss_estructura_has_annotations( array $estructura ) {
+    foreach ( $estructura as $llamada ) {
+        if ( ! is_array( $llamada ) ) {
+            continue;
+        }
+
+        if ( ! empty( $llamada['variante'] ) || ! empty( $llamada['notas'] ) ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Sanitiza y valida la estructura declarada para una canción.
+ *
+ * @param array $estructura          Datos recibidos.
+ * @param array $secciones           Secciones disponibles.
+ * @param bool  $personalizada       Si se trata de una estructura personalizada.
+ * @param string $on_invalid         Estrategia frente a refs inválidas: "error" o "filter".
+ * @param bool|null $had_orphans     Parámetro de salida para indicar si hubo referencias huérfanas.
+ * @return array|WP_Error
+ */
+function wpss_sanitize_estructura_array( $estructura, array $secciones, $personalizada = true, $on_invalid = 'error', &$had_orphans = null ) {
+    if ( ! is_array( $estructura ) ) {
+        $estructura = [];
+    }
+
+    $default = wpss_get_default_estructura( $secciones );
+    $valid_ids = [];
+
+    foreach ( $secciones as $seccion ) {
+        if ( ! is_array( $seccion ) ) {
+            continue;
+        }
+
+        $id = isset( $seccion['id'] ) ? sanitize_key( $seccion['id'] ) : '';
+
+        if ( '' === $id ) {
+            continue;
+        }
+
+        $valid_ids[ $id ] = true;
+    }
+
+    $sanitized   = [];
+    $had_orphans = false;
+
+    foreach ( $estructura as $item ) {
+        if ( ! is_array( $item ) ) {
+            if ( 'filter' === $on_invalid ) {
+                $had_orphans = true;
+                continue;
+            }
+
+            if ( ! $personalizada ) {
+                return $default;
+            }
+
+            return new WP_Error(
+                'wpss_invalid_estructura_item',
+                __( 'Cada elemento de la estructura debe incluir una referencia válida a la sección.', 'wp-song-study' )
+            );
+        }
+
+        $ref = isset( $item['ref'] ) ? sanitize_key( $item['ref'] ) : '';
+
+        if ( '' === $ref || ! isset( $valid_ids[ $ref ] ) ) {
+            if ( 'filter' === $on_invalid ) {
+                $had_orphans = true;
+                continue;
+            }
+
+            if ( ! $personalizada ) {
+                return $default;
+            }
+
+            return new WP_Error(
+                'wpss_invalid_estructura_ref',
+                __( 'La estructura incluye referencias a secciones inexistentes.', 'wp-song-study' )
+            );
+        }
+
+        $entrada = [ 'ref' => $ref ];
+
+        if ( isset( $item['variante'] ) ) {
+            $variant = sanitize_text_field( $item['variante'] );
+            $variant = wpss_truncate_string( $variant, 16 );
+
+            if ( '' !== $variant ) {
+                $entrada['variante'] = $variant;
+            }
+        }
+
+        if ( isset( $item['notas'] ) ) {
+            $notes = sanitize_text_field( $item['notas'] );
+            $notes = wpss_truncate_string( $notes, 128 );
+
+            if ( '' !== $notes ) {
+                $entrada['notas'] = $notes;
+            }
+        }
+
+        $sanitized[] = $entrada;
+    }
+
+    if ( ! $personalizada ) {
+        return $default;
+    }
+
+    if ( empty( $sanitized ) ) {
+        return $default;
+    }
+
+    return array_values( $sanitized );
+}
+
+/**
+ * Determina si la estructura coincide con el orden por defecto de las secciones.
+ *
+ * @param array $estructura Estructura sanitizada.
+ * @param array $secciones  Secciones disponibles.
+ * @return bool
+ */
+function wpss_is_default_structure( array $estructura, array $secciones ) {
+    $default_refs    = array_map(
+        static function( $seccion ) {
+            return isset( $seccion['id'] ) ? sanitize_key( $seccion['id'] ) : '';
+        },
+        $secciones
+    );
+    $estructura_refs = array_map(
+        static function( $llamada ) {
+            return isset( $llamada['ref'] ) ? sanitize_key( $llamada['ref'] ) : '';
+        },
+        $estructura
+    );
+
+    return $estructura_refs === $default_refs;
 }
 
 /**
