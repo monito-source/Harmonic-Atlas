@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Plugin Name: WP Song Study
  * Plugin URI:  https://example.com/wp-song-study
@@ -11,6 +12,12 @@
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
+}
+
+// Asegura referencia inequívoca al archivo principal del plugin.
+// Respeta definiciones previas para no romper entornos que ya lo definan.
+if ( ! defined( 'WPSS_PLUGIN_FILE' ) ) {
+    define( 'WPSS_PLUGIN_FILE', __FILE__ );
 }
 
 if ( ! defined( 'WPSS_PATH' ) ) {

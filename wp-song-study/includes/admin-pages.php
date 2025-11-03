@@ -83,24 +83,53 @@ function wpss_render_new_song_page() {
 function wpss_enqueue_admin_assets( $hook ) {
     global $wpss_admin_page_hooks;
 
-    if ( empty( $wpss_admin_page_hooks ) || ! in_array( $hook, $wpss_admin_page_hooks, true ) ) {
+    $allowed_pages = [ 'wpss-cancionario', 'wpss-cancion-nueva' ];
+
+    if (
+        ( empty( $wpss_admin_page_hooks ) || ! in_array( $hook, $wpss_admin_page_hooks, true ) )
+        && ( ! isset( $_GET['page'] ) || ! in_array( $_GET['page'], $allowed_pages, true ) )
+    ) {
         return;
     }
 
-    $script_path = WPSS_PATH . 'assets/cancion-dashboard.js';
-    $style_path  = WPSS_PATH . 'assets/cancion-dashboard.css';
+    $base_dir = plugin_dir_path( WPSS_PLUGIN_FILE );
+    $base_url = plugins_url( '/', WPSS_PLUGIN_FILE );
 
-    $script_url = WPSS_URL . 'assets/cancion-dashboard.js';
-    $style_url  = WPSS_URL . 'assets/cancion-dashboard.css';
+    $js_rel  = 'assets/cancion-dashboard.js';
+    $css_rel = 'assets/cancion-dashboard.css';
 
-    $version = file_exists( $script_path ) ? filemtime( $script_path ) : wpss_get_asset_version_fallback();
-    $deps    = [ 'wp-api-fetch' ];
+    $js_path  = $base_dir . $js_rel;
+    $css_path = $base_dir . $css_rel;
 
-    wp_enqueue_script( 'wpss-cancion-dashboard', $script_url, $deps, $version, true );
+    if ( ! file_exists( $js_path ) ) {
+        error_log( sprintf( 'WPSS: JS no encontrado en %s (hook=%s)', $js_path, $hook ) );
+        return;
+    }
 
-    if ( file_exists( $style_path ) ) {
-        $style_version = filemtime( $style_path );
-        wp_enqueue_style( 'wpss-cancion-dashboard', $style_url, [], $style_version );
+    $js_url  = $base_url . $js_rel;
+    $css_url = $base_url . $css_rel;
+
+    $js_version  = @filemtime( $js_path );
+    $script_deps = [ 'wp-api-fetch' ];
+
+    wp_enqueue_script(
+        'wpss-cancion-dashboard',
+        $js_url,
+        $script_deps,
+        $js_version ? $js_version : wpss_get_asset_version_fallback(),
+        true
+    );
+
+    if ( file_exists( $css_path ) ) {
+        $css_version = @filemtime( $css_path );
+        wp_enqueue_style(
+            'wpss-cancion-dashboard',
+            $css_url,
+            [],
+            $css_version ? $css_version : wpss_get_asset_version_fallback()
+        );
+    } else {
+        error_log( sprintf( 'WPSS: CSS no encontrado en %s (hook=%s)', $css_path, $hook ) );
     }
 
     $tonicas = [
