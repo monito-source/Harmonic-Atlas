@@ -1733,36 +1733,33 @@ function wpss_sanitize_evento_armonico( $evento ) {
     }
 
     $limpio = [ 'tipo' => $tipo ];
+    $has_detail = false;
 
     if ( 'modulacion' === $tipo ) {
         $tonica_destino = isset( $evento['tonica_destino'] ) ? sanitize_text_field( $evento['tonica_destino'] ) : '';
         $campo_destino  = isset( $evento['campo_armonico_destino'] ) ? sanitize_text_field( $evento['campo_armonico_destino'] ) : '';
 
-        if ( '' === $tonica_destino && '' === $campo_destino ) {
-            return null;
-        }
-
         if ( '' !== $tonica_destino ) {
             $limpio['tonica_destino'] = $tonica_destino;
+            $has_detail               = true;
         }
 
         if ( '' !== $campo_destino ) {
             $limpio['campo_armonico_destino'] = $campo_destino;
+            $has_detail                       = true;
         }
     } else {
         $tonica_origen = isset( $evento['tonica_origen'] ) ? sanitize_text_field( $evento['tonica_origen'] ) : '';
         $campo_origen  = isset( $evento['campo_armonico_origen'] ) ? sanitize_text_field( $evento['campo_armonico_origen'] ) : '';
 
-        if ( '' === $tonica_origen && '' === $campo_origen ) {
-            return null;
-        }
-
         if ( '' !== $tonica_origen ) {
             $limpio['tonica_origen'] = $tonica_origen;
+            $has_detail              = true;
         }
 
         if ( '' !== $campo_origen ) {
             $limpio['campo_armonico_origen'] = $campo_origen;
+            $has_detail                      = true;
         }
     }
 
@@ -1772,8 +1769,13 @@ function wpss_sanitize_evento_armonico( $evento ) {
             $segment_index = (int) $segment_index;
             if ( $segment_index >= 0 ) {
                 $limpio['segment_index'] = $segment_index;
+                $has_detail              = true;
             }
         }
+    }
+
+    if ( ! $has_detail ) {
+        return null;
     }
 
     return $limpio;

@@ -540,32 +540,36 @@
             }
 
             const payload = { tipo };
+            let hasDetail = false;
 
             if ( 'modulacion' === tipo ) {
                 if ( evento.tonica_destino && evento.tonica_destino.trim() ) {
                     payload.tonica_destino = evento.tonica_destino.trim();
+                    hasDetail = true;
                 }
                 if ( evento.campo_armonico_destino && evento.campo_armonico_destino.trim() ) {
                     payload.campo_armonico_destino = evento.campo_armonico_destino.trim();
-                }
-                if ( ! payload.tonica_destino && ! payload.campo_armonico_destino ) {
-                    return null;
+                    hasDetail = true;
                 }
             } else if ( 'prestamo' === tipo ) {
                 if ( evento.tonica_origen && evento.tonica_origen.trim() ) {
                     payload.tonica_origen = evento.tonica_origen.trim();
+                    hasDetail = true;
                 }
                 if ( evento.campo_armonico_origen && evento.campo_armonico_origen.trim() ) {
                     payload.campo_armonico_origen = evento.campo_armonico_origen.trim();
-                }
-                if ( ! payload.tonica_origen && ! payload.campo_armonico_origen ) {
-                    return null;
+                    hasDetail = true;
                 }
             }
 
             const index = getValidSegmentIndex( evento, segmentCount );
             if ( null !== index ) {
                 payload.segment_index = index;
+                hasDetail = true;
+            }
+
+            if ( ! hasDetail ) {
+                return null;
             }
 
             return payload;
