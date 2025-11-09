@@ -419,6 +419,11 @@
     gap: 12px;
 }
 
+.wpss-segment.is-event-target {
+    border-color: #c9342f;
+    box-shadow: 0 0 0 1px rgba(201, 52, 47, 0.18);
+}
+
 .wpss-segment__fields {
     display: grid;
     grid-template-columns: minmax(200px, 2fr) minmax(120px, 1fr);
@@ -445,8 +450,25 @@
     margin-left: auto;
 }
 
+.wpss-segment__event {
+    align-self: flex-start;
+    margin-top: -4px;
+}
+
+.wpss-segment__event.is-active {
+    background: #c9342f;
+    border-color: #c9342f;
+    color: #fff;
+}
+
 .wpss-segment-add {
     text-align: right;
+}
+
+.wpss-verse-event__hint {
+    margin: 4px 0 0;
+    color: #50575e;
+    font-size: 12px;
 }
 
 .wpss-campos {
@@ -579,6 +601,19 @@
     margin-right: 4px;
 }
 
+.wpss-reading__segment {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 0 4px;
+    border-radius: 4px;
+}
+
+.wpss-reading__segment.is-event-target {
+    background: #fff2f1;
+    box-shadow: inset 0 0 0 1px #f0a5a0;
+}
+
 .wpss-event-chip {
     display: inline-block;
     padding: 2px 8px;
@@ -587,6 +622,18 @@
     color: #1d4ed8;
     font-size: 12px;
     margin-right: 8px;
+}
+
+.wpss-event-chip__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: #ffe4e2;
+    color: #b91c1c;
+    font-weight: 600;
+    font-size: 11px;
 }
 
 .wpss-reading__comment {
@@ -721,6 +768,13 @@
     margin-right: 6px;
 }
 
+.wpss-song-segment.is-event-target {
+    background: #fff2f1;
+    box-shadow: inset 0 0 0 1px #f0a5a0;
+    border-radius: 4px;
+    padding: 0 4px;
+}
+
 .wpss-song-chord {
     font-weight: 600;
     margin-right: 4px;
@@ -730,6 +784,18 @@
     color: #1d4ed8;
     font-size: 13px;
     margin-top: 6px;
+}
+
+.wpss-song-event-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #ffe4e2;
+    color: #b91c1c;
+    font-weight: 600;
+    font-size: 11px;
 }
 
 .wpss-panel--list table tbody tr {

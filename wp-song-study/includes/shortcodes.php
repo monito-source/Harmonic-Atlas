@@ -121,6 +121,11 @@ function wpss_shortcode_song( $atts ) {
             $evento = null;
         }
 
+        $segment_index_raw = null;
+        if ( $evento && isset( $evento['segment_index'] ) ) {
+            $segment_index_raw = (int) $evento['segment_index'];
+        }
+
         $segmentos_meta = json_decode( (string) get_post_meta( $verso->ID, '_segmentos_json', true ), true );
         $segmentos      = [];
 
@@ -150,9 +155,19 @@ function wpss_shortcode_song( $atts ) {
         }
 
         $html .= '<li class="wpss-verse">';
+        $segment_index = null;
+        if ( null !== $segment_index_raw && $segment_index_raw >= 0 && $segment_index_raw < count( $segmentos ) ) {
+            $segment_index = $segment_index_raw;
+        }
+
         $html .= '<div class="wpss-verse-text">';
-        foreach ( $segmentos as $segmento ) {
-            $html .= '<span class="wpss-song-segment">';
+        foreach ( $segmentos as $index => $segmento ) {
+            $classes = [ 'wpss-song-segment' ];
+            if ( null !== $segment_index && $segment_index === $index ) {
+                $classes[] = 'is-event-target';
+            }
+
+            $html .= '<span class="' . esc_attr( implode( ' ', $classes ) ) . '">';
             if ( ! empty( $segmento['acorde'] ) ) {
                 $html .= '<span class="wpss-song-chord">[' . esc_html( $segmento['acorde'] ) . ']</span> ';
             }
@@ -162,12 +177,18 @@ function wpss_shortcode_song( $atts ) {
         $html .= '</div>';
 
         if ( $evento ) {
+            $badge = '';
+            if ( null !== $segment_index ) {
+                $badge_text = sprintf( __( 'Segmento %d', 'wp-song-study' ), $segment_index + 1 );
+                $badge      = ' <span class="wpss-song-event-badge">' . esc_html( $badge_text ) . '</span>';
+            }
+
             if ( 'modulacion' === $evento['tipo'] ) {
                 $destino = trim( ( $evento['tonica_destino'] ?? '' ) . ' ' . ( $evento['campo_armonico_destino'] ?? '' ) );
-                $html   .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Modulación → %s', 'wp-song-study' ), $destino ? esc_html( $destino ) : '—' ) . '</div>';
+                $html   .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Modulación → %s', 'wp-song-study' ), $destino ? esc_html( $destino ) : '—' ) . $badge . '</div>';
             } elseif ( 'prestamo' === $evento['tipo'] ) {
                 $origen = trim( ( $evento['tonica_origen'] ?? '' ) . ' ' . ( $evento['campo_armonico_origen'] ?? '' ) );
-                $html  .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Préstamo ← %s', 'wp-song-study' ), $origen ? esc_html( $origen ) : '—' ) . '</div>';
+                $html  .= '<div class="wpss-song-event">' . sprintf( esc_html__( 'Préstamo ← %s', 'wp-song-study' ), $origen ? esc_html( $origen ) : '—' ) . $badge . '</div>';
             }
         }
 

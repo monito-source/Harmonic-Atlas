@@ -1565,6 +1565,12 @@ function wpss_get_cancion_versos( $post_id ) {
 
         $evento_raw     = wpss_decode_json_meta( get_post_meta( $verso->ID, '_evento_armonico_json', true ) );
         $evento         = wpss_sanitize_evento_armonico( $evento_raw );
+        if ( $evento && isset( $evento['segment_index'] ) ) {
+            $segment_index = (int) $evento['segment_index'];
+            if ( $segment_index < 0 || $segment_index >= count( $segmentos ) ) {
+                unset( $evento['segment_index'] );
+            }
+        }
         $comentario     = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
         $section_id     = sanitize_key( get_post_meta( $verso->ID, '_section_id', true ) );
         $fin_de_estrofa = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
@@ -1760,6 +1766,16 @@ function wpss_sanitize_evento_armonico( $evento ) {
         }
     }
 
+    if ( isset( $evento['segment_index'] ) ) {
+        $segment_index = $evento['segment_index'];
+        if ( is_numeric( $segment_index ) ) {
+            $segment_index = (int) $segment_index;
+            if ( $segment_index >= 0 ) {
+                $limpio['segment_index'] = $segment_index;
+            }
+        }
+    }
+
     return $limpio;
 }
 
@@ -1777,9 +1793,9 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             continue;
         }
 
-        $orden      = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
-        $comentario = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
-        $evento     = isset( $verso['evento_armonico'] ) ? wpss_sanitize_evento_armonico( $verso['evento_armonico'] ) : null;
+        $orden        = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
+        $comentario   = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
+        $evento_input = isset( $verso['evento_armonico'] ) ? $verso['evento_armonico'] : null;
 
         $segmentos_input = [];
         if ( isset( $verso['segmentos'] ) && is_array( $verso['segmentos'] ) ) {
@@ -1802,6 +1818,17 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
         }
 
         $segmentos = wpss_sanitize_segmentos_array( $segmentos_input );
+
+        $evento = null;
+        if ( null !== $evento_input ) {
+            $evento = wpss_sanitize_evento_armonico( $evento_input );
+            if ( $evento && isset( $evento['segment_index'] ) ) {
+                $segment_index = (int) $evento['segment_index'];
+                if ( $segment_index < 0 || $segment_index >= count( $segmentos ) ) {
+                    return new WP_Error( 'wpss_rest_invalid_event_segment', __( 'El evento armónico debe anclarse a un segmento válido.', 'wp-song-study' ) );
+                }
+            }
+        }
 
         $fin_de_estrofa = ! empty( $verso['fin_de_estrofa'] ) ? 1 : 0;
         $nombre_estrofa = '';

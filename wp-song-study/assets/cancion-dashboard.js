@@ -466,6 +466,111 @@
             };
         }
 
+        function normalizeEventoArmonico( evento, segmentCount ) {
+            if ( ! evento || 'object' !== typeof evento ) {
+                return null;
+            }
+
+            const tipo = evento.tipo;
+            if ( ! tipo || ! [ 'modulacion', 'prestamo' ].includes( tipo ) ) {
+                return null;
+            }
+
+            const limpio = { tipo };
+
+            if ( 'modulacion' === tipo ) {
+                if ( evento.tonica_destino ) {
+                    limpio.tonica_destino = String( evento.tonica_destino );
+                }
+                if ( evento.campo_armonico_destino ) {
+                    limpio.campo_armonico_destino = String( evento.campo_armonico_destino );
+                }
+            } else if ( 'prestamo' === tipo ) {
+                if ( evento.tonica_origen ) {
+                    limpio.tonica_origen = String( evento.tonica_origen );
+                }
+                if ( evento.campo_armonico_origen ) {
+                    limpio.campo_armonico_origen = String( evento.campo_armonico_origen );
+                }
+            }
+
+            if ( Object.prototype.hasOwnProperty.call( evento, 'segment_index' ) ) {
+                const parsed = parseInt( evento.segment_index, 10 );
+                if ( Number.isInteger( parsed ) && parsed >= 0 ) {
+                    if ( Number.isInteger( segmentCount ) && parsed < segmentCount ) {
+                        limpio.segment_index = parsed;
+                    } else if ( ! Number.isInteger( segmentCount ) ) {
+                        limpio.segment_index = parsed;
+                    }
+                }
+            }
+
+            return limpio;
+        }
+
+        function getValidSegmentIndex( evento, segmentCount ) {
+            if ( ! evento || 'object' !== typeof evento ) {
+                return null;
+            }
+
+            if ( ! Object.prototype.hasOwnProperty.call( evento, 'segment_index' ) ) {
+                return null;
+            }
+
+            const index = parseInt( evento.segment_index, 10 );
+            if ( ! Number.isInteger( index ) || index < 0 ) {
+                return null;
+            }
+
+            if ( Number.isInteger( segmentCount ) && index >= segmentCount ) {
+                return null;
+            }
+
+            return index;
+        }
+
+        function prepareEventoArmonicoForPayload( evento, segmentCount ) {
+            if ( ! evento || 'object' !== typeof evento ) {
+                return null;
+            }
+
+            const tipo = evento.tipo;
+            if ( ! tipo || ! [ 'modulacion', 'prestamo' ].includes( tipo ) ) {
+                return null;
+            }
+
+            const payload = { tipo };
+
+            if ( 'modulacion' === tipo ) {
+                if ( evento.tonica_destino && evento.tonica_destino.trim() ) {
+                    payload.tonica_destino = evento.tonica_destino.trim();
+                }
+                if ( evento.campo_armonico_destino && evento.campo_armonico_destino.trim() ) {
+                    payload.campo_armonico_destino = evento.campo_armonico_destino.trim();
+                }
+                if ( ! payload.tonica_destino && ! payload.campo_armonico_destino ) {
+                    return null;
+                }
+            } else if ( 'prestamo' === tipo ) {
+                if ( evento.tonica_origen && evento.tonica_origen.trim() ) {
+                    payload.tonica_origen = evento.tonica_origen.trim();
+                }
+                if ( evento.campo_armonico_origen && evento.campo_armonico_origen.trim() ) {
+                    payload.campo_armonico_origen = evento.campo_armonico_origen.trim();
+                }
+                if ( ! payload.tonica_origen && ! payload.campo_armonico_origen ) {
+                    return null;
+                }
+            }
+
+            const index = getValidSegmentIndex( evento, segmentCount );
+            if ( null !== index ) {
+                payload.segment_index = index;
+            }
+
+            return payload;
+        }
+
         function padEndSafe( value, length ) {
             let result = String( value );
             if ( 'function' === typeof result.padEnd ) {
@@ -598,6 +703,13 @@
 
                     if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico ) {
                         verso.evento_armonico = null;
+                    } else if ( Array.isArray( verso.segmentos ) ) {
+                        const index = getValidSegmentIndex( verso.evento_armonico, verso.segmentos.length );
+                        if ( Object.prototype.hasOwnProperty.call( verso.evento_armonico, 'segment_index' ) && null === index ) {
+                            delete verso.evento_armonico.segment_index;
+                        } else if ( null !== index ) {
+                            verso.evento_armonico.segment_index = index;
+                        }
                     }
 
                     verso.section_id = verso.section_id ? String( verso.section_id ) : '';
@@ -1693,9 +1805,10 @@
 
         function renderVerseSegments( verso, verseIndex ) {
             const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
+            const evento = verso && verso.evento_armonico ? verso.evento_armonico : null;
             return `
                 <div class="wpss-segment-list">
-                    ${ segmentos.map( ( segmento, segmentIndex ) => renderSegmentRow( segmento, verseIndex, segmentIndex, segmentos.length ) ).join( '' ) }
+                    ${ segmentos.map( ( segmento, segmentIndex ) => renderSegmentRow( segmento, verso, verseIndex, segmentIndex, segmentos.length, evento ) ).join( '' ) }
                     <div class="wpss-segment-add">
                         <button type="button" class="button button-secondary" data-action="add-segment" data-verse="${ verseIndex }">${ escapeHtml( data.strings.segmentAdd || 'Añadir segmento' ) }</button>
                     </div>
@@ -1703,9 +1816,21 @@
             `;
         }
 
-        function renderSegmentRow( segmento, verseIndex, segmentIndex, totalSegments ) {
+        function renderSegmentRow( segmento, verso, verseIndex, segmentIndex, totalSegments, evento ) {
+            const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
+            const segmentoValido = getValidSegmentIndex( evento, segmentos.length );
+            const isEventTarget = null !== segmentoValido && segmentoValido === segmentIndex;
+            const canSelectEvent = evento && evento.tipo;
+            const eventButton = canSelectEvent
+                ? `
+                    <button type="button" class="button button-small wpss-segment__event ${ isEventTarget ? 'is-active' : '' }" data-action="segment-event-select" data-verse="${ verseIndex }" data-segment="${ segmentIndex }">
+                        ${ escapeHtml( isEventTarget ? ( data.strings.segmentEventSelected || 'Evento anclado (clic para quitar)' ) : ( data.strings.segmentEventSelect || 'Anclar evento aquí' ) ) }
+                    </button>
+                `
+                : '';
+
             return `
-                <div class="wpss-segment" data-verse="${ verseIndex }" data-segment="${ segmentIndex }">
+                <div class="wpss-segment ${ isEventTarget ? 'is-event-target' : '' }" data-verse="${ verseIndex }" data-segment="${ segmentIndex }">
                     <div class="wpss-segment__fields">
                         <label>
                             <span>Texto</span>
@@ -1723,6 +1848,7 @@
                         <button type="button" class="button button-small" data-action="segment-split" data-verse="${ verseIndex }" data-segment="${ segmentIndex }">${ escapeHtml( data.strings.segmentSplit || 'Dividir' ) }</button>
                         <button type="button" class="button button-link-delete" data-action="segment-remove" data-verse="${ verseIndex }" data-segment="${ segmentIndex }">${ escapeHtml( data.strings.camposRemove || 'Eliminar' ) }</button>
                     </div>
+                    ${ eventButton }
                 </div>
             `;
         }
@@ -1740,6 +1866,16 @@
             ` ).join( '' );
 
             let eventFields = '';
+            const segmentIndex = getValidSegmentIndex( evento, Array.isArray( verso.segmentos ) ? verso.segmentos.length : null );
+            const anchorInfo = evento && evento.tipo
+                ? `
+                    <p class="wpss-verse-event__hint">
+                        ${ escapeHtml( segmentIndex !== null
+                            ? ( data.strings.segmentEventLabel || 'Segmento' ) + ` ${ segmentIndex + 1 }`
+                            : data.strings.segmentEventHint || 'Selecciona un segmento para resaltar el evento.' ) }
+                    </p>
+                `
+                : '';
 
             if ( 'modulacion' === tipo ) {
                 const tonicaDestino = evento.tonica_destino || '';
@@ -1755,6 +1891,7 @@
                             <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="campo_armonico_destino" value="${ escapeAttr( campoDestino ) }" list="wpss-campos-armonicos" />
                         </label>
                     </div>
+                    ${ anchorInfo }
                 `;
             } else if ( 'prestamo' === tipo ) {
                 const tonicaOrigen = evento.tonica_origen || '';
@@ -1770,6 +1907,7 @@
                             <input type="text" data-action="verse-event-field" data-index="${ index }" data-field="campo_armonico_origen" value="${ escapeAttr( campoOrigen ) }" list="wpss-campos-armonicos" />
                         </label>
                     </div>
+                    ${ anchorInfo }
                 `;
             }
 
@@ -1937,7 +2075,7 @@
 
         function renderReadingVerse( verso ) {
             const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
-            const evento = renderEventoChip( verso.evento_armonico );
+            const evento = renderEventoChip( verso.evento_armonico, segmentos.length );
             const comentario = verso.comentario ? `<span class="wpss-reading__comment">${ escapeHtml( verso.comentario ) }</span>` : '';
             const metaContent = [ evento, comentario ].filter( Boolean ).join( ' ' );
             const meta = metaContent ? `<div class="wpss-reading__meta">${ metaContent }</div>` : '';
@@ -1955,11 +2093,17 @@
                 `;
             }
 
-            const partes = segmentos.map( ( segmento ) => {
+            const targetIndex = getValidSegmentIndex( verso.evento_armonico, segmentos.length );
+            const partes = segmentos.map( ( segmento, index ) => {
                 const acorde = segmento.acorde ? `<span class="wpss-reading__chord">[${ escapeHtml( segmento.acorde ) }]</span>` : '';
                 const texto = escapeHtml( segmento.texto || '' );
-                return `${ acorde } ${ texto }`;
-            } ).join( '' ).trim();
+                const classes = [ 'wpss-reading__segment' ];
+                if ( null !== targetIndex && targetIndex === index ) {
+                    classes.push( 'is-event-target' );
+                }
+                const content = [ acorde, texto ].filter( Boolean ).join( ' ' );
+                return `<span class="${ classes.join( ' ' ) }">${ content }</span>`;
+            } ).join( ' ' ).trim();
 
             return `
                 <li>
@@ -2070,19 +2214,27 @@
             return groups;
         }
 
-        function renderEventoChip( evento ) {
+        function renderEventoChip( evento, segmentCount = null ) {
             if ( ! evento || ! evento.tipo ) {
                 return '';
             }
 
+            let segmentBadge = '';
+            if ( Object.prototype.hasOwnProperty.call( evento, 'segment_index' ) ) {
+                const index = getValidSegmentIndex( evento, segmentCount );
+                if ( null !== index ) {
+                    segmentBadge = `<span class="wpss-event-chip__badge">${ escapeHtml( ( data.strings.segmentEventLabel || 'Segmento' ) + ' ' + ( index + 1 ) ) }</span>`;
+                }
+            }
+
             if ( 'modulacion' === evento.tipo ) {
                 const destino = [ evento.tonica_destino || '', evento.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
-                return `<span class="wpss-event-chip">Modulación → ${ escapeHtml( destino || '—' ) }</span>`;
+                return `<span class="wpss-event-chip">Modulación → ${ escapeHtml( destino || '—' ) }${ segmentBadge ? ` ${ segmentBadge }` : '' }</span>`;
             }
 
             if ( 'prestamo' === evento.tipo ) {
                 const origen = [ evento.tonica_origen || '', evento.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
-                return `<span class="wpss-event-chip">Préstamo ← ${ escapeHtml( origen || '—' ) }</span>`;
+                return `<span class="wpss-event-chip">Préstamo ← ${ escapeHtml( origen || '—' ) }${ segmentBadge ? ` ${ segmentBadge }` : '' }</span>`;
             }
 
             return '';
@@ -2093,14 +2245,19 @@
                 return '';
             }
 
+            const segmentIndex = getValidSegmentIndex( evento );
+            const segmentLabel = null !== segmentIndex
+                ? ` (${ ( data.strings.segmentEventLabel || 'Segmento' ) } ${ segmentIndex + 1 })`
+                : '';
+
             if ( 'modulacion' === evento.tipo ) {
                 const destino = [ evento.tonica_destino || '', evento.campo_armonico_destino || '' ].filter( Boolean ).join( ' ' );
-                return `Modulación → ${ destino || '—' }`;
+                return `Modulación → ${ destino || '—' }${ segmentLabel }`;
             }
 
             if ( 'prestamo' === evento.tipo ) {
                 const origen = [ evento.tonica_origen || '', evento.campo_armonico_origen || '' ].filter( Boolean ).join( ' ' );
-                return `Préstamo ← ${ origen || '—' }`;
+                return `Préstamo ← ${ origen || '—' }${ segmentLabel }`;
             }
 
             return '';
@@ -2250,6 +2407,9 @@
                 break;
             case 'segment-split':
                 splitSegment( parseInt( target.dataset.verse, 10 ), parseInt( target.dataset.segment, 10 ) );
+                break;
+            case 'segment-event-select':
+                toggleVerseEventSegment( parseInt( target.dataset.verse, 10 ), parseInt( target.dataset.segment, 10 ) );
                 break;
             case 'add-segment':
                 addSegment( parseInt( target.dataset.verse, 10 ) );
@@ -2629,7 +2789,11 @@
             }
 
             const clone = deepClone( verso.segmentos[ segmentIndex ] );
+            const current = getValidSegmentIndex( verso.evento_armonico, Array.isArray( verso.segmentos ) ? verso.segmentos.length : null );
             verso.segmentos.splice( segmentIndex + 1, 0, clone );
+            if ( verso.evento_armonico && null !== current && current > segmentIndex ) {
+                verso.evento_armonico.segment_index = current + 1;
+            }
             render();
         }
 
@@ -2639,10 +2803,26 @@
                 return;
             }
 
+            const current = getValidSegmentIndex( verso.evento_armonico, verso.segmentos.length );
             if ( verso.segmentos.length <= 1 ) {
                 verso.segmentos[ 0 ] = createEmptySegment();
             } else {
                 verso.segmentos.splice( segmentIndex, 1 );
+            }
+
+            if ( verso.evento_armonico && null !== current ) {
+                if ( current === segmentIndex ) {
+                    delete verso.evento_armonico.segment_index;
+                } else if ( current > segmentIndex ) {
+                    verso.evento_armonico.segment_index = current - 1;
+                }
+            }
+
+            if ( verso.evento_armonico ) {
+                const normalized = getValidSegmentIndex( verso.evento_armonico, verso.segmentos.length );
+                if ( Object.prototype.hasOwnProperty.call( verso.evento_armonico, 'segment_index' ) && null === normalized ) {
+                    delete verso.evento_armonico.segment_index;
+                }
             }
             render();
         }
@@ -2662,6 +2842,17 @@
             const temp = segmentos[ segmentIndex ];
             segmentos[ segmentIndex ] = segmentos[ target ];
             segmentos[ target ] = temp;
+
+            if ( verso.evento_armonico ) {
+                const current = getValidSegmentIndex( verso.evento_armonico, segmentos.length );
+                if ( null !== current ) {
+                    if ( current === segmentIndex ) {
+                        verso.evento_armonico.segment_index = target;
+                    } else if ( current === target ) {
+                        verso.evento_armonico.segment_index = segmentIndex;
+                    }
+                }
+            }
             render();
         }
 
@@ -2697,7 +2888,40 @@
                 acorde: segment.acorde,
             };
 
+            const current = getValidSegmentIndex( verso.evento_armonico, verso.segmentos.length );
             verso.segmentos.splice( segmentIndex + 1, 0, nuevo );
+            if ( verso.evento_armonico && null !== current && current > segmentIndex ) {
+                verso.evento_armonico.segment_index = current + 1;
+            }
+            render();
+        }
+
+        function toggleVerseEventSegment( verseIndex, segmentIndex ) {
+            if ( Number.isNaN( verseIndex ) || Number.isNaN( segmentIndex ) ) {
+                return;
+            }
+
+            const verso = state.editingSong.versos[ verseIndex ];
+            if ( ! verso || ! Array.isArray( verso.segmentos ) ) {
+                return;
+            }
+
+            if ( ! verso.evento_armonico || 'object' !== typeof verso.evento_armonico || ! verso.evento_armonico.tipo ) {
+                return;
+            }
+
+            const total = verso.segmentos.length;
+            if ( segmentIndex < 0 || segmentIndex >= total ) {
+                return;
+            }
+
+            const current = getValidSegmentIndex( verso.evento_armonico, total );
+            if ( null !== current && current === segmentIndex ) {
+                delete verso.evento_armonico.segment_index;
+            } else {
+                verso.evento_armonico.segment_index = segmentIndex;
+            }
+
             render();
         }
 
@@ -2734,6 +2958,13 @@
                     }
                     if ( previous.campo_armonico_origen ) {
                         next.campo_armonico_origen = previous.campo_armonico_origen;
+                    }
+                }
+                if ( Object.prototype.hasOwnProperty.call( previous, 'segment_index' ) ) {
+                    const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos.length : null;
+                    const index = getValidSegmentIndex( previous, segmentos );
+                    if ( null !== index ) {
+                        next.segment_index = index;
                     }
                 }
             }
@@ -2821,12 +3052,14 @@
                     } ) )
                     : [ createEmptySegment() ];
 
+                const evento = normalizeEventoArmonico( verso.evento_armonico || null, segmentos.length );
+
                 return {
                     id: verso.id || null,
                     orden: verso.orden || index + 1,
                     segmentos,
                     comentario: verso.comentario || '',
-                    evento_armonico: verso.evento_armonico || null,
+                    evento_armonico: evento,
                     section_id: verso.section_id ? String( verso.section_id ) : '',
                     fin_de_estrofa: !! verso.fin_de_estrofa,
                     nombre_estrofa: verso.nombre_estrofa ? String( verso.nombre_estrofa ).slice( 0, 64 ) : '',
@@ -2866,6 +3099,13 @@
                 return;
             }
 
+            const eventError = validateEventosArmonicos();
+            if ( eventError ) {
+                setError( eventError );
+                render();
+                return;
+            }
+
             state.saving = true;
             setFeedback( data.strings.saving || 'Guardando…', 'info' );
             render();
@@ -2882,15 +3122,20 @@
                 prestamos_cancion: song.prestamos,
                 modulaciones_cancion: song.modulaciones,
                 secciones: song.secciones,
-                versos: song.versos.map( ( verso ) => ( {
-                    orden: verso.orden,
-                    segmentos: verso.segmentos,
-                    comentario: verso.comentario,
-                    evento_armonico: verso.evento_armonico,
-                    section_id: verso.section_id || '',
-                    fin_de_estrofa: !! verso.fin_de_estrofa,
-                    nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
-                } ) ),
+                versos: song.versos.map( ( verso ) => {
+                    const segmentos = Array.isArray( verso.segmentos ) ? verso.segmentos : [];
+                    const evento = prepareEventoArmonicoForPayload( verso.evento_armonico, segmentos.length );
+
+                    return {
+                        orden: verso.orden,
+                        segmentos,
+                        comentario: verso.comentario,
+                        evento_armonico: evento,
+                        section_id: verso.section_id || '',
+                        fin_de_estrofa: !! verso.fin_de_estrofa,
+                        nombre_estrofa: verso.fin_de_estrofa ? ( verso.nombre_estrofa || '' ) : '',
+                    };
+                } ),
                 colecciones: Array.isArray( song.colecciones ) ? song.colecciones.map( ( item ) => item.id ) : [],
                 estructura: estructuraPayload,
                 estructura_personalizada: !! song.estructuraPersonalizada,
@@ -2950,6 +3195,49 @@
                     }
 
                     previousEmpty = textoVacio;
+                }
+            }
+
+            return null;
+        }
+
+        function validateEventosArmonicos() {
+            const versos = Array.isArray( state.editingSong.versos ) ? state.editingSong.versos : [];
+            if ( ! versos.length ) {
+                return null;
+            }
+
+            for ( const verso of versos ) {
+                const evento = verso && verso.evento_armonico && 'object' === typeof verso.evento_armonico
+                    ? verso.evento_armonico
+                    : null;
+
+                if ( ! evento || ! evento.tipo ) {
+                    continue;
+                }
+
+                if ( 'modulacion' === evento.tipo ) {
+                    const hasDestino = ( evento.tonica_destino && evento.tonica_destino.trim() )
+                        || ( evento.campo_armonico_destino && evento.campo_armonico_destino.trim() );
+                    if ( ! hasDestino ) {
+                        return data.strings.eventoDatosRequeridos
+                            || 'Completa la tónica o el campo armónico del evento antes de guardar.';
+                    }
+                } else if ( 'prestamo' === evento.tipo ) {
+                    const hasOrigen = ( evento.tonica_origen && evento.tonica_origen.trim() )
+                        || ( evento.campo_armonico_origen && evento.campo_armonico_origen.trim() );
+                    if ( ! hasOrigen ) {
+                        return data.strings.eventoDatosRequeridos
+                            || 'Completa la tónica o el campo armónico del evento antes de guardar.';
+                    }
+                }
+
+                if ( Array.isArray( verso.segmentos ) && verso.segmentos.length ) {
+                    const index = getValidSegmentIndex( evento, verso.segmentos.length );
+                    if ( Object.prototype.hasOwnProperty.call( evento, 'segment_index' ) && null === index ) {
+                        return data.strings.eventoSegmentoInvalido
+                            || 'Selecciona un segmento válido para el evento armónico.';
+                    }
                 }
             }
 
