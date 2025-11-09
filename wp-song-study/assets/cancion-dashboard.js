@@ -1408,22 +1408,6 @@
 
                     <div class="wpss-section">
                         <header>
-                            <h3>Préstamos tonales</h3>
-                            <button type="button" class="button button-secondary" data-action="add-prestamo">Añadir préstamo</button>
-                        </header>
-                        ${ renderPrestamos() }
-                    </div>
-
-                    <div class="wpss-section">
-                        <header>
-                            <h3>Modulaciones</h3>
-                            <button type="button" class="button button-secondary" data-action="add-modulacion">Añadir modulación</button>
-                        </header>
-                        ${ renderModulaciones() }
-                    </div>
-
-                    <div class="wpss-section">
-                        <header>
                             <h3>Secciones</h3>
                             <button type="button" class="button button-secondary" data-action="add-section">Añadir sección</button>
                         </header>
@@ -1573,70 +1557,6 @@
                             <button type="button" class="button button-secondary" data-action="collection-delete" ${ deleteDisabled }>${ collections.deleting ? escapeHtml( data.strings.saving || 'Guardando…' ) : escapeHtml( data.strings.collectionDelete || 'Eliminar colección' ) }</button>
                         </div>
                     </div>
-                </div>
-            `;
-        }
-
-        function renderPrestamos() {
-            const prestamos = state.editingSong.prestamos;
-            if ( ! prestamos.length ) {
-                return `<p class="wpss-empty">${ escapeHtml( data.strings.loansEmpty ) }</p>`;
-            }
-
-            return `
-                <div class="wpss-repeatable">
-                    ${ prestamos.map( ( prestamo, index ) => `
-                        <div class="wpss-card">
-                            <div class="wpss-card__header">
-                                <strong>Préstamo ${ index + 1 }</strong>
-                                <button type="button" class="button-link-delete" data-action="remove-prestamo" data-index="${ index }">${ escapeHtml( data.strings.camposRemove || 'Eliminar' ) }</button>
-                            </div>
-                            <div class="wpss-card__body">
-                                <label>
-                                    <span>Tonalidad / modo de origen</span>
-                                    <input type="text" data-model="prestamos" data-field="origen" data-index="${ index }" value="${ escapeAttr( prestamo.origen || '' ) }" />
-                                </label>
-                                <label>
-                                    <span>Acordes o notas prestadas</span>
-                                    <textarea data-model="prestamos" data-field="descripcion" data-index="${ index }">${ escapeHtml( prestamo.descripcion || '' ) }</textarea>
-                                </label>
-                                <label>
-                                    <span>Comentarios</span>
-                                    <textarea data-model="prestamos" data-field="notas" data-index="${ index }">${ escapeHtml( prestamo.notas || '' ) }</textarea>
-                                </label>
-                            </div>
-                        </div>
-                    ` ).join( '' ) }
-                </div>
-            `;
-        }
-
-        function renderModulaciones() {
-            const modulaciones = state.editingSong.modulaciones;
-            if ( ! modulaciones.length ) {
-                return `<p class="wpss-empty">${ escapeHtml( data.strings.modsEmpty ) }</p>`;
-            }
-
-            return `
-                <div class="wpss-repeatable">
-                    ${ modulaciones.map( ( modulacion, index ) => `
-                        <div class="wpss-card">
-                            <div class="wpss-card__header">
-                                <strong>Modulación ${ index + 1 }</strong>
-                                <button type="button" class="button-link-delete" data-action="remove-modulacion" data-index="${ index }">${ escapeHtml( data.strings.camposRemove || 'Eliminar' ) }</button>
-                            </div>
-                            <div class="wpss-card__body">
-                                <label>
-                                    <span>Sección</span>
-                                    <input type="text" data-model="modulaciones" data-field="seccion" data-index="${ index }" value="${ escapeAttr( modulacion.seccion || '' ) }" />
-                                </label>
-                                <label>
-                                    <span>Tonalidad destino</span>
-                                    <input type="text" data-model="modulaciones" data-field="destino" data-index="${ index }" value="${ escapeAttr( modulacion.destino || '' ) }" />
-                                </label>
-                            </div>
-                        </div>
-                    ` ).join( '' ) }
                 </div>
             `;
         }
@@ -2320,22 +2240,6 @@
             case 'save-song':
                 handleSaveSong();
                 break;
-            case 'add-prestamo':
-                state.editingSong.prestamos.push( { origen: '', descripcion: '', notas: '' } );
-                render();
-                break;
-            case 'remove-prestamo':
-                state.editingSong.prestamos.splice( parseInt( target.dataset.index, 10 ), 1 );
-                render();
-                break;
-            case 'add-modulacion':
-                state.editingSong.modulaciones.push( { seccion: '', destino: '' } );
-                render();
-                break;
-            case 'remove-modulacion':
-                state.editingSong.modulaciones.splice( parseInt( target.dataset.index, 10 ), 1 );
-                render();
-                break;
             case 'add-section':
                 addSection();
                 render();
@@ -2543,7 +2447,7 @@
 
             if ( 'general' === model ) {
                 state.editingSong[ field ] = value;
-            } else if ( 'prestamos' === model || 'modulaciones' === model || 'versos' === model ) {
+            } else if ( 'versos' === model ) {
                 const index = parseInt( event.target.dataset.index, 10 );
                 if ( Number.isNaN( index ) || ! state.editingSong[ model ][ index ] ) {
                     return;
