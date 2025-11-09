@@ -937,6 +937,12 @@ function wpss_sanitize_secciones_array( array $secciones ) {
     $ids_usados   = [];
 
     foreach ( $secciones as $index => $seccion ) {
+        if ( $seccion instanceof Traversable ) {
+            $seccion = iterator_to_array( $seccion );
+        } elseif ( is_object( $seccion ) ) {
+            $seccion = get_object_vars( $seccion );
+        }
+
         if ( ! is_array( $seccion ) ) {
             continue;
         }
@@ -982,6 +988,12 @@ function wpss_get_default_estructura( array $secciones ) {
     $estructura = [];
 
     foreach ( $secciones as $seccion ) {
+        if ( $seccion instanceof Traversable ) {
+            $seccion = iterator_to_array( $seccion );
+        } elseif ( is_object( $seccion ) ) {
+            $seccion = get_object_vars( $seccion );
+        }
+
         if ( ! is_array( $seccion ) ) {
             continue;
         }
