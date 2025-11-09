@@ -2228,6 +2228,10 @@
                 return;
             }
 
+            if ( 'INPUT' === target.tagName && 'checkbox' === target.type ) {
+                return;
+            }
+
             const action = target.dataset.action;
             event.preventDefault();
 
