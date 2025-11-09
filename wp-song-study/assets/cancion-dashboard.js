@@ -1593,7 +1593,6 @@
             const sections = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
             const estructura = Array.isArray( state.editingSong.estructura ) ? state.editingSong.estructura : [];
             const editable = !! state.editingSong.estructuraPersonalizada;
-            const toggleDisabled = sections.length ? '' : 'disabled';
             const toggleChecked = editable ? 'checked' : '';
             const addDisabled = ! editable || ! sections.length ? 'disabled' : '';
             const resetDisabled = editable ? '' : 'disabled';
@@ -1612,7 +1611,7 @@
                     </header>
                     <div class="wpss-structure__toggle">
                         <label class="wpss-toggle">
-                            <input type="checkbox" data-action="toggle-estructura-personalizada" ${ toggleChecked } ${ toggleDisabled } />
+                            <input type="checkbox" data-action="toggle-estructura-personalizada" ${ toggleChecked } />
                             <span>${ escapeHtml( data.strings.structureToggleLabel || 'Usar estructura personalizada' ) }</span>
                         </label>
                         <button type="button" class="button button-link" data-action="estructura-reset" ${ resetDisabled }>${ escapeHtml( data.strings.structureReset || 'Restablecer al orden por secciones' ) }</button>
