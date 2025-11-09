@@ -722,9 +722,49 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
  * @return array
  */
 function wpss_decode_json_meta( $value ) {
-    $decoded = json_decode( (string) $value, true );
+    if ( empty( $value ) ) {
+        return [];
+    }
 
-    return is_array( $decoded ) ? $decoded : [];
+    if ( is_array( $value ) ) {
+        return $value;
+    }
+
+    $candidates = [];
+
+    $maybe_add_candidate = static function ( $candidate ) use ( &$candidates ) {
+        if ( ! is_string( $candidate ) || '' === $candidate ) {
+            return;
+        }
+
+        $candidates[] = $candidate;
+
+        $unslashed = wp_unslash( $candidate );
+        if ( $unslashed !== $candidate ) {
+            $candidates[] = $unslashed;
+        }
+    };
+
+    $maybe_add_candidate( $value );
+
+    $maybe_unserialized = maybe_unserialize( $value );
+    if ( $maybe_unserialized !== $value ) {
+        if ( is_array( $maybe_unserialized ) ) {
+            return $maybe_unserialized;
+        }
+
+        $maybe_add_candidate( $maybe_unserialized );
+    }
+
+    foreach ( $candidates as $candidate ) {
+        $decoded = json_decode( $candidate, true );
+
+        if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+            return $decoded;
+        }
+    }
+
+    return [];
 }
 
 /**
