@@ -722,9 +722,68 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
  * @return array
  */
 function wpss_decode_json_meta( $value ) {
-    $decoded = json_decode( (string) $value, true );
+    if ( empty( $value ) ) {
+        return [];
+    }
 
-    return is_array( $decoded ) ? $decoded : [];
+    if ( is_array( $value ) ) {
+        return $value;
+    }
+
+    if ( is_object( $value ) ) {
+        $converted = json_decode( wp_json_encode( $value ), true );
+
+        return is_array( $converted ) ? $converted : [];
+    }
+
+    $candidates = [];
+
+    if ( is_string( $value ) ) {
+        $candidates[] = $value;
+    }
+
+    $maybe_unserialized = maybe_unserialize( $value );
+    if ( $maybe_unserialized !== $value ) {
+        if ( is_array( $maybe_unserialized ) ) {
+            return $maybe_unserialized;
+        }
+
+        if ( is_string( $maybe_unserialized ) ) {
+            $candidates[] = $maybe_unserialized;
+        }
+    }
+
+    $unslashed = is_string( $value ) ? wp_unslash( $value ) : $value;
+    if ( $unslashed !== $value ) {
+        if ( is_array( $unslashed ) ) {
+            return $unslashed;
+        }
+
+        if ( is_string( $unslashed ) ) {
+            $candidates[] = $unslashed;
+        }
+    }
+
+    foreach ( $candidates as $candidate ) {
+        if ( ! is_string( $candidate ) ) {
+            continue;
+        }
+
+        $decoded = json_decode( $candidate, true );
+        if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+            return $decoded;
+        }
+
+        $maybe_unslashed = wp_unslash( $candidate );
+        if ( $maybe_unslashed !== $candidate ) {
+            $decoded = json_decode( $maybe_unslashed, true );
+            if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+                return $decoded;
+            }
+        }
+    }
+
+    return [];
 }
 
 /**

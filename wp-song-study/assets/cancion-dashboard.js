@@ -467,7 +467,7 @@
         }
 
         function normalizeEventoArmonico( evento, segmentCount ) {
-            if ( ! evento || 'object' !== typeof evento ) {
+            if ( ! evento || 'object' !== typeof evento || Array.isArray( evento ) ) {
                 return null;
             }
 
@@ -3052,7 +3052,16 @@
                     } ) )
                     : [ createEmptySegment() ];
 
-                const evento = normalizeEventoArmonico( verso.evento_armonico || null, segmentos.length );
+                let rawEvento = verso.evento_armonico || null;
+                if ( 'string' === typeof rawEvento ) {
+                    try {
+                        rawEvento = JSON.parse( rawEvento );
+                    } catch ( error ) {
+                        rawEvento = null;
+                    }
+                }
+
+                const evento = normalizeEventoArmonico( rawEvento, segmentos.length );
 
                 return {
                     id: verso.id || null,
