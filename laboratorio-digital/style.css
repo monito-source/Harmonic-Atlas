@@ -1,0 +1,329 @@
+/*
+Theme Name: Laboratorio Digital
+Theme URI: https://tusitio.local/
+Author: Sergio Mendoza
+Description: Tema base minimalista para desarrollo progresivo.
+Version: 1.0
+License: GPL-2.0+
+Text Domain: laboratorio-digital
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Libre Baskerville', serif;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: #2c3e50;
+  background-color: #ecf0f1;
+}
+
+/* Contenedor general del contenido */
+.container {
+  max-width: 90%;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* =======================
+   HEADER
+======================= */
+
+/* Header completo */
+.site-header {
+  background: #2c3e50;
+  color: #ecf0f1;
+  padding: 3rem 10%; /* Altura natural con margen vertical */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  transition: all 0.5s ease;
+}
+
+/* Contenedor interno del header */
+.header-inner {
+  width: 100%;
+  text-align: center;
+  transition: all 0.5s ease;
+}
+
+/* Título en modo expandido */
+.site-title a {
+  color: inherit;           /* Usa el color del padre */
+  text-decoration: none;    /* Quita subrayado */
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.site-title a:hover {
+  transform: scale(1.02);   /* Ligerísimo efecto al pasar */
+  opacity: 0.9;
+}
+
+/* Evitar que el link se vea como "visitado" */
+.site-title a:visited {
+  color: inherit;
+}
+
+/* Efectos al hacer scroll */
+body.scrolled .site-header {
+  height: fit-content;
+  padding: 0.8rem 10%;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+body.scrolled .header-inner {
+  text-align: left;
+}
+
+body.scrolled .site-title {
+  font-size: 1.5rem;
+}
+
+body.scrolled .site-title .linea-1::after {
+  content: ' Digital';
+  display: inline;
+}
+
+body.scrolled .site-title .linea-2 {
+  display: none;
+}
+
+/* =======================
+   NAVEGACIÓN (si se activa)
+======================= */
+
+.main-navigation {
+  margin-top: 0.5rem;
+}
+
+.main-navigation .menu li {
+  display: inline-block;
+  margin-right: 1rem;
+}
+
+.main-navigation .menu a {
+  color: #ecf0f1;
+  text-decoration: none;
+}
+
+/* =======================
+   MAIN
+======================= */
+
+main {
+  background: #ecf0f1;
+  padding: 1rem;
+}
+
+.site-main {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* =======================
+   FOOTER
+======================= */
+
+footer {
+  background: #34495e;
+  color: #bdc3c7;
+  text-align: center;
+  padding: 1rem;
+  margin-top: 2rem;
+}
+
+/* =======================
+   article
+======================= */
+article {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* =======================
+   Public Reader (Canciones)
+======================= */
+.wpss-public-reader .wpss-public-reader__layout {
+  background: #ecf0f1;
+  gap: 28px;
+}
+
+.wpss-public-reader .wpss-panel {
+  border-radius: 12px;
+  border-color: #e0e0e0;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+
+.wpss-public-reader .wpss-panel__header h1 {
+  font-size: 2rem;
+  color: #235b9b;
+}
+
+.wpss-public-reader .wpss-filters {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+
+.wpss-public-reader .wpss-filters label {
+  display: grid;
+  gap: 6px;
+}
+
+.wpss-public-reader .wpss-filters select {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+}
+
+.wpss-public-reader .wpss-public-reader__songs {
+  gap: 10px;
+}
+
+.wpss-public-reader .wpss-public-reader__song {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.wpss-public-reader .wpss-public-reader__song:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.wpss-public-reader .wpss-reading__header h3 {
+  font-size: 2rem;
+  color: #235b9b;
+}
+
+.wpss-public-reader .wpss-reading__actions .button {
+  border-radius: 6px;
+}
+
+.wpss-public-reader .wpss-reading__sections {
+  gap: 28px;
+}
+
+.wpss-public-reader .wpss-reading__section {
+  border-top: 1px dashed #d4d4d4;
+}
+
+.wpss-public-reader .wpss-reading__stack {
+  background: #f0f3f6;
+  border: 1px solid #e0e0e0;
+}
+
+@media (max-width: 1024px) {
+  .site-main {
+    max-width: 94%;
+  }
+
+  .wpss-public-reader .wpss-reading__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .wpss-public-reader .wpss-reading__actions {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .wpss-public-reader .wpss-panel__header h1,
+  .wpss-public-reader .wpss-reading__header h3 {
+    font-size: 1.6rem;
+  }
+
+  .wpss-public-reader .wpss-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+article:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+article h2 {
+  font-size: 2.4rem; /* antes 2rem */
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #235b9b;
+  transition: color 0.3s ease;
+}
+
+article h2 a {
+  text-decoration: none;
+  color: inherit;
+}
+
+article h2 a:hover {
+  color: #0c59cf;
+}
+
+article div {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #333;
+}
+
+/*//////////////////*/
+/* Navegación */
+/*//////////////////*/
+
+.main-navigation {
+  margin-top: 1rem;
+  transition: all 0.5s ease;
+}
+
+.menu {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+}
+
+.menu li {
+  display: inline;
+}
+
+.menu a {
+  color: #ecf0f1;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 1.1rem;
+  transition: color 0.3s ease;
+}
+
+.menu a:hover {
+  color: #0c59cf;
+}
+
+/* Menú reducido al hacer scroll */
+body.scrolled .main-navigation {
+  justify-content: flex-start;
+  margin-top: 0.2rem;
+}
+
+body.scrolled .menu {
+  justify-content: flex-start;
+  gap: 1rem;
+}

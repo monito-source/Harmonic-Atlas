@@ -142,6 +142,39 @@ Payload esperado al guardar:
 * SPA administrativa (`assets/cancion-dashboard.js` + `.css`) que consume los endpoints internos y opera con nonces localizados.
 * Código internacionalizable (`Text Domain: wp-song-study`).
 
+### Frontend React + Vite (en migración)
+
+La nueva interfaz se está migrando a React con Vite y vive en `wp-song-study/assets/admin-app`. Por ahora el bundle React monta el SPA legacy dentro del contenedor, así mantenemos la funcionalidad mientras se migran las vistas a componentes React.
+
+Pasos rápidos:
+
+```bash
+cd wp-song-study/assets/admin-app
+npm install
+npm run dev
+```
+
+Luego define el dev server en `wp-config.php` para activar HMR:
+
+```php
+define( 'WPSS_REACT_DEV_SERVER', 'http://localhost:5173' );
+```
+
+Para usar el build compilado:
+
+```bash
+cd wp-song-study/assets/admin-app
+npm run build
+```
+
+Y activa el bundle compilado en `wp-config.php`:
+
+```php
+define( 'WPSS_USE_REACT', true );
+```
+
+El build genera `wp-song-study/assets/admin-build/manifest.json` y WordPress lo usa para encolar los assets. Si `WPSS_USE_REACT` no está activo o el manifest no existe, se mantiene la SPA legacy.
+
 ## Pruebas manuales sugeridas
 
 1. Abrir **Cancionario Armónico > Dashboard / Biblioteca** y verificar que la lista cargue con filtros y paginación.

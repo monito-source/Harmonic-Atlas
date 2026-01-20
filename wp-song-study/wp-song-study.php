@@ -25,6 +25,10 @@ if ( ! defined( 'WPSS_VERSION' ) ) {
     define( 'WPSS_VERSION', '0.1.0' );
 }
 
+if ( ! defined( 'WPSS_USE_REACT' ) ) {
+    define( 'WPSS_USE_REACT', (bool) apply_filters( 'wpss_use_react', true ) );
+}
+
 /**
  * Carga el archivo de traducciones.
  */
@@ -52,12 +56,16 @@ function wpss_register_content_types() {
     wpss_register_cpt_verso();
 }
 add_action( 'init', 'wpss_register_content_types' );
+add_action( 'init', 'wpss_ensure_public_reader_page' );
 
 /**
  * Ejecuta tareas de activación.
  */
 function wpss_activate_plugin() {
     wpss_register_content_types();
+    if ( function_exists( 'wpss_ensure_public_reader_page' ) ) {
+        wpss_ensure_public_reader_page();
+    }
     flush_rewrite_rules();
 }
 register_activation_hook( __FILE__, 'wpss_activate_plugin' );

@@ -10,6 +10,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 add_action( 'rest_api_init', 'wpss_register_rest_routes' );
+add_filter( 'rest_authentication_errors', 'wpss_allow_public_rest', 0 );
+add_filter( 'rest_authentication_errors', 'wpss_allow_public_rest_late', 999 );
 
 /**
  * Registra las rutas personalizadas del plugin.
@@ -67,6 +69,45 @@ function wpss_register_rest_routes() {
                     'validate_callback' => 'wpss_validate_positive_id',
                 ],
             ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/public/canciones',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_canciones',
+            'permission_callback' => '__return_true',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/public/cancion/(?P<id>\d+)',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_cancion_public',
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID de la canción.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/public/colecciones',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_colecciones',
+            'permission_callback' => '__return_true',
         ]
     );
 
@@ -181,6 +222,31 @@ function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     }
 
     return true;
+}
+
+/**
+ * Permite acceso publico a rutas wpss/v1/public incluso si otros filtros bloquean REST.
+ *
+ * @param WP_Error|mixed $result Resultado previo de autenticacion.
+ * @return WP_Error|mixed|null
+ */
+function wpss_allow_public_rest( $result ) {
+    $uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) $_SERVER['REQUEST_URI'] : '';
+    if ( false !== strpos( $uri, '/wp-json/wpss/v1/public/' ) ) {
+        return null;
+    }
+
+    return $result;
+}
+
+/**
+ * Reintenta abrir rutas publicas aunque otro filtro falle mas tarde.
+ *
+ * @param WP_Error|mixed $result Resultado previo de autenticacion.
+ * @return WP_Error|mixed|null
+ */
+function wpss_allow_public_rest_late( $result ) {
+    return wpss_allow_public_rest( $result );
 }
 
 /**
@@ -525,6 +591,27 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
 }
 
 /**
+ * Devuelve una canción publicada para consumo público.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_get_cancion_public( WP_REST_Request $request ) {
+    $post_id = (int) $request->get_param( 'id' );
+    $post    = get_post( $post_id );
+
+    if ( ! $post || 'cancion' !== $post->post_type || 'publish' !== $post->post_status ) {
+        return new WP_Error(
+            'wpss_not_found',
+            __( 'Canción no encontrada.', 'wp-song-study' ),
+            [ 'status' => 404 ]
+        );
+    }
+
+    return wpss_rest_get_cancion( $request );
+}
+
+/**
  * Guarda una canción y sus datos relacionados de forma atómica.
  *
  * @param WP_REST_Request $request Solicitud entrante.
@@ -578,6 +665,53 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     $secciones_input = isset( $params['secciones'] ) ? (array) $params['secciones'] : [];
     $secciones       = wpss_sanitize_secciones_array( $secciones_input );
+
+    $input_name_map = [];
+    foreach ( $secciones_input as $seccion_input ) {
+        if ( $seccion_input instanceof Traversable ) {
+            $seccion_input = iterator_to_array( $seccion_input );
+        } elseif ( is_object( $seccion_input ) ) {
+            $seccion_input = get_object_vars( $seccion_input );
+        }
+
+        if ( ! is_array( $seccion_input ) ) {
+            continue;
+        }
+
+        $input_id = isset( $seccion_input['id'] ) ? sanitize_key( $seccion_input['id'] ) : '';
+        if ( '' === $input_id ) {
+            continue;
+        }
+
+        $input_name = isset( $seccion_input['nombre'] ) ? trim( sanitize_text_field( $seccion_input['nombre'] ) ) : '';
+        $input_name_map[ $input_id ] = $input_name;
+    }
+
+    if ( $id ) {
+        $prev_sections = wpss_sanitize_secciones_array(
+            wpss_decode_json_meta( get_post_meta( $id, '_secciones_json', true ) )
+        );
+        $prev_name_map = [];
+        foreach ( $prev_sections as $prev ) {
+            if ( ! empty( $prev['id'] ) && ! empty( $prev['nombre'] ) ) {
+                $prev_name_map[ $prev['id'] ] = $prev['nombre'];
+            }
+        }
+
+        if ( $prev_name_map ) {
+            foreach ( $secciones as &$seccion ) {
+                if ( empty( $seccion['id'] ) ) {
+                    continue;
+                }
+
+                $incoming_name = isset( $input_name_map[ $seccion['id'] ] ) ? $input_name_map[ $seccion['id'] ] : '';
+                if ( '' === $incoming_name && isset( $prev_name_map[ $seccion['id'] ] ) ) {
+                    $seccion['nombre'] = $prev_name_map[ $seccion['id'] ];
+                }
+            }
+            unset( $seccion );
+        }
+    }
     $section_ids     = wp_list_pluck( $secciones, 'id' );
 
     $estructura_input = [];
@@ -624,6 +758,17 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $versos = wpss_apply_legacy_stanza_markers( $versos, $secciones );
 
     $versos = wpss_normalize_versos_order( $versos );
+
+    if ( $id ) {
+        $existing_post = get_post( $id );
+        if ( ! $existing_post || 'cancion' !== $existing_post->post_type ) {
+            return new WP_REST_Response( [ 'message' => __( 'Canción no encontrada.', 'wp-song-study' ) ], 404 );
+        }
+
+        if ( ! current_user_can( 'edit_post', $id ) ) {
+            return new WP_REST_Response( [ 'message' => __( 'No tienes permisos para editar esta canción.', 'wp-song-study' ) ], 403 );
+        }
+    }
 
     $postarr = [
         'post_type'   => 'cancion',

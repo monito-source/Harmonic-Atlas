@@ -1,0 +1,191 @@
+import { useMemo, useRef, useState } from 'react'
+import { generateSectionId, getDefaultSectionName } from '../utils.js'
+
+export default function SectionsPanel({
+  sections,
+  selectedSectionId,
+  verses,
+  onSelect,
+  onChange,
+  onDuplicate,
+}) {
+  const safeSections = Array.isArray(sections) ? sections : []
+  const counts = useMemo(() => {
+    const map = new Map()
+    if (Array.isArray(verses)) {
+      verses.forEach((verse) => {
+        const id = verse.section_id || ''
+        map.set(id, (map.get(id) || 0) + 1)
+      })
+    }
+    return map
+  }, [verses])
+
+  const [draggingIndex, setDraggingIndex] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
+  const draggingRef = useRef(null)
+  const dragOverRef = useRef(null)
+
+  if (!safeSections.length) {
+    return <p className="wpss-empty">Sin secciones registradas.</p>
+  }
+
+  const moveSectionTo = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+      return
+    }
+    if (fromIndex >= safeSections.length || toIndex >= safeSections.length) {
+      return
+    }
+
+    const next = [...safeSections]
+    const [moved] = next.splice(fromIndex, 1)
+    const target = fromIndex < toIndex ? toIndex - 1 : toIndex
+    next.splice(target, 0, moved)
+    onChange(next)
+  }
+
+  const handleDuplicate = (index) => {
+    if (onDuplicate) {
+      onDuplicate(index)
+      return
+    }
+
+    const section = safeSections[index]
+    if (!section) return
+
+    const baseName = section.nombre || getDefaultSectionName(index)
+    const nextSection = {
+      id: generateSectionId(),
+      nombre: `${baseName} copia`.slice(0, 64),
+    }
+
+    const next = [...safeSections]
+    next.splice(index + 1, 0, nextSection)
+    onChange(next)
+    if (onSelect) {
+      onSelect(nextSection.id)
+    }
+  }
+
+  const handleRemove = (index) => {
+    if (safeSections.length <= 1) return
+    const next = [...safeSections]
+    next.splice(index, 1)
+    onChange(next)
+  }
+
+  return (
+    <div className="wpss-sections-manager">
+      {safeSections.map((section, index) => {
+        const isActive = selectedSectionId === section.id
+        const isDragging = draggingIndex === index
+        const isDragOver = dragOverIndex === index && draggingIndex !== null
+
+        return (
+          <div
+            key={section.id}
+            className={`wpss-section-row ${isActive ? 'is-active' : ''} ${
+              isDragging ? 'is-dragging' : ''
+            } ${isDragOver ? 'is-dragover' : ''}`}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDragOverIndex(index)
+              dragOverRef.current = index
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              let fromIndex = draggingIndex
+              if (event.dataTransfer) {
+                const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                if (!Number.isNaN(payload)) {
+                  fromIndex = payload
+                }
+              }
+              if (fromIndex === null) return
+              moveSectionTo(fromIndex, index)
+              setDraggingIndex(null)
+              setDragOverIndex(null)
+              draggingRef.current = null
+              dragOverRef.current = null
+            }}
+            onDragLeave={() => {
+              if (dragOverIndex === index) {
+                setDragOverIndex(null)
+                dragOverRef.current = null
+              }
+            }}
+          >
+            <div className="wpss-section-row__header">
+              <span
+                className={`wpss-drag-handle ${isDragging ? 'is-dragging' : ''}`}
+                draggable
+                aria-label="Mover sección"
+                title="Mover sección"
+                onDragStart={(event) => {
+                  if (event.dataTransfer) {
+                    event.dataTransfer.setData('text/plain', String(index))
+                  }
+                  event.dataTransfer.effectAllowed = 'move'
+                  setDraggingIndex(index)
+                  draggingRef.current = index
+                }}
+                onDragEnd={() => {
+                  const fromIndex = draggingRef.current
+                  const toIndex = dragOverRef.current
+                  if (fromIndex !== null && toIndex !== null) {
+                    moveSectionTo(fromIndex, toIndex)
+                  }
+                  setDraggingIndex(null)
+                  setDragOverIndex(null)
+                  draggingRef.current = null
+                  dragOverRef.current = null
+                }}
+              >
+                ☰
+              </span>
+              <button
+                type="button"
+                className="wpss-section-row__select"
+                onClick={() => onSelect && onSelect(section.id)}
+              >
+                {section.nombre || getDefaultSectionName(index)}
+              </button>
+              <span className="wpss-section-row__count">{counts.get(section.id) || 0} versos</span>
+              <div className="wpss-section-row__actions">
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={() => handleDuplicate(index)}
+                >
+                  Duplicar
+                </button>
+                <button
+                  type="button"
+                  className="button button-link-delete"
+                  onClick={() => handleRemove(index)}
+                  disabled={safeSections.length <= 1}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+            <label>
+              <span>Nombre</span>
+              <input
+                type="text"
+                value={section.nombre || ''}
+                maxLength={64}
+                onChange={(event) => {
+                  const next = [...safeSections]
+                  next[index] = { ...section, nombre: event.target.value.slice(0, 64) }
+                  onChange(next)
+                }}
+              />
+            </label>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

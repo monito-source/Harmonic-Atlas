@@ -87,22 +87,33 @@ function wpss_enqueue_admin_assets( $hook ) {
         return;
     }
 
-    $script_path = WPSS_PATH . 'assets/cancion-dashboard.js';
-    $style_path  = WPSS_PATH . 'assets/cancion-dashboard.css';
+    $localized_data = wpss_get_admin_localized_data();
 
-    $script_url = WPSS_URL . 'assets/cancion-dashboard.js';
-    $style_url  = WPSS_URL . 'assets/cancion-dashboard.css';
-
-    $version = file_exists( $script_path ) ? filemtime( $script_path ) : wpss_get_asset_version_fallback();
-    $deps    = [ 'wp-api-fetch' ];
-
-    wp_enqueue_script( 'wpss-cancion-dashboard', $script_url, $deps, $version, true );
-
-    if ( file_exists( $style_path ) ) {
-        $style_version = filemtime( $style_path );
-        wp_enqueue_style( 'wpss-cancion-dashboard', $style_url, [], $style_version );
+    $dev_server = defined( 'WPSS_REACT_DEV_SERVER' ) ? (string) WPSS_REACT_DEV_SERVER : '';
+    $react_handle = wpss_enqueue_react_assets( $dev_server );
+    if ( $react_handle ) {
+        $localized_data['useReactNative'] = true;
+        wp_localize_script( $react_handle, 'WPSS', $localized_data );
     }
+}
 
+if ( ! function_exists( 'wpss_get_asset_version_fallback' ) ) {
+    /**
+     * Obtiene una versión de respaldo para assets cuando no existe el archivo físico.
+     *
+     * @return string
+     */
+    function wpss_get_asset_version_fallback() {
+        return defined( 'WPSS_VERSION' ) ? WPSS_VERSION : '1.0.0';
+    }
+}
+
+/**
+ * Devuelve la informacion localizable para la SPA de administracion.
+ *
+ * @return array
+ */
+function wpss_get_admin_localized_data() {
     $tonicas = [
         'C',
         'C#',
@@ -138,7 +149,7 @@ function wpss_enqueue_admin_assets( $hook ) {
         )
     );
 
-    $localized_data = [
+    return [
         'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'wpRestNonce'  => wp_create_nonce( 'wp_rest' ),
         'wpssNonce'    => wp_create_nonce( 'wpss' ),
@@ -218,42 +229,84 @@ function wpss_enqueue_admin_assets( $hook ) {
             'readingModeInline' => __( 'Acordes inline', 'wp-song-study' ),
             'readingModeStacked' => __( 'Acordes arriba', 'wp-song-study' ),
             'readingPrev'      => __( 'Anterior', 'wp-song-study' ),
-        'readingProgress'  => __( 'Canción', 'wp-song-study' ),
-        'readingNext'      => __( 'Siguiente', 'wp-song-study' ),
-        'readingExit'      => __( 'Salir', 'wp-song-study' ),
-        'segmentRequired'  => __( 'Cada verso necesita al menos un segmento con texto o acorde.', 'wp-song-study' ),
-        'segmentConsecutive' => __( 'No se permiten segmentos consecutivos sin texto.', 'wp-song-study' ),
-        'camposSlugRequired' => __( 'Cada modo necesita un identificador (slug).', 'wp-song-study' ),
-        'sectionsEmpty'    => __( 'Sin secciones registradas.', 'wp-song-study' ),
-        'structureTitle'   => __( 'Estructura', 'wp-song-study' ),
-        'structureToggleLabel' => __( 'Usar estructura personalizada', 'wp-song-study' ),
-        'structureAddCall' => __( 'Añadir llamada', 'wp-song-study' ),
-        'structureDuplicateCall' => __( 'Duplicar', 'wp-song-study' ),
-        'structureRemoveCall' => __( 'Eliminar', 'wp-song-study' ),
-        'structureMoveUp'  => __( 'Subir', 'wp-song-study' ),
-        'structureMoveDown' => __( 'Bajar', 'wp-song-study' ),
-        'structureEmpty'   => __( 'Aún no hay llamadas registradas.', 'wp-song-study' ),
-        'structureVariantLabel' => __( 'Variante', 'wp-song-study' ),
-        'structureNotesLabel' => __( 'Notas', 'wp-song-study' ),
-        'structureSelectLabel' => __( 'Sección', 'wp-song-study' ),
-        'structureReset'   => __( 'Restablecer al orden por secciones', 'wp-song-study' ),
-        'structurePreviewLabel' => __( 'Resumen', 'wp-song-study' ),
-        'readingFollowStructure' => __( 'Seguir estructura', 'wp-song-study' ),
-        'readingFollowSections' => __( 'Ordenar por secciones', 'wp-song-study' ),
-        'structureNotesPrefix' => __( 'Notas', 'wp-song-study' ),
-    ],
+            'readingProgress'  => __( 'Canción', 'wp-song-study' ),
+            'readingNext'      => __( 'Siguiente', 'wp-song-study' ),
+            'readingExit'      => __( 'Salir', 'wp-song-study' ),
+            'segmentRequired'  => __( 'Cada verso necesita al menos un segmento con texto o acorde.', 'wp-song-study' ),
+            'segmentConsecutive' => __( 'No se permiten segmentos consecutivos sin texto.', 'wp-song-study' ),
+            'camposSlugRequired' => __( 'Cada modo necesita un identificador (slug).', 'wp-song-study' ),
+            'sectionsEmpty'    => __( 'Sin secciones registradas.', 'wp-song-study' ),
+            'structureTitle'   => __( 'Estructura', 'wp-song-study' ),
+            'structureToggleLabel' => __( 'Usar estructura personalizada', 'wp-song-study' ),
+            'structureAddCall' => __( 'Añadir llamada', 'wp-song-study' ),
+            'structureDuplicateCall' => __( 'Duplicar', 'wp-song-study' ),
+            'structureRemoveCall' => __( 'Eliminar', 'wp-song-study' ),
+            'structureMoveUp'  => __( 'Subir', 'wp-song-study' ),
+            'structureMoveDown' => __( 'Bajar', 'wp-song-study' ),
+            'structureEmpty'   => __( 'Aún no hay llamadas registradas.', 'wp-song-study' ),
+            'structureVariantLabel' => __( 'Variante', 'wp-song-study' ),
+            'structureNotesLabel' => __( 'Notas', 'wp-song-study' ),
+            'structureSelectLabel' => __( 'Sección', 'wp-song-study' ),
+            'structureReset'   => __( 'Restablecer al orden por secciones', 'wp-song-study' ),
+            'structurePreviewLabel' => __( 'Resumen', 'wp-song-study' ),
+            'readingFollowStructure' => __( 'Seguir estructura', 'wp-song-study' ),
+            'readingFollowSections' => __( 'Ordenar por secciones', 'wp-song-study' ),
+            'structureNotesPrefix' => __( 'Notas', 'wp-song-study' ),
+        ],
     ];
-
-    wp_localize_script( 'wpss-cancion-dashboard', 'WPSS', $localized_data );
 }
 
-if ( ! function_exists( 'wpss_get_asset_version_fallback' ) ) {
-    /**
-     * Obtiene una versión de respaldo para assets cuando no existe el archivo físico.
-     *
-     * @return string
-     */
-    function wpss_get_asset_version_fallback() {
-        return defined( 'WPSS_VERSION' ) ? WPSS_VERSION : '1.0.0';
+/**
+ * Encola assets compilados con Vite o desde un dev server.
+ *
+ * @param string $dev_server URL del dev server de Vite.
+ * @return string|false Handle del script principal o false si falla.
+ */
+function wpss_enqueue_react_assets( $dev_server = '' ) {
+    $dev_server = trim( $dev_server );
+
+    if ( '' !== $dev_server ) {
+        $dev_server = untrailingslashit( $dev_server );
+
+        wp_enqueue_script( 'wpss-react-vite', $dev_server . '/@vite/client', [], null, true );
+        wp_script_add_data( 'wpss-react-vite', 'type', 'module' );
+
+        wp_enqueue_script( 'wpss-react-app', $dev_server . '/src/main.jsx', [], null, true );
+        wp_script_add_data( 'wpss-react-app', 'type', 'module' );
+
+        return 'wpss-react-app';
     }
+
+    $manifest_path = WPSS_PATH . 'assets/admin-build/manifest.json';
+    if ( ! file_exists( $manifest_path ) ) {
+        $manifest_path = WPSS_PATH . 'assets/admin-build/.vite/manifest.json';
+    }
+    if ( ! file_exists( $manifest_path ) ) {
+        return false;
+    }
+
+    $manifest = json_decode( file_get_contents( $manifest_path ), true );
+    if ( empty( $manifest ) || ! is_array( $manifest ) ) {
+        return false;
+    }
+
+    $entry = isset( $manifest['index.html'] ) ? $manifest['index.html'] : null;
+    if ( empty( $entry['file'] ) ) {
+        return false;
+    }
+
+    $base_url = WPSS_URL . 'assets/admin-build/';
+    $version  = filemtime( $manifest_path );
+
+    wp_enqueue_script( 'wpss-react-app', $base_url . $entry['file'], [], $version, true );
+    wp_script_add_data( 'wpss-react-app', 'type', 'module' );
+
+    if ( ! empty( $entry['css'] ) && is_array( $entry['css'] ) ) {
+        foreach ( $entry['css'] as $index => $css_file ) {
+            $handle = sprintf( 'wpss-react-style-%d', $index );
+            wp_enqueue_style( $handle, $base_url . $css_file, [], $version );
+        }
+    }
+
+    return 'wpss-react-app';
 }

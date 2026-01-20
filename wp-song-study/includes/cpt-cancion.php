@@ -56,10 +56,10 @@ function wpss_register_cpt_cancion() {
         'public'             => true,
         'show_in_rest'       => true,
         'supports'           => [ 'title' ],
-        'has_archive'        => true,
+        'has_archive'        => false,
         'menu_icon'          => 'dashicons-album',
         'taxonomies'         => [ 'tonalidad' ],
-        'rewrite'            => [ 'slug' => 'canciones' ],
+        'rewrite'            => [ 'slug' => 'cancion' ],
     ];
 
     register_post_type( 'cancion', $args );

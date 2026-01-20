@@ -11,6 +11,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 add_shortcode( 'songs_by_key', 'wpss_shortcode_songs_by_key' );
 add_shortcode( 'song', 'wpss_shortcode_song' );
+add_shortcode( 'wpss_public_reader', 'wpss_shortcode_public_reader' );
+
+add_action( 'wp_enqueue_scripts', 'wpss_register_public_reader_assets' );
+add_filter( 'the_content', 'wpss_inject_public_reader_shortcode', 9 );
 
 /**
  * Renderiza un listado de canciones filtradas por tonalidad.
@@ -206,4 +210,180 @@ function wpss_shortcode_song( $atts ) {
     $html .= '</div>';
 
     return $html;
+}
+
+/**
+ * Registro diferido de assets para el lector público.
+ */
+function wpss_register_public_reader_assets() {
+    if ( ! is_singular() ) {
+        return;
+    }
+
+    $post_id = 0;
+    $has_shortcode = false;
+
+    global $post;
+    if ( $post ) {
+        $post_id = (int) $post->ID;
+        if ( false !== strpos( (string) $post->post_content, '[wpss_public_reader' ) ) {
+            $has_shortcode = true;
+        }
+    }
+
+    $page_id = (int) get_option( 'wpss_public_reader_page_id' );
+    if ( $page_id && is_page( $page_id ) ) {
+        $has_shortcode = true;
+    } elseif ( is_page( 'canciones' ) ) {
+        $has_shortcode = true;
+    }
+
+    if ( ! $has_shortcode ) {
+        return;
+    }
+
+    $localized_data = wpss_get_public_localized_data();
+    $react_handle   = wpss_enqueue_react_assets();
+
+    if ( $react_handle ) {
+        wp_localize_script( $react_handle, 'WPSS', $localized_data );
+    }
+}
+
+/**
+ * Renderiza el contenedor del lector público.
+ *
+ * @return string
+ */
+function wpss_shortcode_public_reader() {
+    return '<div id="wpss-cancion-app" class="wpss-cancion-app wpss-public-reader" data-view="public"></div>';
+}
+
+/**
+ * Inyecta el shortcode en la pagina publica si el contenido esta vacio.
+ *
+ * @param string $content Contenido original.
+ * @return string
+ */
+function wpss_inject_public_reader_shortcode( $content ) {
+    if ( ! is_singular( 'page' ) ) {
+        return $content;
+    }
+
+    $page_id = (int) get_option( 'wpss_public_reader_page_id' );
+
+    if ( $page_id && is_page( $page_id ) ) {
+        return wpss_shortcode_public_reader();
+    }
+
+    if ( is_page( 'canciones' ) ) {
+        return wpss_shortcode_public_reader();
+    }
+
+    return $content;
+}
+
+/**
+ * Crea la página pública del lector si no existe.
+ */
+function wpss_ensure_public_reader_page() {
+    $option_key = 'wpss_public_reader_page_id';
+    $page_id    = (int) get_option( $option_key );
+
+    if ( $page_id ) {
+        $page = get_post( $page_id );
+        if ( $page && 'page' === $page->post_type ) {
+            if ( false === strpos( (string) $page->post_content, '[wpss_public_reader' ) ) {
+                wp_update_post(
+                    [
+                        'ID'           => $page_id,
+                        'post_content' => trim( (string) $page->post_content . "\n\n[wpss_public_reader]" ),
+                    ]
+                );
+            }
+            return $page_id;
+        }
+    }
+
+    $existing = get_page_by_path( 'canciones' );
+    if ( $existing && 'page' === $existing->post_type ) {
+        $page_id = (int) $existing->ID;
+        if ( false === strpos( (string) $existing->post_content, '[wpss_public_reader' ) ) {
+            wp_update_post(
+                [
+                    'ID'           => $page_id,
+                    'post_content' => trim( (string) $existing->post_content . "\n\n[wpss_public_reader]" ),
+                ]
+            );
+        }
+        update_option( $option_key, $page_id );
+        return $page_id;
+    }
+
+    $page_id = wp_insert_post(
+        [
+            'post_title'   => __( 'Canciones', 'wp-song-study' ),
+            'post_name'    => sanitize_title( __( 'canciones', 'wp-song-study' ) ),
+            'post_content' => '[wpss_public_reader]',
+            'post_status'  => 'publish',
+            'post_type'    => 'page',
+        ]
+    );
+
+    if ( $page_id && ! is_wp_error( $page_id ) ) {
+        update_option( $option_key, (int) $page_id );
+        return (int) $page_id;
+    }
+
+    return 0;
+}
+
+/**
+ * Datos localizables para el lector público.
+ *
+ * @return array
+ */
+function wpss_get_public_localized_data() {
+    $tonicas = [
+        'C',
+        'C#',
+        'Db',
+        'D',
+        'D#',
+        'Eb',
+        'E',
+        'F',
+        'F#',
+        'Gb',
+        'G',
+        'G#',
+        'Ab',
+        'A',
+        'A#',
+        'Bb',
+        'B',
+    ];
+
+    return [
+        'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
+        'publicRestUrl' => esc_url_raw( rest_url( 'wpss/v1/' ) ),
+        'tonicas'      => $tonicas,
+        'strings'      => [
+            'filtersTitle'     => __( 'Canciones disponibles', 'wp-song-study' ),
+            'filtersLabel'     => __( 'Filtrar canciones', 'wp-song-study' ),
+            'filtersClear'     => __( 'Limpiar filtros', 'wp-song-study' ),
+            'filtersApply'     => __( 'Aplicar', 'wp-song-study' ),
+            'filtersCollection' => __( 'Colección', 'wp-song-study' ),
+            'filtersTonica'    => __( 'Tónica', 'wp-song-study' ),
+            'filtersLoans'     => __( 'Préstamos', 'wp-song-study' ),
+            'filtersMods'      => __( 'Modulaciones', 'wp-song-study' ),
+            'readingView'      => __( 'Vista de lectura', 'wp-song-study' ),
+            'readingEmpty'     => __( 'Sin contenido para mostrar.', 'wp-song-study' ),
+            'readingModeInline' => __( 'Acordes inline', 'wp-song-study' ),
+            'readingModeStacked' => __( 'Acordes arriba', 'wp-song-study' ),
+            'readingFollowStructure' => __( 'Seguir estructura', 'wp-song-study' ),
+            'readingFollowSections' => __( 'Ordenar por secciones', 'wp-song-study' ),
+            'readingExit'      => __( 'Volver a la lista', 'wp-song-study' ),
+        ],
+    ];
 }
