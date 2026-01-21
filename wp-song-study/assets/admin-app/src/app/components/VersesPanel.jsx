@@ -1,13 +1,18 @@
 import { useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
-import { getDefaultSectionName, getValidSegmentIndex, normalizeVerseOrder } from '../utils.js'
+import { getDefaultSectionName, getValidSegmentIndex, normalizeVerseOrder, stripHtml } from '../utils.js'
+import MidiClipList from './MidiClipList.jsx'
+import SectionsPanel from './SectionsPanel.jsx'
 
 export default function VersesPanel({
   verses,
   sections,
   selectedSectionId,
   onSelectSection,
+  onSectionsChange,
+  onAddSection,
+  onDuplicateSection,
   onChange,
   onSplitSegment,
   onSplitVerse,
@@ -31,7 +36,6 @@ export default function VersesPanel({
     end: null,
     element: null,
   })
-
   const [dragState, setDragState] = useState({
     type: null,
     verseIndex: null,
@@ -40,6 +44,7 @@ export default function VersesPanel({
   const [dragOver, setDragOver] = useState({ verseIndex: null, segmentIndex: null })
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
+  const editorsRef = useRef(new Map())
 
   const versesInSection = useMemo(() => {
     if (!activeSectionId) return []
@@ -49,13 +54,90 @@ export default function VersesPanel({
   }, [safeVerses, activeSectionId])
 
   const handleSelectionUpdate = (verseIndex, segmentIndex, event) => {
-    const start = event.target.selectionStart
-    const end = event.target.selectionEnd
-    const next = { verseIndex, segmentIndex, start, end, element: event.target }
+    const element = event.currentTarget || event.target
+    let start = null
+    let end = null
+
+    if (element && element.isContentEditable) {
+      const selectionObj = window.getSelection()
+      if (selectionObj && selectionObj.rangeCount) {
+        const range = selectionObj.getRangeAt(0)
+        if (element.contains(range.startContainer)) {
+          const preRange = range.cloneRange()
+          preRange.selectNodeContents(element)
+          preRange.setEnd(range.startContainer, range.startOffset)
+          start = preRange.toString().length
+          end = start + range.toString().length
+        }
+      }
+    } else {
+      start = element?.selectionStart ?? null
+      end = element?.selectionEnd ?? null
+    }
+
+    const next = { verseIndex, segmentIndex, start, end, element }
     setSelection(next)
     if (onSelectionChange) {
-      onSelectionChange(verseIndex, segmentIndex, start, end, event.target)
+      onSelectionChange(verseIndex, segmentIndex, start, end, element)
     }
+  }
+
+  const unwrapNode = (node) => {
+    if (!node || !node.parentNode) return
+    const parent = node.parentNode
+    while (node.firstChild) {
+      parent.insertBefore(node.firstChild, node)
+    }
+    parent.removeChild(node)
+  }
+
+  const applyTextFormat = (format, verseIndex, segmentIndex) => {
+    const key = `${verseIndex}:${segmentIndex}`
+    const element = editorsRef.current.get(key)
+    if (!element || !element.isContentEditable) return
+
+    element.focus()
+    const selectionObj = window.getSelection()
+    if (!selectionObj || selectionObj.rangeCount === 0) return
+
+    const range = selectionObj.getRangeAt(0)
+    if (!element.contains(range.startContainer)) return
+
+    if (format === 'bold') {
+      document.execCommand('bold')
+    } else if (format === 'underline') {
+      document.execCommand('underline')
+    } else if (format === 'light') {
+      if (range.collapsed) return
+      const fragment = range.cloneContents()
+      if (fragment.querySelector && fragment.querySelector('div, p, br')) return
+
+      const startLight = range.startContainer.parentElement?.closest?.('.wpss-text-light')
+      const endLight = range.endContainer.parentElement?.closest?.('.wpss-text-light')
+      if (startLight && startLight === endLight) {
+        unwrapNode(startLight)
+      } else {
+        const span = document.createElement('span')
+        span.className = 'wpss-text-light'
+        const extracted = range.extractContents()
+        span.appendChild(extracted)
+        range.insertNode(span)
+      }
+    } else if (format === 'clear') {
+      document.execCommand('removeFormat')
+      const fragment = range.cloneContents()
+      if (fragment.querySelector && fragment.querySelector('span.wpss-text-light')) {
+        element.querySelectorAll('span.wpss-text-light').forEach((node) => {
+          if (range.intersectsNode(node)) {
+            unwrapNode(node)
+          }
+        })
+      }
+    } else {
+      return
+    }
+
+    handleSegmentChange(verseIndex, segmentIndex, 'texto', element.innerHTML)
   }
 
   const canSplitAt = (verseIndex, segmentIndex) => {
@@ -67,7 +149,7 @@ export default function VersesPanel({
     }
     const verse = safeVerses[verseIndex]
     const segment = verse?.segmentos?.[segmentIndex]
-    const texto = segment?.texto || ''
+    const texto = stripHtml(segment?.texto || '')
     return selection.start >= 0 && selection.start <= texto.length
   }
 
@@ -141,6 +223,19 @@ export default function VersesPanel({
       }
       return { ...verse, segmentos }
     })
+  }
+
+  const handleSegmentMidiChange = (verseIndex, segmentIndex, clips) => {
+    updateVerse(verseIndex, (verse) => {
+      const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+      const current = segmentos[segmentIndex] || createEmptySegment()
+      segmentos[segmentIndex] = { ...current, midi_clips: clips }
+      return { ...verse, segmentos }
+    })
+  }
+
+  const handleVerseMidiChange = (verseIndex, clips) => {
+    updateVerse(verseIndex, (verse) => ({ ...verse, midi_clips: clips }))
   }
 
   const adjustEventIndexAfterRemove = (verse, segmentIndex) => {
@@ -375,7 +470,7 @@ export default function VersesPanel({
     }
     return segmentos
       .map((segment) => {
-        const texto = segment.texto ? String(segment.texto).trim() : ''
+        const texto = segment.texto ? stripHtml(String(segment.texto)).trim() : ''
         const acorde = segment.acorde ? String(segment.acorde).trim() : ''
         if (texto && acorde) {
           return `${texto} ${acorde}`
@@ -388,8 +483,8 @@ export default function VersesPanel({
   }
 
   return (
-    <div className="wpss-verses wpss-verses--split">
-      <aside className="wpss-verses__sections">
+    <div className="wpss-verses">
+      <div className="wpss-verses__header">
         <div className="wpss-section-selector">
           {safeSections.map((section, index) => (
             <button
@@ -402,7 +497,23 @@ export default function VersesPanel({
             </button>
           ))}
         </div>
-      </aside>
+        <div className="wpss-section-tools">
+          <button type="button" className="button button-secondary" onClick={() => onAddSection && onAddSection()}>
+            Añadir sección
+          </button>
+          <details className="wpss-sections-inline">
+            <summary>Gestionar secciones</summary>
+            <SectionsPanel
+              sections={safeSections}
+              selectedSectionId={activeSectionId}
+              verses={safeVerses}
+              onSelect={onSelectSection}
+              onChange={onSectionsChange}
+              onDuplicate={onDuplicateSection}
+            />
+          </details>
+        </div>
+      </div>
       <div className="wpss-verses__panel">
         <div className="wpss-verse-group">
           <div className="wpss-verse-group__header">
@@ -425,8 +536,6 @@ export default function VersesPanel({
               const segmentTarget = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
               const eventType = verse.evento_armonico?.tipo || ''
               const templates = eventType ? getEventTemplates(eventType, verseIndex) : []
-              const splitDisabled = !canSplitSectionAtVerse(verseIndex)
-
               return (
                 <div
                   key={`verse-${verseIndex}`}
@@ -578,20 +687,71 @@ export default function VersesPanel({
                               </span>
                             </div>
                             <div className="wpss-segment__fields">
-                              <label>
+                              <div>
                                 <span>Texto</span>
-                                <textarea
-                                  value={segment.texto || ''}
-                                  onChange={(event) =>
-                                    handleSegmentChange(verseIndex, segmentIndex, 'texto', event.target.value)
+                                <div className="wpss-text-tools">
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => applyTextFormat('bold', verseIndex, segmentIndex)}
+                                  >
+                                    B
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => applyTextFormat('underline', verseIndex, segmentIndex)}
+                                  >
+                                    U
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => applyTextFormat('light', verseIndex, segmentIndex)}
+                                  >
+                                    Light
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => applyTextFormat('clear', verseIndex, segmentIndex)}
+                                  >
+                                    Normal
+                                  </button>
+                                </div>
+                                <div
+                                  className="wpss-segment__text"
+                                  contentEditable
+                                  suppressContentEditableWarning
+                                  ref={(node) => {
+                                    const key = `${verseIndex}:${segmentIndex}`
+                                    if (!node) {
+                                      editorsRef.current.delete(key)
+                                      return
+                                    }
+                                    editorsRef.current.set(key, node)
+                                    if (node.innerHTML !== (segment.texto || '')) {
+                                      node.innerHTML = segment.texto || ''
+                                    }
+                                  }}
+                                  onInput={(event) =>
+                                    handleSegmentChange(
+                                      verseIndex,
+                                      segmentIndex,
+                                      'texto',
+                                      event.currentTarget.innerHTML,
+                                    )
                                   }
-                                  onSelect={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onFocus={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onClick={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onKeyUp={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onMouseUp={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                 />
-                              </label>
+                              </div>
                               <label>
                                 <span>Acorde</span>
                                 <input
@@ -615,11 +775,10 @@ export default function VersesPanel({
                                 type="button"
                                 className="button button-small wpss-segment__split"
                                 onClick={(event) => {
-                                  const textarea = event.currentTarget
-                                    .closest('.wpss-segment')
-                                    ?.querySelector('textarea')
-                                  if (textarea && onSplitSegment) {
-                                    onSplitSegment(verseIndex, segmentIndex, textarea)
+                                  const key = `${verseIndex}:${segmentIndex}`
+                                  const editor = editorsRef.current.get(key)
+                                  if (editor && onSplitSegment) {
+                                    onSplitSegment(verseIndex, segmentIndex, editor)
                                   }
                                 }}
                               >
@@ -629,11 +788,10 @@ export default function VersesPanel({
                                 type="button"
                                 className="button button-small"
                                 onClick={(event) => {
-                                  const textarea = event.currentTarget
-                                    .closest('.wpss-segment')
-                                    ?.querySelector('textarea')
-                                  if (textarea && onSplitVerse) {
-                                    onSplitVerse(verseIndex, segmentIndex, textarea)
+                                  const key = `${verseIndex}:${segmentIndex}`
+                                  const editor = editorsRef.current.get(key)
+                                  if (editor && onSplitVerse) {
+                                    onSplitVerse(verseIndex, segmentIndex, editor)
                                   }
                                 }}
                               >
@@ -660,6 +818,13 @@ export default function VersesPanel({
                                   : wpData?.strings?.segmentEventSelect || 'Anclar evento aquí'}
                               </button>
                             ) : null}
+                            <div className="wpss-segment__midi">
+                              <MidiClipList
+                                clips={segment?.midi_clips}
+                                onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
+                                emptyLabel="Añadir MIDI al segmento"
+                              />
+                            </div>
                           </div>
                         )
                       })}
@@ -795,6 +960,13 @@ export default function VersesPanel({
                           }
                         />
                       </label>
+                      <div className="wpss-verse-midi">
+                        <MidiClipList
+                          clips={verse.midi_clips}
+                          onChange={(clips) => handleVerseMidiChange(verseIndex, clips)}
+                          emptyLabel="Añadir MIDI al verso"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

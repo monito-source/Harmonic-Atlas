@@ -11,8 +11,6 @@ import {
   validateSegments,
 } from '../utils.js'
 import { createEmptySegment, createEmptyVerse, createSection } from '../state.js'
-import SectionsPanel from './SectionsPanel.jsx'
-import StructurePanel from './StructurePanel.jsx'
 import VersesPanel from './VersesPanel.jsx'
 
 const AUTOSAVE_DELAY = 800
@@ -117,6 +115,7 @@ export default function Editor() {
     secciones = secciones.map((seccion, index) => {
       let id = seccion && seccion.id ? String(seccion.id).trim() : ''
       let nombre = seccion && seccion.nombre ? String(seccion.nombre).trim() : ''
+      const midiClips = Array.isArray(seccion?.midi_clips) ? seccion.midi_clips : []
 
       if (!id) {
         id = createSection('', index).id
@@ -135,6 +134,7 @@ export default function Editor() {
       return {
         id,
         nombre: nombre.slice(0, 64),
+        midi_clips: midiClips,
       }
     })
 
@@ -226,6 +226,7 @@ export default function Editor() {
           segmentos,
           comentario: verso.comentario,
           evento_armonico: evento,
+          midi_clips: Array.isArray(verso.midi_clips) ? verso.midi_clips : [],
           section_id: verso.section_id || '',
           fin_de_estrofa: !!verso.fin_de_estrofa,
           nombre_estrofa: verso.fin_de_estrofa ? verso.nombre_estrofa || '' : '',
@@ -315,16 +316,19 @@ export default function Editor() {
     const segment = verse.segmentos[segmentIndex]
     const texto = segment.texto || ''
 
-    if (selection.start <= 0 || selection.start >= texto.length) {
+    const splitHtml = splitSegmentHtml(textarea)
+    if (!splitHtml) {
+      return
+    }
+    const { beforeHtml, afterHtml, textLength, cursor } = splitHtml
+
+    if (cursor <= 0 || cursor >= textLength) {
       return
     }
 
-    const before = texto.slice(0, selection.start)
-    const after = texto.slice(selection.start)
-
-    segment.texto = before
+    segment.texto = beforeHtml
     const nuevo = {
-      texto: after,
+      texto: afterHtml,
       acorde: segment.acorde,
     }
 
@@ -358,18 +362,21 @@ export default function Editor() {
     }
 
     const segment = verse.segmentos[segmentIndex]
-    const texto = segment.texto || ''
-    if (selection.start < 0 || selection.start > texto.length) {
+    const splitHtml = splitSegmentHtml(textarea)
+    if (!splitHtml) {
+      return
+    }
+    const { beforeHtml, afterHtml, textLength, cursor } = splitHtml
+
+    if (cursor < 0 || cursor > textLength) {
       return
     }
 
-    const before = texto.slice(0, selection.start)
-    const after = texto.slice(selection.start)
-    segment.texto = before
+    segment.texto = beforeHtml
 
     const newSegments = []
-    if (after) {
-      newSegments.push({ texto: after, acorde: segment.acorde })
+    if (afterHtml) {
+      newSegments.push({ texto: afterHtml, acorde: segment.acorde })
     }
 
     for (let i = segmentIndex + 1; i < verse.segmentos.length; i += 1) {
@@ -418,8 +425,13 @@ export default function Editor() {
     }
 
     const segment = verse.segmentos[segmentIndex]
-    const texto = segment.texto || ''
-    if (selection.start < 0 || selection.start > texto.length) {
+    const splitHtml = splitSegmentHtml(textarea)
+    if (!splitHtml) {
+      return
+    }
+    const { beforeHtml, afterHtml, textLength, cursor } = splitHtml
+
+    if (cursor < 0 || cursor > textLength) {
       return
     }
 
@@ -438,18 +450,16 @@ export default function Editor() {
       }
     }
 
-    if (selection.start <= 0) {
+    if (cursor <= 0) {
       assignSectionFromIndex(verseIndex)
-    } else if (selection.start >= texto.length) {
+    } else if (cursor >= textLength) {
       assignSectionFromIndex(verseIndex + 1)
     } else {
-      const before = texto.slice(0, selection.start)
-      const after = texto.slice(selection.start)
-      segment.texto = before
+      segment.texto = beforeHtml
 
       const newSegments = []
-      if (after) {
-        newSegments.push({ texto: after, acorde: segment.acorde })
+      if (afterHtml) {
+        newSegments.push({ texto: afterHtml, acorde: segment.acorde })
       }
       for (let i = segmentIndex + 1; i < verse.segmentos.length; i += 1) {
         newSegments.push({ ...verse.segmentos[i] })
@@ -537,11 +547,6 @@ export default function Editor() {
     scheduleAutosave()
   }
 
-  const handleStructureChange = (nextStructure) => {
-    updateSong({ ...editingSong, estructura: nextStructure })
-    scheduleAutosave()
-  }
-
   const handleAddSection = () => {
     const nextSections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
     const section = createSection('', nextSections.length)
@@ -551,6 +556,49 @@ export default function Editor() {
     setSelectedSectionId(nextSelected)
     updateSong({ ...nextSong })
     scheduleAutosave()
+  }
+
+  const splitSegmentHtml = (element) => {
+    if (!element || !element.isContentEditable) {
+      const texto = element?.value ?? ''
+      const cursor = selectionRef.current.start || 0
+      return {
+        beforeHtml: texto.slice(0, cursor),
+        afterHtml: texto.slice(cursor),
+        textLength: texto.length,
+        cursor,
+      }
+    }
+
+    const selectionObj = window.getSelection()
+    if (!selectionObj || selectionObj.rangeCount === 0) {
+      return null
+    }
+
+    const range = selectionObj.getRangeAt(0)
+    if (!element.contains(range.startContainer)) {
+      return null
+    }
+
+    const preRange = range.cloneRange()
+    preRange.selectNodeContents(element)
+    preRange.setEnd(range.startContainer, range.startOffset)
+    const cursor = preRange.toString().length
+    const textLength = element.textContent ? element.textContent.length : 0
+
+    const toHtml = (r) => {
+      const div = document.createElement('div')
+      div.appendChild(r.cloneContents())
+      return div.innerHTML
+    }
+
+    const beforeHtml = toHtml(preRange)
+    const postRange = range.cloneRange()
+    postRange.selectNodeContents(element)
+    postRange.setStart(range.endContainer, range.endOffset)
+    const afterHtml = toHtml(postRange)
+
+    return { beforeHtml, afterHtml, textLength, cursor }
   }
 
   return (
@@ -646,36 +694,6 @@ export default function Editor() {
 
         <details className="wpss-section wpss-section--collapsible" open>
           <summary>
-            <span>Secciones</span>
-          </summary>
-          <div className="wpss-section__actions">
-            <button type="button" className="button button-secondary" onClick={handleAddSection}>
-              Añadir sección
-            </button>
-          </div>
-          <SectionsPanel
-            sections={editingSong.secciones}
-            selectedSectionId={selectedSectionId}
-            verses={editingSong.versos}
-            onSelect={handleSectionSelect}
-            onChange={handleSectionChange}
-            onDuplicate={handleDuplicateSection}
-          />
-        </details>
-
-        <details className="wpss-section wpss-section--collapsible">
-          <summary>
-            <span>Estructura avanzada</span>
-          </summary>
-          <StructurePanel
-            structure={editingSong.estructura}
-            sections={editingSong.secciones}
-            onChange={handleStructureChange}
-          />
-        </details>
-
-        <details className="wpss-section wpss-section--collapsible" open>
-          <summary>
             <span>Versos</span>
           </summary>
           <VersesPanel
@@ -683,6 +701,9 @@ export default function Editor() {
             sections={editingSong.secciones}
             selectedSectionId={selectedSectionId}
             onSelectSection={handleSectionSelect}
+            onSectionsChange={handleSectionChange}
+            onAddSection={handleAddSection}
+            onDuplicateSection={handleDuplicateSection}
             onChange={handleVerseChange}
             onSplitSegment={splitSegment}
             onSplitVerse={splitVerseFromCursor}
