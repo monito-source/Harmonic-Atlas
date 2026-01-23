@@ -536,6 +536,10 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
     $campo_predominante     = sanitize_textarea_field( get_post_meta( $post_id, '_campo_armonico_predominante', true ) );
     $prestamos_cancion      = wpss_decode_json_meta( get_post_meta( $post_id, '_prestamos_tonales_json', true ) );
     $modulaciones_cancion   = wpss_decode_json_meta( get_post_meta( $post_id, '_modulaciones_json', true ) );
+    $bpm                    = absint( get_post_meta( $post_id, '_bpm', true ) );
+    if ( $bpm < 40 || $bpm > 240 ) {
+        $bpm = 120;
+    }
 
     $versos = wpss_get_cancion_versos( $post_id );
     list( $secciones, $versos ) = wpss_prepare_sections_for_output( $post_id, $versos );
@@ -574,6 +578,7 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
         'tonalidad'                  => $tonica,
         'campo_armonico'             => $campo_armonico,
         'campo_armonico_predominante'=> $campo_predominante,
+        'bpm'                        => $bpm,
         'prestamos_cancion'          => $prestamos_cancion,
         'modulaciones_cancion'       => $modulaciones_cancion,
         'prestamos'                  => $prestamos_cancion,
@@ -637,6 +642,10 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $campo_armonico_predominante = isset( $params['campo_armonico_predominante'] )
         ? sanitize_textarea_field( $params['campo_armonico_predominante'] )
         : ( isset( $params['campo_armonico'] ) ? sanitize_textarea_field( $params['campo_armonico'] ) : '' );
+    $bpm = isset( $params['bpm'] ) ? absint( $params['bpm'] ) : 120;
+    if ( $bpm < 40 || $bpm > 240 ) {
+        $bpm = 120;
+    }
 
     if ( '' === $titulo ) {
         return new WP_REST_Response( [ 'message' => __( 'El título es obligatorio.', 'wp-song-study' ) ], 400 );
@@ -791,6 +800,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_tonica', $tonica );
     update_post_meta( $post_id, '_campo_armonico', $campo_armonico );
     update_post_meta( $post_id, '_campo_armonico_predominante', $campo_armonico_predominante );
+    update_post_meta( $post_id, '_bpm', $bpm );
     update_post_meta( $post_id, '_prestamos_tonales_json', wp_json_encode( $prestamos ) );
     update_post_meta( $post_id, '_modulaciones_json', wp_json_encode( $modulaciones ) );
 
@@ -849,6 +859,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $response = [
         'ok'                 => true,
         'id'                 => (int) $post_id,
+        'bpm'                => $bpm,
         'tiene_prestamos'    => $tiene_prestamos,
         'tiene_modulaciones' => $tiene_modulaciones,
         'secciones'          => $secciones,
@@ -986,31 +997,338 @@ function wpss_truncate_string( $value, $length = 64 ) {
 }
 
 /**
+ * Normaliza datos para json_encode evitando errores por UTF-8 o floats no finitos.
+ *
+ * @param mixed $value Datos a normalizar.
+ * @return mixed
+ */
+function wpss_normalize_for_json( $value ) {
+    if ( is_string( $value ) ) {
+        return wp_check_invalid_utf8( $value, true );
+    }
+
+    if ( is_float( $value ) && ! is_finite( $value ) ) {
+        return null;
+    }
+
+    if ( $value instanceof Traversable ) {
+        $value = iterator_to_array( $value );
+    } elseif ( is_object( $value ) ) {
+        $value = get_object_vars( $value );
+    }
+
+    if ( is_array( $value ) ) {
+        foreach ( $value as $key => $item ) {
+            $value[ $key ] = wpss_normalize_for_json( $item );
+        }
+    }
+
+    return $value;
+}
+
+/**
+ * Codifica JSON con tolerancia a datos invalidos.
+ *
+ * @param mixed $data Datos a codificar.
+ * @return string
+ */
+function wpss_safe_json_encode( $data ) {
+    $encoded = wp_json_encode( $data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+    if ( false !== $encoded ) {
+        return $encoded;
+    }
+
+    $normalized = wpss_normalize_for_json( $data );
+    if ( defined( 'JSON_PARTIAL_OUTPUT_ON_ERROR' ) ) {
+        $encoded = wp_json_encode(
+            $normalized,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR
+        );
+    } else {
+        $encoded = wp_json_encode( $normalized );
+    }
+
+    if ( false === $encoded ) {
+        error_log( 'wpss: json_encode failed: ' . json_last_error_msg() );
+        return '';
+    }
+
+    return $encoded;
+}
+
+/**
+ * Sanitiza datos MIDI asociados a un segmento.
+ *
+ * @param mixed $midi Datos recibidos.
+ * @return array|null
+ */
+function wpss_sanitize_midi_data( $midi ) {
+    if ( empty( $midi ) ) {
+        return null;
+    }
+
+    if ( $midi instanceof Traversable ) {
+        $midi = iterator_to_array( $midi );
+    } elseif ( is_object( $midi ) ) {
+        $midi = get_object_vars( $midi );
+    }
+
+    if ( is_string( $midi ) ) {
+        $decoded = json_decode( $midi, true );
+        if ( is_array( $decoded ) ) {
+            $midi = $decoded;
+        }
+    }
+
+    if ( ! is_array( $midi ) ) {
+        return null;
+    }
+
+    $steps = isset( $midi['steps'] ) ? absint( $midi['steps'] ) : 16;
+    if ( $steps < 4 ) {
+        $steps = 4;
+    } elseif ( $steps > 128 ) {
+        $steps = 128;
+    }
+
+    $tempo = isset( $midi['tempo'] ) ? absint( $midi['tempo'] ) : 120;
+    if ( $tempo < 40 ) {
+        $tempo = 40;
+    } elseif ( $tempo > 240 ) {
+        $tempo = 240;
+    }
+
+    $notes_input = isset( $midi['notes'] ) && is_array( $midi['notes'] ) ? $midi['notes'] : [];
+    $notes       = [];
+    $seen        = [];
+
+    foreach ( $notes_input as $note ) {
+        if ( ! is_array( $note ) ) {
+            continue;
+        }
+
+        if ( ! isset( $note['step'] ) || ! isset( $note['pitch'] ) ) {
+            continue;
+        }
+
+        if ( ! is_numeric( $note['step'] ) || ! is_numeric( $note['pitch'] ) ) {
+            continue;
+        }
+
+        $step  = (int) $note['step'];
+        $pitch = (int) $note['pitch'];
+        $length = isset( $note['length'] ) && is_numeric( $note['length'] ) ? (int) $note['length'] : 1;
+        $velocity = isset( $note['velocity'] ) && is_numeric( $note['velocity'] ) ? (int) $note['velocity'] : 96;
+
+        if ( $length < 1 ) {
+            $length = 1;
+        }
+        if ( $velocity < 1 ) {
+            $velocity = 1;
+        } elseif ( $velocity > 127 ) {
+            $velocity = 127;
+        }
+
+        if ( $step < 0 || $step >= $steps ) {
+            continue;
+        }
+
+        if ( $length + $step > $steps ) {
+            $length = $steps - $step;
+        }
+
+        if ( $pitch < 0 || $pitch > 127 ) {
+            continue;
+        }
+
+        $key = $step . ':' . $pitch . ':' . $length . ':' . $velocity;
+        if ( isset( $seen[ $key ] ) ) {
+            continue;
+        }
+
+        $seen[ $key ] = true;
+        $notes[]      = [
+            'step'  => $step,
+            'pitch' => $pitch,
+            'length' => $length,
+            'velocity' => $velocity,
+        ];
+    }
+
+    return [
+        'steps' => $steps,
+        'tempo' => $tempo,
+        'notes' => $notes,
+    ];
+}
+
+/**
+ * Sanitiza un clip MIDI (nombre, timbre y data).
+ *
+ * @param mixed $clip Datos recibidos.
+ * @param int   $index Indice para fallback de nombre.
+ * @return array|null
+ */
+function wpss_sanitize_midi_clip( $clip, $index = 0 ) {
+    if ( $clip instanceof Traversable ) {
+        $clip = iterator_to_array( $clip );
+    } elseif ( is_object( $clip ) ) {
+        $clip = get_object_vars( $clip );
+    }
+
+    if ( ! is_array( $clip ) ) {
+        return null;
+    }
+
+    $name = isset( $clip['name'] ) ? sanitize_text_field( $clip['name'] ) : '';
+    $name = wpss_truncate_string( $name, 64 );
+    if ( '' === $name ) {
+        $name = sprintf( 'MIDI %d', $index + 1 );
+    }
+
+    $instrument = isset( $clip['instrument'] ) ? sanitize_key( $clip['instrument'] ) : 'basic';
+    $allowed    = [ 'basic', 'piano', 'guitar', 'voice' ];
+    if ( ! in_array( $instrument, $allowed, true ) ) {
+        $instrument = 'basic';
+    }
+
+    $repeat = isset( $clip['repeat'] ) ? absint( $clip['repeat'] ) : 1;
+    if ( $repeat < 1 ) {
+        $repeat = 1;
+    } elseif ( $repeat > 32 ) {
+        $repeat = 32;
+    }
+
+    $midi_source = isset( $clip['midi'] ) ? $clip['midi'] : $clip;
+    $midi        = wpss_sanitize_midi_data( $midi_source );
+
+    if ( null === $midi ) {
+        return null;
+    }
+
+    return [
+        'name'       => $name,
+        'instrument' => $instrument,
+        'repeat'     => $repeat,
+        'midi'       => $midi,
+    ];
+}
+
+/**
+ * Sanitiza lista de clips MIDI con compatibilidad legacy.
+ *
+ * @param mixed $clips Datos recibidos.
+ * @param mixed $legacy_midi Midi legacy.
+ * @return array
+ */
+function wpss_sanitize_midi_clips( $clips, $legacy_midi = null ) {
+    if ( $clips instanceof Traversable ) {
+        $clips = iterator_to_array( $clips );
+    } elseif ( is_object( $clips ) ) {
+        $clips = get_object_vars( $clips );
+    }
+
+    $input = [];
+    if ( is_array( $clips ) ) {
+        if ( array_key_exists( 'notes', $clips ) || array_key_exists( 'tempo', $clips ) ) {
+            $legacy_midi = $clips;
+        } else {
+            $input = $clips;
+        }
+    }
+    $normalized = [];
+
+    foreach ( $input as $index => $clip ) {
+        $clean = wpss_sanitize_midi_clip( $clip, $index );
+        if ( null !== $clean ) {
+            $normalized[] = $clean;
+        }
+    }
+
+    if ( empty( $normalized ) && null !== $legacy_midi ) {
+        $legacy = wpss_sanitize_midi_data( $legacy_midi );
+        if ( null !== $legacy ) {
+            $normalized[] = [
+                'name'       => 'MIDI 1',
+                'instrument' => 'basic',
+                'repeat'     => 1,
+                'midi'       => $legacy,
+            ];
+        }
+    }
+
+    return $normalized;
+}
+
+/**
+ * Sanitiza texto de segmento permitiendo marcado basico.
+ *
+ * @param string $texto Texto recibido.
+ * @return string
+ */
+function wpss_sanitize_segment_text( $texto ) {
+    $allowed = [
+        'strong' => [],
+        'b'      => [],
+        'em'     => [],
+        'i'      => [],
+        'u'      => [],
+        'br'     => [],
+        'span'   => [
+            'class' => true,
+            'style' => true,
+        ],
+    ];
+
+    return wp_kses( (string) $texto, $allowed );
+}
+
+/**
  * Sanitiza y normaliza un segmento texto-acorde individual.
  *
  * @param array $segmento Segmento recibido.
  * @return array|null
  */
 function wpss_normalize_segmento_item( $segmento ) {
+    if ( $segmento instanceof Traversable ) {
+        $segmento = iterator_to_array( $segmento );
+    } elseif ( is_object( $segmento ) ) {
+        $segmento = get_object_vars( $segmento );
+    }
+
     if ( ! is_array( $segmento ) ) {
         return null;
     }
 
-    $texto  = isset( $segmento['texto'] ) ? sanitize_textarea_field( $segmento['texto'] ) : '';
+    $texto  = isset( $segmento['texto'] ) ? wpss_sanitize_segment_text( $segmento['texto'] ) : '';
     $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
+    $midi_clips = [];
+
+    if ( array_key_exists( 'midi_clips', $segmento ) ) {
+        $midi_clips = wpss_sanitize_midi_clips( $segmento['midi_clips'] );
+    } elseif ( array_key_exists( 'midi', $segmento ) ) {
+        $midi_clips = wpss_sanitize_midi_clips( [], $segmento['midi'] );
+    }
 
     if ( '' !== $acorde ) {
         $acorde = wpss_truncate_string( $acorde, 64 );
     }
 
-    if ( '' === $texto && '' === $acorde ) {
+    $has_midi = ! empty( $midi_clips );
+    if ( '' === $texto && '' === $acorde && ! $has_midi ) {
         return null;
     }
 
-    return [
+    $normalized = [
         'texto'  => $texto,
         'acorde' => $acorde,
     ];
+
+    if ( ! empty( $midi_clips ) ) {
+        $normalized['midi_clips'] = $midi_clips;
+    }
+
+    return $normalized;
 }
 
 /**
@@ -1044,7 +1362,8 @@ function wpss_implode_segmentos_text( array $segmentos ) {
     $texto = '';
 
     foreach ( $segmentos as $segmento ) {
-        $texto .= isset( $segmento['texto'] ) ? $segmento['texto'] : '';
+        $raw = isset( $segmento['texto'] ) ? $segmento['texto'] : '';
+        $texto .= wp_strip_all_tags( (string) $raw );
     }
 
     if ( '' === $texto ) {
@@ -1113,11 +1432,24 @@ function wpss_sanitize_secciones_array( array $secciones ) {
             $nombre = sprintf( __( 'Sección %d', 'wp-song-study' ), count( $normalizadas ) + 1 );
         }
 
-        $ids_usados[ $id ]   = true;
-        $normalizadas[] = [
+        $midi_clips = [];
+        if ( array_key_exists( 'midi_clips', $seccion ) ) {
+            $midi_clips = wpss_sanitize_midi_clips( $seccion['midi_clips'] );
+        } elseif ( array_key_exists( 'midi', $seccion ) ) {
+            $midi_clips = wpss_sanitize_midi_clips( [], $seccion['midi'] );
+        }
+
+        $normalized_section = [
             'id'     => $id,
             'nombre' => $nombre,
         ];
+
+        if ( ! empty( $midi_clips ) ) {
+            $normalized_section['midi_clips'] = $midi_clips;
+        }
+
+        $ids_usados[ $id ] = true;
+        $normalizadas[]    = $normalized_section;
     }
 
     return $normalizadas;
@@ -1768,6 +2100,8 @@ function wpss_get_cancion_versos( $post_id ) {
                 unset( $evento['segment_index'] );
             }
         }
+        $midi_raw       = wpss_decode_json_meta( get_post_meta( $verso->ID, '_midi_json', true ) );
+        $midi_clips     = wpss_sanitize_midi_clips( $midi_raw );
         $comentario     = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
         $section_id     = sanitize_key( get_post_meta( $verso->ID, '_section_id', true ) );
         $fin_de_estrofa = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
@@ -1784,6 +2118,7 @@ function wpss_get_cancion_versos( $post_id ) {
             'segmentos'       => $segmentos,
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'midi_clips'      => $midi_clips,
             'section_id'      => $section_id,
             'fin_de_estrofa'  => $fin_de_estrofa,
             'nombre_estrofa'  => $nombre_estrofa,
@@ -1995,6 +2330,13 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
         $orden        = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
         $comentario   = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
         $evento_input = isset( $verso['evento_armonico'] ) ? $verso['evento_armonico'] : null;
+        $midi_clips   = [];
+
+        if ( array_key_exists( 'midi_clips', $verso ) ) {
+            $midi_clips = wpss_sanitize_midi_clips( $verso['midi_clips'] );
+        } elseif ( array_key_exists( 'midi', $verso ) ) {
+            $midi_clips = wpss_sanitize_midi_clips( [], $verso['midi'] );
+        }
 
         $segmentos_input = [];
         if ( isset( $verso['segmentos'] ) && is_array( $verso['segmentos'] ) ) {
@@ -2050,12 +2392,21 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             return new WP_Error( 'wpss_rest_invalid_section', __( 'Cada verso debe referenciar una sección válida.', 'wp-song-study' ) );
         }
 
+        if ( empty( $segmentos ) && ! empty( $midi_clips ) ) {
+            $segmentos = [
+                [
+                    'texto'  => '',
+                    'acorde' => '',
+                ],
+            ];
+        }
+
         if ( empty( $segmentos ) ) {
             if ( '' === $comentario && null === $evento ) {
                 continue;
             }
 
-            return new WP_Error( 'wpss_rest_invalid_segmentos', __( 'Cada verso debe incluir al menos un segmento con texto o acorde.', 'wp-song-study' ) );
+            return new WP_Error( 'wpss_rest_invalid_segmentos', __( 'Cada verso debe incluir al menos un segmento con texto, acorde o MIDI.', 'wp-song-study' ) );
         }
 
         $limpios[] = [
@@ -2065,6 +2416,7 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             'acorde'          => isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '',
             'comentario'      => $comentario,
             'evento_armonico' => $evento,
+            'midi_clips'      => $midi_clips,
             'section_id'      => $section_id,
             'fin_de_estrofa'  => (bool) $fin_de_estrofa,
             'nombre_estrofa'  => $nombre_estrofa,
@@ -2161,12 +2513,7 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
         update_post_meta( $verso_id, '_acorde_absoluto', isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '' );
         update_post_meta( $verso_id, '_funcion_relativa', $verso['comentario'] );
         update_post_meta( $verso_id, '_notas_verso', '' );
-        $segmentos_json = wp_json_encode( $segmentos, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
-        if ( false === $segmentos_json ) {
-            $segmentos_json = wp_json_encode( $segmentos );
-        }
-
-        update_post_meta( $verso_id, '_segmentos_json', $segmentos_json );
+        update_post_meta( $verso_id, '_segmentos_json', $segmentos );
 
         $section_meta = isset( $verso['section_id'] ) ? sanitize_key( $verso['section_id'] ) : '';
         if ( '' !== $section_meta ) {
@@ -2192,6 +2539,12 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
             update_post_meta( $verso_id, '_evento_armonico_json', wp_json_encode( $verso['evento_armonico'] ) );
         } else {
             delete_post_meta( $verso_id, '_evento_armonico_json' );
+        }
+
+        if ( ! empty( $verso['midi_clips'] ) ) {
+            update_post_meta( $verso_id, '_midi_json', wp_json_encode( $verso['midi_clips'] ) );
+        } else {
+            delete_post_meta( $verso_id, '_midi_json' );
         }
 
     }

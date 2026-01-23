@@ -74,7 +74,8 @@ export default function PublicReader() {
       .getPublicSong(id)
       .then((response) => {
         const song = response.data || {}
-        const secciones = normalizeSectionsFromApi(song.secciones)
+        const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
+        const secciones = normalizeSectionsFromApi(song.secciones, bpmDefault)
         const estructura = normalizeStructureFromApi(song.estructura || [], secciones)
 
         dispatch({
@@ -87,7 +88,7 @@ export default function PublicReader() {
               tonica: song.tonica || song.tonalidad || '',
               campo_armonico: song.campo_armonico || '',
               campo_armonico_predominante: song.campo_armonico_predominante || '',
-              versos: normalizeVersesFromApi(song.versos),
+              versos: normalizeVersesFromApi(song.versos, bpmDefault),
               secciones,
               estructura,
               estructuraPersonalizada: true,

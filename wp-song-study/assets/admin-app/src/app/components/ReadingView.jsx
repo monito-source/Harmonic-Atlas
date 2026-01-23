@@ -1,11 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
-import { getDefaultSectionName, getValidSegmentIndex } from '../utils.js'
+import { getDefaultSectionName, getValidSegmentIndex, stripHtml } from '../utils.js'
+import MidiClipList from './MidiClipList.jsx'
 
 export default function ReadingView({ onExit, exitLabel }) {
   const { state, dispatch, wpData } = useAppState()
   const song = state.editingSong
+  const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
   const hasVerses = Array.isArray(song.versos) && song.versos.length
+  const [repeatsEnabled, setRepeatsEnabled] = useState(true)
 
   const groups = useMemo(() => {
     if (!hasVerses) {
@@ -18,6 +21,7 @@ export default function ReadingView({ onExit, exitLabel }) {
           variant: '',
           notes: '',
           versos: group.versos,
+          section: group.section,
         }))
   }, [song, state.readingFollowStructure, hasVerses])
 
@@ -69,6 +73,13 @@ export default function ReadingView({ onExit, exitLabel }) {
             >
               {wpData?.strings?.readingFollowStructure || 'Seguir estructura'}
             </button>
+            <button
+              type="button"
+              className={`button button-secondary ${repeatsEnabled ? 'is-active' : ''}`}
+              onClick={() => setRepeatsEnabled((prev) => !prev)}
+            >
+              {repeatsEnabled ? 'Repeticiones activas' : 'Repeticiones apagadas'}
+            </button>
           </div>
           <button
             type="button"
@@ -92,10 +103,17 @@ export default function ReadingView({ onExit, exitLabel }) {
             <section key={`reading-${index}`} className="wpss-reading__section">
               <h4 className="wpss-section-title">{heading}</h4>
               {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
+              {renderReadingMidiClips(group.section?.midi_clips, 'MIDI de sección', bpmDefault, repeatsEnabled)}
               <ol className="wpss-reading__verses">
                 {Array.isArray(group.versos)
                   ? group.versos.map((verse, verseIndex) => (
-                      <ReadingVerse key={`verse-${index}-${verseIndex}`} verse={verse} mode={state.readingMode} />
+                      <ReadingVerse
+                        key={`verse-${index}-${verseIndex}`}
+                        verse={verse}
+                        mode={state.readingMode}
+                        defaultTempo={bpmDefault}
+                        repeatsEnabled={repeatsEnabled}
+                      />
                     ))
                   : null}
               </ol>
@@ -107,12 +125,21 @@ export default function ReadingView({ onExit, exitLabel }) {
   )
 }
 
-function ReadingVerse({ verse, mode }) {
+function ReadingVerse({ verse, mode, defaultTempo, repeatsEnabled }) {
   const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
   const evento = renderEventoChip(verse.evento_armonico, segmentos.length)
   const comentario = verse.comentario ? <span className="wpss-reading__comment">{verse.comentario}</span> : null
   const metaContent = [evento, comentario].filter(Boolean)
   const meta = metaContent.length ? <div className="wpss-reading__meta">{metaContent}</div> : null
+  const verseMidi = renderReadingMidiClips(verse.midi_clips, 'MIDI del verso', defaultTempo, repeatsEnabled)
+  const segmentMidiItems = segmentos
+    .map((segmento, index) =>
+      renderReadingMidiClips(segmento?.midi_clips, `MIDI segmento ${index + 1}`, defaultTempo, repeatsEnabled)
+    )
+    .filter(Boolean)
+  const segmentMidis = segmentMidiItems.length ? (
+    <div className="wpss-reading__midis">{segmentMidiItems}</div>
+  ) : null
 
   if (mode === 'stacked') {
     const lines = formatSegmentsForStackedMode(segmentos)
@@ -120,6 +147,8 @@ function ReadingVerse({ verse, mode }) {
       <li>
         <pre className="wpss-reading__stack">{`${lines.chords}\n${lines.lyrics}`}</pre>
         {meta}
+        {verseMidi}
+        {segmentMidis}
       </li>
     )
   }
@@ -136,7 +165,7 @@ function ReadingVerse({ verse, mode }) {
       return (
         <span key={`segment-${index}`} className={classes.join(' ')}>
           {acorde}
-          {texto ? <span>{texto}</span> : null}
+          {texto ? <span dangerouslySetInnerHTML={{ __html: texto }} /> : null}
         </span>
       )
     })
@@ -146,6 +175,8 @@ function ReadingVerse({ verse, mode }) {
     <li>
       <div className="wpss-reading__line">{parts}</div>
       {meta}
+      {verseMidi}
+      {segmentMidis}
     </li>
   )
 }
@@ -232,6 +263,7 @@ function groupVersesByStructure(song) {
       variant: '',
       notes: '',
       versos: group.versos,
+      section: group.section,
     }))
   }
 
@@ -263,8 +295,28 @@ function groupVersesByStructure(song) {
       variant,
       notes,
       versos: versosSeccion,
+      section: info,
     }
   })
+}
+
+function renderReadingMidiClips(clips, label, defaultTempo, repeatsEnabled) {
+  if (!Array.isArray(clips) || !clips.length) {
+    return null
+  }
+
+  return (
+    <div className="wpss-reading__midi">
+      <span className="wpss-reading__midi-label">{label}</span>
+      <MidiClipList
+        clips={clips}
+        readOnly
+        showOnlyActiveRows
+        defaultTempo={defaultTempo}
+        repeatsEnabled={repeatsEnabled}
+      />
+    </div>
+  )
 }
 
 function padEndSafe(value, length) {
@@ -284,7 +336,7 @@ function formatSegmentsForStackedMode(segmentos) {
   const lyricsParts = []
 
   segmentos.forEach((segmento, index) => {
-    const texto = segmento?.texto || ''
+    const texto = stripHtml(segmento?.texto || '')
     const acorde = segmento?.acorde || ''
     const width = Math.max(texto.length, acorde.length)
     const padding = index === segmentos.length - 1 ? width : width + 2

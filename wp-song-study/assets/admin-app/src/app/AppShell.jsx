@@ -42,19 +42,21 @@ export default function AppShell() {
         .getSong(id)
         .then((response) => {
           const song = response.data || {}
-          const secciones = normalizeSectionsFromApi(song.secciones)
+          const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
+          const secciones = normalizeSectionsFromApi(song.secciones, bpmDefault)
           const estructura = normalizeStructureFromApi(song.estructura || [], secciones)
 
           const normalizedSong = {
             ...createEmptySong(),
             id: song.id,
             titulo: song.titulo || '',
+            bpm: bpmDefault,
             tonica: song.tonica || song.tonalidad || '',
             campo_armonico: song.campo_armonico || '',
             campo_armonico_predominante: song.campo_armonico_predominante || '',
             prestamos: Array.isArray(song.prestamos) ? song.prestamos : [],
             modulaciones: Array.isArray(song.modulaciones) ? song.modulaciones : [],
-            versos: normalizeVersesFromApi(song.versos),
+            versos: normalizeVersesFromApi(song.versos, bpmDefault),
             secciones,
             estructura,
             tiene_prestamos: !!song.tiene_prestamos,

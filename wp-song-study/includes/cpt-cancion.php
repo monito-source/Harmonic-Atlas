@@ -16,18 +16,51 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @return string
  */
 function wpss_sanitize_json_string( $value ) {
+    if ( $value instanceof Traversable ) {
+        $value = iterator_to_array( $value );
+    } elseif ( is_object( $value ) ) {
+        $value = get_object_vars( $value );
+    }
+
+    if ( is_array( $value ) ) {
+        if ( function_exists( 'wpss_safe_json_encode' ) ) {
+            $encoded = wpss_safe_json_encode( $value );
+        } else {
+            $encoded = wp_json_encode( $value );
+        }
+
+        return '' === $encoded ? '' : wp_slash( $encoded );
+    }
+
     if ( '' === $value ) {
         return '';
     }
 
-    $value = wp_unslash( $value );
-
-    json_decode( $value );
-    if ( JSON_ERROR_NONE !== json_last_error() ) {
-        return '';
+    $raw = (string) $value;
+    $clean = wp_check_invalid_utf8( $raw, true );
+    json_decode( $clean );
+    if ( JSON_ERROR_NONE === json_last_error() ) {
+        return wp_slash( $clean );
     }
 
-    return wp_slash( $value );
+    $unslashed = wp_unslash( $raw );
+    $clean_unslashed = wp_check_invalid_utf8( $unslashed, true );
+    json_decode( $clean_unslashed );
+    if ( JSON_ERROR_NONE === json_last_error() ) {
+        return wp_slash( $clean_unslashed );
+    }
+
+    $sample = substr( $clean_unslashed, 0, 200 );
+    error_log(
+        sprintf(
+            'wpss: invalid json meta: %s len=%d sample=%s',
+            json_last_error_msg(),
+            strlen( $clean_unslashed ),
+            $sample
+        )
+    );
+
+    return '';
 }
 
 /**

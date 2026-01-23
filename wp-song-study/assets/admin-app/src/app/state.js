@@ -1,5 +1,5 @@
 export function createEmptySegment() {
-  return { texto: '', acorde: '' }
+  return { texto: '', acorde: '', midi_clips: [] }
 }
 
 export function createEmptyVerse(order, sectionId) {
@@ -11,6 +11,7 @@ export function createEmptyVerse(order, sectionId) {
     section_id: sectionId || '',
     fin_de_estrofa: false,
     nombre_estrofa: '',
+    midi_clips: [],
   }
 }
 
@@ -19,6 +20,7 @@ export function createSection(nombre = '', index = 0) {
   return {
     id: `sec-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     nombre: label,
+    midi_clips: [],
   }
 }
 
@@ -26,6 +28,7 @@ export function createEmptySong() {
   return {
     id: null,
     titulo: '',
+    bpm: 120,
     tonica: '',
     campo_armonico: '',
     campo_armonico_predominante: '',

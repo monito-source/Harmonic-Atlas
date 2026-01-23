@@ -232,7 +232,7 @@ function wpss_get_admin_localized_data() {
             'readingProgress'  => __( 'Canción', 'wp-song-study' ),
             'readingNext'      => __( 'Siguiente', 'wp-song-study' ),
             'readingExit'      => __( 'Salir', 'wp-song-study' ),
-            'segmentRequired'  => __( 'Cada verso necesita al menos un segmento con texto o acorde.', 'wp-song-study' ),
+            'segmentRequired'  => __( 'Cada verso necesita al menos un segmento con texto, acorde o MIDI.', 'wp-song-study' ),
             'segmentConsecutive' => __( 'No se permiten segmentos consecutivos sin texto.', 'wp-song-study' ),
             'camposSlugRequired' => __( 'Cada modo necesita un identificador (slug).', 'wp-song-study' ),
             'sectionsEmpty'    => __( 'Sin secciones registradas.', 'wp-song-study' ),

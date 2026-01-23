@@ -9,6 +9,7 @@ export default function VersesPanel({
   verses,
   sections,
   selectedSectionId,
+  songBpm,
   onSelectSection,
   onSectionsChange,
   onAddSection,
@@ -20,6 +21,7 @@ export default function VersesPanel({
   onSelectionChange,
 }) {
   const { wpData } = useAppState()
+  const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
   const safeVerses = Array.isArray(verses) ? verses : []
   const safeSections = Array.isArray(sections) ? sections : []
   const fallbackSection = safeSections[0]
@@ -80,6 +82,18 @@ export default function VersesPanel({
     if (onSelectionChange) {
       onSelectionChange(verseIndex, segmentIndex, start, end, element)
     }
+  }
+
+  const normalizeSegmentHtml = (html) => {
+    if (!html) return ''
+    return html
+      .replace(/<div><br><\/div>/gi, '<br>')
+      .replace(/<\/div>/gi, '<br>')
+      .replace(/<div>/gi, '')
+      .replace(/<p><br><\/p>/gi, '<br>')
+      .replace(/<\/p>/gi, '<br>')
+      .replace(/<p[^>]*>/gi, '')
+      .replace(/(<br>\s*)+$/gi, '')
   }
 
   const unwrapNode = (node) => {
@@ -507,6 +521,7 @@ export default function VersesPanel({
               sections={safeSections}
               selectedSectionId={activeSectionId}
               verses={safeVerses}
+              songBpm={bpmDefault}
               onSelect={onSelectSection}
               onChange={onSectionsChange}
               onDuplicate={onDuplicateSection}
@@ -743,9 +758,14 @@ export default function VersesPanel({
                                       verseIndex,
                                       segmentIndex,
                                       'texto',
-                                      event.currentTarget.innerHTML,
+                                      normalizeSegmentHtml(event.currentTarget.innerHTML),
                                     )
                                   }
+                                  onKeyDown={(event) => {
+                                    if (event.key !== 'Enter') return
+                                    event.preventDefault()
+                                    document.execCommand('insertLineBreak')
+                                  }}
                                   onFocus={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onClick={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                   onKeyUp={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
@@ -774,6 +794,7 @@ export default function VersesPanel({
                               <button
                                 type="button"
                                 className="button button-small wpss-segment__split"
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={(event) => {
                                   const key = `${verseIndex}:${segmentIndex}`
                                   const editor = editorsRef.current.get(key)
@@ -787,6 +808,7 @@ export default function VersesPanel({
                               <button
                                 type="button"
                                 className="button button-small"
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={(event) => {
                                   const key = `${verseIndex}:${segmentIndex}`
                                   const editor = editorsRef.current.get(key)
@@ -819,11 +841,12 @@ export default function VersesPanel({
                               </button>
                             ) : null}
                             <div className="wpss-segment__midi">
-                              <MidiClipList
-                                clips={segment?.midi_clips}
-                                onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
-                                emptyLabel="Añadir MIDI al segmento"
-                              />
+                                <MidiClipList
+                                  clips={segment?.midi_clips}
+                                  onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
+                                  emptyLabel="Añadir MIDI al segmento"
+                                  defaultTempo={bpmDefault}
+                                />
                             </div>
                           </div>
                         )
@@ -965,6 +988,7 @@ export default function VersesPanel({
                           clips={verse.midi_clips}
                           onChange={(clips) => handleVerseMidiChange(verseIndex, clips)}
                           emptyLabel="Añadir MIDI al verso"
+                          defaultTempo={bpmDefault}
                         />
                       </div>
                     </div>

@@ -21,6 +21,7 @@ export default function Editor() {
   const [selectedSectionId, setSelectedSectionId] = useState(null)
   const autosaveRef = useRef(null)
   const selectionRef = useRef({ verse: null, segment: null, start: null, end: null, element: null })
+  const lastSilentErrorRef = useRef(null)
 
   useEffect(() => {
     setEditingSong(state.editingSong)
@@ -161,57 +162,54 @@ export default function Editor() {
   }
 
   const scheduleAutosave = () => {
-    if (autosaveRef.current) {
-      clearTimeout(autosaveRef.current)
-    }
-
-    autosaveRef.current = setTimeout(() => {
-      saveSong(true)
-    }, AUTOSAVE_DELAY)
+    // Autosave disabled temporarily; manual save only.
   }
 
   const saveSong = (silent = false) => {
-    if (!editingSong.titulo.trim()) {
+    const warnSilent = (message) => {
       if (!silent) {
-        dispatch({
-          type: 'SET_STATE',
-          payload: { error: wpData?.strings?.titleRequired || 'El título es obligatorio.' },
-        })
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+        return
       }
+      const warning = `Autosave pausado: ${message}`
+      if (lastSilentErrorRef.current === warning) {
+        return
+      }
+      lastSilentErrorRef.current = warning
+      dispatch({
+        type: 'SET_STATE',
+        payload: { feedback: { message: warning, type: 'warning' }, error: null },
+      })
+    }
+
+    if (!editingSong.titulo.trim()) {
+      warnSilent(wpData?.strings?.titleRequired || 'El título es obligatorio.')
       return
     }
 
     if (!editingSong.tonica.trim()) {
-      if (!silent) {
-        dispatch({
-          type: 'SET_STATE',
-          payload: { error: wpData?.strings?.tonicaRequired || 'La tónica es obligatoria.' },
-        })
-      }
+      warnSilent(wpData?.strings?.tonicaRequired || 'La tónica es obligatoria.')
       return
     }
 
     const segmentError = validateSegments(editingSong.versos, wpData?.strings)
     if (segmentError) {
-      if (!silent) {
-        dispatch({ type: 'SET_STATE', payload: { error: segmentError } })
-      }
+      warnSilent(segmentError)
       return
     }
 
     const eventError = validateEventosArmonicos(editingSong.versos, wpData?.strings)
     if (eventError) {
-      if (!silent) {
-        dispatch({ type: 'SET_STATE', payload: { error: eventError } })
-      }
+      warnSilent(eventError)
       return
     }
 
     const estructuraPayload = normalizeStructureFromApi(editingSong.estructura || [], editingSong.secciones || [])
-    const payload = {
-      id: editingSong.id || null,
-      titulo: editingSong.titulo,
-      tonica: editingSong.tonica,
+      const payload = {
+        id: editingSong.id || null,
+        titulo: editingSong.titulo,
+        bpm: editingSong.bpm,
+        tonica: editingSong.tonica,
       campo_armonico: editingSong.campo_armonico,
       campo_armonico_predominante: editingSong.campo_armonico_predominante,
       prestamos_cancion: editingSong.prestamos,
@@ -240,12 +238,20 @@ export default function Editor() {
     api
       .saveSong(payload)
       .then((response) => {
+        if (silent && lastSilentErrorRef.current && state.feedback?.message === lastSilentErrorRef.current) {
+          lastSilentErrorRef.current = null
+          dispatch({ type: 'SET_STATE', payload: { feedback: null } })
+        }
         const body = response.data || {}
-        const secciones = normalizeSectionsFromApi(body.secciones || editingSong.secciones)
+        const bpmDefault = Number.isInteger(parseInt(body.bpm, 10))
+          ? parseInt(body.bpm, 10)
+          : editingSong.bpm
+        const secciones = normalizeSectionsFromApi(body.secciones || editingSong.secciones, bpmDefault)
         const estructura = normalizeStructureFromApi(body.estructura || [], secciones)
         const normalizedSong = {
           ...editingSong,
           id: body.id,
+          bpm: bpmDefault,
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -295,13 +301,15 @@ export default function Editor() {
   }
 
   const splitSegment = (verseIndex, segmentIndex, textarea) => {
-    updateSegmentSelection(
-      verseIndex,
-      segmentIndex,
-      textarea?.selectionStart ?? null,
-      textarea?.selectionEnd ?? null,
-      textarea ?? null,
-    )
+    if (!textarea?.isContentEditable) {
+      updateSegmentSelection(
+        verseIndex,
+        segmentIndex,
+        textarea?.selectionStart ?? null,
+        textarea?.selectionEnd ?? null,
+        textarea ?? null,
+      )
+    }
 
     const selection = selectionRef.current
     const verse = editingSong.versos[verseIndex]
@@ -309,7 +317,7 @@ export default function Editor() {
       return
     }
 
-    if (selection.start === null || selection.start !== selection.end) {
+    if (!textarea?.isContentEditable && (selection.start === null || selection.start !== selection.end)) {
       return
     }
 
@@ -343,25 +351,27 @@ export default function Editor() {
   }
 
   const splitVerseFromCursor = (verseIndex, segmentIndex, textarea) => {
-    updateSegmentSelection(
-      verseIndex,
-      segmentIndex,
-      textarea?.selectionStart ?? null,
-      textarea?.selectionEnd ?? null,
-      textarea ?? null,
-    )
+    if (!textarea?.isContentEditable) {
+      updateSegmentSelection(
+        verseIndex,
+        segmentIndex,
+        textarea?.selectionStart ?? null,
+        textarea?.selectionEnd ?? null,
+        textarea ?? null,
+      )
+    }
 
     const selection = selectionRef.current
-    const verse = editingSong.versos[verseIndex]
-    if (!verse || !verse.segmentos[segmentIndex]) {
+    const sourceVerses = Array.isArray(editingSong.versos) ? editingSong.versos : []
+    const sourceVerse = sourceVerses[verseIndex]
+    if (!sourceVerse || !sourceVerse.segmentos[segmentIndex]) {
       return
     }
 
-    if (selection.start === null || selection.start !== selection.end) {
+    if (!textarea?.isContentEditable && (selection.start === null || selection.start !== selection.end)) {
       return
     }
 
-    const segment = verse.segmentos[segmentIndex]
     const splitHtml = splitSegmentHtml(textarea)
     if (!splitHtml) {
       return
@@ -372,7 +382,14 @@ export default function Editor() {
       return
     }
 
+    const nextVerses = sourceVerses.map((verse) => ({
+      ...verse,
+      segmentos: Array.isArray(verse.segmentos) ? [...verse.segmentos] : [],
+    }))
+    const verse = nextVerses[verseIndex]
+    const segment = { ...(verse.segmentos[segmentIndex] || createEmptySegment()) }
     segment.texto = beforeHtml
+    verse.segmentos[segmentIndex] = segment
 
     const newSegments = []
     if (afterHtml) {
@@ -392,27 +409,29 @@ export default function Editor() {
       const currentIndex = getValidSegmentIndex(verse.evento_armonico, verse.segmentos.length)
       if (currentIndex !== null && currentIndex > segmentIndex) {
         const movedEvent = { ...verse.evento_armonico }
-        const offset = after ? segmentIndex : segmentIndex + 1
+        const offset = segmentIndex + 1
         movedEvent.segment_index = currentIndex - offset
         nuevoVerso.evento_armonico = movedEvent
         delete verse.evento_armonico.segment_index
       }
     }
 
-    editingSong.versos.splice(verseIndex + 1, 0, nuevoVerso)
-    normalizeVerseOrder(editingSong.versos)
-    updateSong({ ...editingSong })
+    nextVerses.splice(verseIndex + 1, 0, nuevoVerso)
+    normalizeVerseOrder(nextVerses)
+    updateSong({ ...editingSong, versos: nextVerses })
     scheduleAutosave()
   }
 
   const splitSectionFromCursor = (verseIndex, segmentIndex, textarea) => {
-    updateSegmentSelection(
-      verseIndex,
-      segmentIndex,
-      textarea?.selectionStart ?? null,
-      textarea?.selectionEnd ?? null,
-      textarea ?? null,
-    )
+    if (!textarea?.isContentEditable) {
+      updateSegmentSelection(
+        verseIndex,
+        segmentIndex,
+        textarea?.selectionStart ?? null,
+        textarea?.selectionEnd ?? null,
+        textarea ?? null,
+      )
+    }
 
     const selection = selectionRef.current
     const verse = editingSong.versos[verseIndex]
@@ -420,7 +439,7 @@ export default function Editor() {
       return
     }
 
-    if (selection.start === null || selection.start !== selection.end) {
+    if (!textarea?.isContentEditable && (selection.start === null || selection.start !== selection.end)) {
       return
     }
 
@@ -473,7 +492,7 @@ export default function Editor() {
         const currentIndex = getValidSegmentIndex(verse.evento_armonico, verse.segmentos.length)
         if (currentIndex !== null && currentIndex > segmentIndex) {
           const movedEvent = { ...verse.evento_armonico }
-          const offset = after ? segmentIndex : segmentIndex + 1
+          const offset = segmentIndex + 1
           movedEvent.segment_index = currentIndex - offset
           nuevoVerso.evento_armonico = movedEvent
           delete verse.evento_armonico.segment_index
@@ -570,21 +589,49 @@ export default function Editor() {
       }
     }
 
-    const selectionObj = window.getSelection()
-    if (!selectionObj || selectionObj.rangeCount === 0) {
-      return null
+    const textLength = element.textContent ? element.textContent.length : 0
+    const buildRangeAt = (cursor) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null)
+      let remaining = cursor
+      let target = walker.nextNode()
+      while (target) {
+        const length = target.textContent ? target.textContent.length : 0
+        if (remaining <= length) {
+          break
+        }
+        remaining -= length
+        target = walker.nextNode()
+      }
+      if (!target) {
+        return null
+      }
+      const nextRange = document.createRange()
+      nextRange.setStart(target, remaining)
+      nextRange.setEnd(target, remaining)
+      return nextRange
     }
 
-    const range = selectionObj.getRangeAt(0)
-    if (!element.contains(range.startContainer)) {
-      return null
+    let range = null
+    if (Number.isInteger(selectionRef.current.start)) {
+      const clamped = Math.min(Math.max(selectionRef.current.start, 0), textLength)
+      range = buildRangeAt(clamped)
+    }
+    if (!range) {
+      const selectionObj = window.getSelection()
+      const candidate = selectionObj && selectionObj.rangeCount > 0 ? selectionObj.getRangeAt(0) : null
+      if (candidate && element.contains(candidate.startContainer)) {
+        range = candidate
+      }
+    }
+    if (!range) {
+      return { beforeHtml: '', afterHtml: '', textLength, cursor: 0 }
     }
 
     const preRange = range.cloneRange()
     preRange.selectNodeContents(element)
     preRange.setEnd(range.startContainer, range.startOffset)
     const cursor = preRange.toString().length
-    const textLength = element.textContent ? element.textContent.length : 0
+    const safeCursor = Math.min(Math.max(cursor, 0), textLength)
 
     const toHtml = (r) => {
       const div = document.createElement('div')
@@ -598,7 +645,7 @@ export default function Editor() {
     postRange.setStart(range.endContainer, range.endOffset)
     const afterHtml = toHtml(postRange)
 
-    return { beforeHtml, afterHtml, textLength, cursor }
+    return { beforeHtml, afterHtml, textLength, cursor: safeCursor }
   }
 
   return (
@@ -619,6 +666,7 @@ export default function Editor() {
           <button className="button button-primary" type="button" onClick={() => saveSong(false)}>
             {wpData?.strings?.saveSong || 'Guardar canción'}
           </button>
+          <span className="wpss-save-status">Guardado manual</span>
         </div>
       </header>
 
@@ -657,6 +705,20 @@ export default function Editor() {
                 value={editingSong.tonica}
                 onChange={(event) => {
                   updateSong({ ...editingSong, tonica: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+            <label>
+              <span>BPM global</span>
+              <input
+                type="number"
+                min="40"
+                max="240"
+                value={editingSong.bpm ?? 120}
+                onChange={(event) => {
+                  const next = parseInt(event.target.value, 10)
+                  updateSong({ ...editingSong, bpm: Number.isInteger(next) ? next : 120 })
                   scheduleAutosave()
                 }}
               />
@@ -700,6 +762,7 @@ export default function Editor() {
             verses={editingSong.versos}
             sections={editingSong.secciones}
             selectedSectionId={selectedSectionId}
+            songBpm={editingSong.bpm}
             onSelectSection={handleSectionSelect}
             onSectionsChange={handleSectionChange}
             onAddSection={handleAddSection}

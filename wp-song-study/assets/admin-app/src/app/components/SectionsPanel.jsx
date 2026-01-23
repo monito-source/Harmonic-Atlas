@@ -1,15 +1,18 @@
 import { useMemo, useRef, useState } from 'react'
 import { generateSectionId, getDefaultSectionName } from '../utils.js'
+import MidiClipList from './MidiClipList.jsx'
 
 export default function SectionsPanel({
   sections,
   selectedSectionId,
   verses,
+  songBpm,
   onSelect,
   onChange,
   onDuplicate,
 }) {
   const safeSections = Array.isArray(sections) ? sections : []
+  const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
   const counts = useMemo(() => {
     const map = new Map()
     if (Array.isArray(verses)) {
@@ -55,9 +58,22 @@ export default function SectionsPanel({
     if (!section) return
 
     const baseName = section.nombre || getDefaultSectionName(index)
+    const midiCopy = Array.isArray(section.midi_clips)
+      ? section.midi_clips.map((clip) => ({
+          name: clip.name,
+          instrument: clip.instrument,
+          midi: clip.midi
+            ? {
+                ...clip.midi,
+                notes: Array.isArray(clip.midi.notes) ? clip.midi.notes.map((note) => ({ ...note })) : [],
+              }
+            : null,
+        }))
+      : []
     const nextSection = {
       id: generateSectionId(),
       nombre: `${baseName} copia`.slice(0, 64),
+      midi_clips: midiCopy,
     }
 
     const next = [...safeSections]
@@ -75,13 +91,20 @@ export default function SectionsPanel({
     onChange(next)
   }
 
+  const handleMidiChange = (index, clips) => {
+    const next = [...safeSections]
+    const section = next[index]
+    if (!section) return
+    next[index] = { ...section, midi_clips: clips }
+    onChange(next)
+  }
+
   return (
     <div className="wpss-sections-manager">
       {safeSections.map((section, index) => {
         const isActive = selectedSectionId === section.id
         const isDragging = draggingIndex === index
         const isDragOver = dragOverIndex === index && draggingIndex !== null
-
         return (
           <div
             key={section.id}
@@ -183,6 +206,14 @@ export default function SectionsPanel({
                 }}
               />
             </label>
+            <div className="wpss-section-row__midi">
+              <MidiClipList
+                clips={section.midi_clips}
+                onChange={(clips) => handleMidiChange(index, clips)}
+                emptyLabel="Añadir MIDI a la sección"
+                defaultTempo={bpmDefault}
+              />
+            </div>
           </div>
         )
       })}
