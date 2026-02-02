@@ -19,6 +19,7 @@ $wpss_admin_page_hooks = [];
 
 add_action( 'admin_menu', 'wpss_register_admin_pages' );
 add_action( 'admin_enqueue_scripts', 'wpss_enqueue_admin_assets' );
+add_action( 'admin_init', 'wpss_register_settings' );
 
 /**
  * Registra el menú "Cancionario Armónico" con sus páginas SPA.
@@ -26,7 +27,7 @@ add_action( 'admin_enqueue_scripts', 'wpss_enqueue_admin_assets' );
 function wpss_register_admin_pages() {
     global $wpss_admin_page_hooks;
 
-    $capability  = 'edit_posts';
+    $capability  = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
     $parent_slug = 'wpss-cancionario';
 
     $dashboard_hook = add_menu_page(
@@ -59,6 +60,15 @@ function wpss_register_admin_pages() {
     );
 
     $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook ];
+
+    add_submenu_page(
+        $parent_slug,
+        __( 'Ajustes MIDI', 'wp-song-study' ),
+        __( 'Ajustes MIDI', 'wp-song-study' ),
+        'manage_options',
+        'wpss-settings',
+        'wpss_render_settings_page'
+    );
 }
 
 /**
@@ -73,6 +83,87 @@ function wpss_render_dashboard_page() {
  */
 function wpss_render_new_song_page() {
     echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="new"></div>';
+}
+
+/**
+ * Registra las opciones del plugin.
+ */
+function wpss_register_settings() {
+    register_setting(
+        'wpss_settings',
+        'wpss_midi_range_presets',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'wpss_sanitize_midi_range_presets',
+            'default'           => wpss_get_default_midi_range_presets(),
+        ]
+    );
+
+    register_setting(
+        'wpss_settings',
+        'wpss_midi_range_default',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'wpss_sanitize_midi_range_default',
+            'default'           => 'medios',
+        ]
+    );
+}
+
+/**
+ * Renderiza la página de ajustes MIDI.
+ */
+function wpss_render_settings_page() {
+    $presets = wpss_sanitize_midi_range_presets( get_option( 'wpss_midi_range_presets', [] ) );
+    $default = wpss_get_midi_range_default();
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Ajustes MIDI', 'wp-song-study' ) . '</h1>';
+    echo '<form method="post" action="options.php">';
+    settings_fields( 'wpss_settings' );
+
+    echo '<table class="form-table" role="presentation">';
+    foreach ( $presets as $preset ) {
+        $id = $preset['id'];
+        $label = $preset['label'];
+        $min = (int) $preset['min'];
+        $max = (int) $preset['max'];
+
+        echo '<tr>';
+        echo '<th scope="row">' . esc_html( $label ) . '</th>';
+        echo '<td>';
+        echo '<label style="margin-right:16px;">';
+        echo esc_html__( 'Etiqueta', 'wp-song-study' ) . ' ';
+        echo '<input type="text" name="wpss_midi_range_presets[' . esc_attr( $id ) . '][label]" value="' . esc_attr( $label ) . '" class="regular-text" />';
+        echo '</label>';
+        echo '<label style="margin-right:16px;">';
+        echo esc_html__( 'Nota mínima (0-127)', 'wp-song-study' ) . ' ';
+        echo '<input type="number" min="0" max="127" name="wpss_midi_range_presets[' . esc_attr( $id ) . '][min]" value="' . esc_attr( $min ) . '" />';
+        echo '</label>';
+        echo '<label>';
+        echo esc_html__( 'Nota máxima (0-127)', 'wp-song-study' ) . ' ';
+        echo '<input type="number" min="0" max="127" name="wpss_midi_range_presets[' . esc_attr( $id ) . '][max]" value="' . esc_attr( $max ) . '" />';
+        echo '</label>';
+        echo '</td>';
+        echo '</tr>';
+    }
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Preset por defecto', 'wp-song-study' ) . '</th>';
+    echo '<td><select name="wpss_midi_range_default">';
+    foreach ( $presets as $preset ) {
+        $id = $preset['id'];
+        $selected = selected( $default, $id, false );
+        echo '<option value="' . esc_attr( $id ) . '"' . $selected . '>' . esc_html( $preset['label'] ) . '</option>';
+    }
+    echo '</select></td>';
+    echo '</tr>';
+
+    echo '</table>';
+
+    submit_button();
+    echo '</form>';
+    echo '</div>';
 }
 
 /**
@@ -153,6 +244,10 @@ function wpss_get_admin_localized_data() {
         'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'wpRestNonce'  => wp_create_nonce( 'wp_rest' ),
         'wpssNonce'    => wp_create_nonce( 'wpss' ),
+        'isAdmin'      => current_user_can( 'manage_options' ),
+        'currentUserId' => get_current_user_id(),
+        'midiRanges'   => wpss_get_midi_range_presets(),
+        'midiRangeDefault' => wpss_get_midi_range_default(),
         'tonicas'      => $tonicas,
         'camposArmonicos' => $campos_library,
         'camposArmonicosNombres' => $campos_armonicos,

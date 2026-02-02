@@ -16,6 +16,24 @@ add_shortcode( 'wpss_public_reader', 'wpss_shortcode_public_reader' );
 add_action( 'wp_enqueue_scripts', 'wpss_register_public_reader_assets' );
 add_filter( 'the_content', 'wpss_inject_public_reader_shortcode', 9 );
 
+function wpss_is_hold_chord_token( $value ) {
+    if ( ! is_string( $value ) || '' === $value ) {
+        return false;
+    }
+
+    $token = strtolower( trim( $value ) );
+    return in_array( $token, [ 'null', 'still' ], true );
+}
+
+function wpss_text_ends_with_joiner( $value ) {
+    if ( ! is_string( $value ) || '' === $value ) {
+        return false;
+    }
+
+    $trimmed = rtrim( $value );
+    return '' !== $trimmed && '-' === substr( $trimmed, -1 );
+}
+
 /**
  * Renderiza un listado de canciones filtradas por tonalidad.
  *
@@ -138,6 +156,10 @@ function wpss_shortcode_song( $atts ) {
                 $texto  = isset( $segmento['texto'] ) ? sanitize_textarea_field( $segmento['texto'] ) : '';
                 $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
 
+                if ( wpss_is_hold_chord_token( $acorde ) ) {
+                    $acorde = '';
+                }
+
                 if ( '' === $texto && '' === $acorde ) {
                     continue;
                 }
@@ -152,6 +174,9 @@ function wpss_shortcode_song( $atts ) {
         if ( empty( $segmentos ) ) {
             $texto  = sanitize_textarea_field( $verso->post_content );
             $acorde = sanitize_text_field( get_post_meta( $verso->ID, '_acorde_absoluto', true ) );
+            if ( wpss_is_hold_chord_token( $acorde ) ) {
+                $acorde = '';
+            }
             $segmentos[] = [
                 'texto'  => $texto,
                 'acorde' => $acorde,
@@ -176,7 +201,11 @@ function wpss_shortcode_song( $atts ) {
                 $html .= '<span class="wpss-song-chord">[' . esc_html( $segmento['acorde'] ) . ']</span> ';
             }
             $html .= esc_html( $segmento['texto'] );
-            $html .= '</span> ';
+            $html .= '</span>';
+            $has_joiner = wpss_text_ends_with_joiner( $segmento['texto'] );
+            if ( ! $has_joiner && $index < count( $segmentos ) - 1 ) {
+                $html .= ' ';
+            }
         }
         $html .= '</div>';
 
@@ -364,9 +393,20 @@ function wpss_get_public_localized_data() {
         'B',
     ];
 
+    $can_manage = defined( 'WPSS_CAP_MANAGE' ) ? current_user_can( WPSS_CAP_MANAGE ) : current_user_can( 'edit_posts' );
+    $is_admin = current_user_can( 'manage_options' );
+
     return [
         'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'publicRestUrl' => esc_url_raw( rest_url( 'wpss/v1/' ) ),
+        'wpRestNonce'  => wp_create_nonce( 'wp_rest' ),
+        'wpssNonce'    => wp_create_nonce( 'wpss' ),
+        'canManage'    => $can_manage,
+        'isAdmin'      => $is_admin,
+        'isPublicReader' => true,
+        'currentUserId' => get_current_user_id(),
+        'midiRanges'   => wpss_get_midi_range_presets(),
+        'midiRangeDefault' => wpss_get_midi_range_default(),
         'tonicas'      => $tonicas,
         'strings'      => [
             'filtersTitle'     => __( 'Canciones disponibles', 'wp-song-study' ),

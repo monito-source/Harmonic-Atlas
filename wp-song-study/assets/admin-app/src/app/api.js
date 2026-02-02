@@ -127,6 +127,9 @@ export function createApi(wpData) {
     getSong(id) {
       return request(`cancion/${id}`)
     },
+    deleteSong(id) {
+      return request(`cancion/${id}`, { method: 'DELETE' })
+    },
     getPublicSong(id) {
       return requestPublic(`public/cancion/${id}`)
     },

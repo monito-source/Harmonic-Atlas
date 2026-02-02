@@ -29,6 +29,14 @@ if ( ! defined( 'WPSS_USE_REACT' ) ) {
     define( 'WPSS_USE_REACT', (bool) apply_filters( 'wpss_use_react', true ) );
 }
 
+if ( ! defined( 'WPSS_ROLE_COLEGA' ) ) {
+    define( 'WPSS_ROLE_COLEGA', 'colega_musical' );
+}
+
+if ( ! defined( 'WPSS_CAP_MANAGE' ) ) {
+    define( 'WPSS_CAP_MANAGE', 'wpss_manage_canciones' );
+}
+
 /**
  * Carga el archivo de traducciones.
  */
@@ -45,6 +53,7 @@ require_once WPSS_PATH . 'includes/admin-columns.php';
 require_once WPSS_PATH . 'includes/shortcodes.php';
 require_once WPSS_PATH . 'includes/admin-pages.php';
 require_once WPSS_PATH . 'includes/rest-api.php';
+require_once WPSS_PATH . 'includes/midi-settings.php';
 
 /**
  * Registro de taxonomía y CPT.
@@ -57,12 +66,38 @@ function wpss_register_content_types() {
 }
 add_action( 'init', 'wpss_register_content_types' );
 add_action( 'init', 'wpss_ensure_public_reader_page' );
+add_action( 'init', 'wpss_register_colega_role' );
+
+/**
+ * Registra el rol "Colega musical" y capacidades asociadas.
+ */
+function wpss_register_colega_role() {
+    $role = get_role( WPSS_ROLE_COLEGA );
+    if ( ! $role ) {
+        add_role(
+            WPSS_ROLE_COLEGA,
+            __( 'Colega musical', 'wp-song-study' ),
+            [
+                'read'             => true,
+                WPSS_CAP_MANAGE    => true,
+            ]
+        );
+    } else {
+        $role->add_cap( WPSS_CAP_MANAGE );
+    }
+
+    $admin = get_role( 'administrator' );
+    if ( $admin ) {
+        $admin->add_cap( WPSS_CAP_MANAGE );
+    }
+}
 
 /**
  * Ejecuta tareas de activación.
  */
 function wpss_activate_plugin() {
     wpss_register_content_types();
+    wpss_register_colega_role();
     if ( function_exists( 'wpss_ensure_public_reader_page' ) ) {
         wpss_ensure_public_reader_page();
     }

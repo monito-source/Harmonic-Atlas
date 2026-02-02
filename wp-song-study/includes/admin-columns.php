@@ -18,6 +18,41 @@ add_action( 'save_post_verso', 'wpss_prepare_verso_count_from_child', 10, 3 );
 add_action( 'before_delete_post', 'wpss_prepare_verso_count_from_deleted_child' );
 
 /**
+ * Obtiene el conteo de versos evitando recalcular en cada fila del admin.
+ *
+ * @param int $post_id ID de la canción.
+ * @return int
+ */
+function wpss_get_cached_verso_count( $post_id ) {
+    $count = get_post_meta( $post_id, '_wpss_temp_verso_count', true );
+    if ( '' !== $count ) {
+        return (int) $count;
+    }
+
+    $count = get_post_meta( $post_id, '_conteo_versos', true );
+    if ( '' !== $count ) {
+        return (int) $count;
+    }
+
+    $ids = get_posts(
+        [
+            'post_type'        => 'verso',
+            'numberposts'      => -1,
+            'fields'           => 'ids',
+            'meta_key'         => '_cancion_id',
+            'meta_value'       => $post_id,
+            'no_found_rows'    => true,
+            'suppress_filters' => true,
+        ]
+    );
+
+    $count = is_array( $ids ) ? count( $ids ) : 0;
+    update_post_meta( $post_id, '_wpss_temp_verso_count', $count );
+
+    return $count;
+}
+
+/**
  * Añade columnas personalizadas para tonalidad, versos y estado armónico.
  *
  * @param array $columns Columnas originales.
@@ -60,19 +95,8 @@ function wpss_render_cancion_custom_columns( $column, $post_id ) {
     }
 
     if ( 'versos' === $column ) {
-        $count = get_posts(
-            [
-                'post_type'        => 'verso',
-                'numberposts'      => -1,
-                'fields'           => 'ids',
-                'meta_key'         => '_cancion_id',
-                'meta_value'       => $post_id,
-                'no_found_rows'    => true,
-                'suppress_filters' => true,
-            ]
-        );
-
-        echo esc_html( (string) count( $count ) );
+        $count = wpss_get_cached_verso_count( $post_id );
+        echo esc_html( (string) $count );
         return;
     }
 

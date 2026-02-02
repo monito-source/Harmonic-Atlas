@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
   getDefaultSectionName,
@@ -7,37 +7,69 @@ import {
   normalizeStructureFromApi,
   normalizeVerseOrder,
   prepareEventoArmonicoForPayload,
+  decodeUnicodeTokens,
   validateEventosArmonicos,
   validateSegments,
 } from '../utils.js'
 import { createEmptySegment, createEmptyVerse, createSection } from '../state.js'
+import StructurePanel from './StructurePanel.jsx'
 import VersesPanel from './VersesPanel.jsx'
 
 const AUTOSAVE_DELAY = 800
 
-export default function Editor() {
+export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
-  const [selectedSectionId, setSelectedSectionId] = useState(null)
+  const [selectedSectionId, setSelectedSectionId] = useState(() => state.ui?.selectedSectionId ?? null)
   const autosaveRef = useRef(null)
   const selectionRef = useRef({ verse: null, segment: null, start: null, end: null, element: null })
   const lastSilentErrorRef = useRef(null)
+  const isAdmin = !!wpData?.isAdmin
+  const currentUserId = wpData?.currentUserId || 0
+  const preferCompactMidiRows = !!wpData?.isPublicReader
+  const midiRangePresets = Array.isArray(wpData?.midiRanges) ? wpData.midiRanges : []
+  const midiRangeDefault = wpData?.midiRangeDefault ? String(wpData.midiRangeDefault) : ''
+  const lockMidiRange = !!wpData?.isPublicReader
+  const canDeleteSong =
+    !!editingSong?.id &&
+    (isAdmin || Number(editingSong?.autor_id) === Number(currentUserId))
+
+  const persistSelectedSection = useCallback(
+    (nextId) => {
+      setSelectedSectionId(nextId)
+      dispatch({
+        type: 'SET_STATE',
+        payload: { ui: { ...state.ui, selectedSectionId: nextId } },
+      })
+    },
+    [dispatch, state.ui],
+  )
 
   useEffect(() => {
     setEditingSong(state.editingSong)
   }, [state.editingSong])
 
   useEffect(() => {
+    return () => {
+      if (autosaveRef.current) {
+        clearTimeout(autosaveRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     const secciones = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
     if (!secciones.length) {
-      setSelectedSectionId(null)
+      if (selectedSectionId !== null) {
+        persistSelectedSection(null)
+      }
       return
     }
 
     if (!selectedSectionId || !secciones.some((section) => section.id === selectedSectionId)) {
-      setSelectedSectionId(secciones[0].id)
+      persistSelectedSection(secciones[0].id)
     }
-  }, [editingSong.secciones, selectedSectionId])
+  }, [editingSong.secciones, persistSelectedSection, selectedSectionId])
 
   useEffect(() => {
     const secciones = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
@@ -61,6 +93,35 @@ export default function Editor() {
       const next = typeof updater === 'function' ? updater({ ...prev }) : updater
       return next
     })
+  }
+
+  const handleDeleteSong = () => {
+    if (!editingSong?.id || !canDeleteSong) {
+      return
+    }
+    const confirmed = window.confirm(
+      `¿Eliminar "${editingSong.titulo || 'esta canción'}"? Esta acción no se puede deshacer.`,
+    )
+    if (!confirmed) return
+    api
+      .deleteSong(editingSong.id)
+      .then(() => {
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            editingSong: createEmptySong(),
+            selectedSongId: null,
+            feedback: { message: 'Canción eliminada.', type: 'success' },
+          },
+        })
+        if (onShowList) {
+          onShowList()
+        }
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible eliminar la canción.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
   }
 
   const syncLegacyFromSections = (song, sections) => {
@@ -115,7 +176,7 @@ export default function Editor() {
 
     secciones = secciones.map((seccion, index) => {
       let id = seccion && seccion.id ? String(seccion.id).trim() : ''
-      let nombre = seccion && seccion.nombre ? String(seccion.nombre).trim() : ''
+      let nombre = seccion && seccion.nombre ? String(seccion.nombre) : ''
       const midiClips = Array.isArray(seccion?.midi_clips) ? seccion.midi_clips : []
 
       if (!id) {
@@ -128,7 +189,7 @@ export default function Editor() {
 
       used.add(id)
 
-      if (!nombre) {
+      if (!nombre.trim()) {
         nombre = getDefaultSectionName(index)
       }
 
@@ -162,10 +223,32 @@ export default function Editor() {
   }
 
   const scheduleAutosave = () => {
-    // Autosave disabled temporarily; manual save only.
+    if (autosaveRef.current) {
+      clearTimeout(autosaveRef.current)
+    }
+    dispatch({ type: 'SET_STATE', payload: { saving: true } })
+    autosaveRef.current = window.setTimeout(() => {
+      autosaveRef.current = null
+      saveSong(true)
+    }, AUTOSAVE_DELAY)
   }
 
   const saveSong = (silent = false) => {
+    const normalizeMidiClipsForSave = (clips) => {
+      if (!Array.isArray(clips)) return []
+      return clips.map((clip) => {
+        if (!clip || typeof clip !== 'object') return clip
+        const name = clip.name ? decodeUnicodeTokens(clip.name) : clip.name
+        return name === clip.name ? clip : { ...clip, name }
+      })
+    }
+
+    const normalizeSegmentForSave = (segment) => {
+      if (!segment || typeof segment !== 'object') return segment
+      const midiClips = normalizeMidiClipsForSave(segment.midi_clips)
+      return midiClips === segment.midi_clips ? segment : { ...segment, midi_clips: midiClips }
+    }
+
     const warnSilent = (message) => {
       if (!silent) {
         dispatch({ type: 'SET_STATE', payload: { error: message } })
@@ -212,11 +295,26 @@ export default function Editor() {
         tonica: editingSong.tonica,
       campo_armonico: editingSong.campo_armonico,
       campo_armonico_predominante: editingSong.campo_armonico_predominante,
+      ficha_autores: editingSong.ficha_autores || '',
+      ficha_anio: editingSong.ficha_anio || '',
+      ficha_pais: editingSong.ficha_pais || '',
+      ficha_estado_legal: editingSong.ficha_estado_legal || '',
+      ficha_licencia: editingSong.ficha_licencia || '',
+      ficha_fuente_verificacion: editingSong.ficha_fuente_verificacion || '',
+      ficha_incompleta: !!editingSong.ficha_incompleta,
+      ficha_incompleta_motivo: editingSong.ficha_incompleta_motivo || '',
       prestamos_cancion: editingSong.prestamos,
       modulaciones_cancion: editingSong.modulaciones,
-      secciones: editingSong.secciones,
+      secciones: Array.isArray(editingSong.secciones)
+        ? editingSong.secciones.map((section) => ({
+            ...section,
+            midi_clips: normalizeMidiClipsForSave(section.midi_clips),
+          }))
+        : [],
       versos: editingSong.versos.map((verso) => {
-        const segmentos = Array.isArray(verso.segmentos) ? verso.segmentos : []
+        const segmentos = Array.isArray(verso.segmentos)
+          ? verso.segmentos.map((segment) => normalizeSegmentForSave(segment))
+          : []
         const evento = prepareEventoArmonicoForPayload(verso.evento_armonico, segmentos.length)
 
         return {
@@ -224,7 +322,8 @@ export default function Editor() {
           segmentos,
           comentario: verso.comentario,
           evento_armonico: evento,
-          midi_clips: Array.isArray(verso.midi_clips) ? verso.midi_clips : [],
+          instrumental: !!verso.instrumental,
+          midi_clips: normalizeMidiClipsForSave(verso.midi_clips),
           section_id: verso.section_id || '',
           fin_de_estrofa: !!verso.fin_de_estrofa,
           nombre_estrofa: verso.fin_de_estrofa ? verso.nombre_estrofa || '' : '',
@@ -238,6 +337,9 @@ export default function Editor() {
     api
       .saveSong(payload)
       .then((response) => {
+        if (silent) {
+          dispatch({ type: 'SET_STATE', payload: { saving: false } })
+        }
         if (silent && lastSilentErrorRef.current && state.feedback?.message === lastSilentErrorRef.current) {
           lastSilentErrorRef.current = null
           dispatch({ type: 'SET_STATE', payload: { feedback: null } })
@@ -284,7 +386,10 @@ export default function Editor() {
         }
       })
       .catch((error) => {
-        if (silent) return
+        if (silent) {
+          dispatch({ type: 'SET_STATE', payload: { saving: false } })
+          return
+        }
         const message = error?.payload?.message || wpData?.strings?.error || 'Ocurrió un error al guardar.'
         dispatch({ type: 'SET_STATE', payload: { error: message } })
       })
@@ -403,6 +508,7 @@ export default function Editor() {
     verse.segmentos = verse.segmentos.slice(0, segmentIndex + 1)
 
     const nuevoVerso = createEmptyVerse(verse.orden + 1, verse.section_id)
+    nuevoVerso.instrumental = !!verse.instrumental
     nuevoVerso.segmentos = newSegments.length ? newSegments : [createEmptySegment()]
 
     if (verse.evento_armonico && Object.prototype.hasOwnProperty.call(verse.evento_armonico, 'segment_index')) {
@@ -486,6 +592,7 @@ export default function Editor() {
       verse.segmentos = verse.segmentos.slice(0, segmentIndex + 1)
 
       const nuevoVerso = createEmptyVerse(verse.orden + 1, newSection.id)
+      nuevoVerso.instrumental = !!verse.instrumental
       nuevoVerso.segmentos = newSegments.length ? newSegments : [createEmptySegment()]
 
       if (verse.evento_armonico && Object.prototype.hasOwnProperty.call(verse.evento_armonico, 'segment_index')) {
@@ -505,20 +612,25 @@ export default function Editor() {
     }
 
     const nextSelected = ensureSectionsIntegrity(editingSong, newSection.id)
-    setSelectedSectionId(nextSelected)
+    persistSelectedSection(nextSelected)
     updateSong({ ...editingSong })
     scheduleAutosave()
   }
 
   const handleSectionSelect = (id) => {
-    setSelectedSectionId(id)
+    persistSelectedSection(id)
   }
 
   const handleSectionChange = (nextSections) => {
     const nextSong = { ...editingSong, secciones: nextSections }
     const nextSelected = ensureSectionsIntegrity(nextSong, selectedSectionId)
-    setSelectedSectionId(nextSelected)
+    persistSelectedSection(nextSelected)
     updateSong({ ...nextSong })
+    scheduleAutosave()
+  }
+
+  const handleStructureChange = (nextStructure) => {
+    updateSong({ ...editingSong, estructura: nextStructure })
     scheduleAutosave()
   }
 
@@ -554,7 +666,7 @@ export default function Editor() {
 
     const nextSong = { ...editingSong, secciones: sections, versos: nextVerses }
     const nextSelected = ensureSectionsIntegrity(nextSong, newSection.id)
-    setSelectedSectionId(nextSelected)
+    persistSelectedSection(nextSelected)
     updateSong({ ...nextSong })
     scheduleAutosave()
   }
@@ -572,7 +684,7 @@ export default function Editor() {
     nextSections.push(section)
     const nextSong = { ...editingSong, secciones: nextSections }
     const nextSelected = ensureSectionsIntegrity(nextSong, section.id)
-    setSelectedSectionId(nextSelected)
+    persistSelectedSection(nextSelected)
     updateSong({ ...nextSong })
     scheduleAutosave()
   }
@@ -655,18 +767,32 @@ export default function Editor() {
           <h2>{editingSong.id ? editingSong.titulo || 'Canción' : wpData?.strings?.newSong || 'Nueva canción'}</h2>
           <p className="wpss-panel__meta">{editingSong.id ? `ID ${editingSong.id}` : '—'}</p>
         </div>
-        <div className="wpss-panel__actions">
-          <button
-            className="button"
-            type="button"
-            onClick={() => dispatch({ type: 'SET_STATE', payload: { activeTab: 'reading' } })}
+          <div className="wpss-panel__actions">
+            {onShowList ? (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={onShowList}
+              >
+                Ver canciones
+              </button>
+            ) : null}
+            <button
+              className="button"
+              type="button"
+              onClick={() => dispatch({ type: 'SET_STATE', payload: { activeTab: 'reading' } })}
           >
             {wpData?.strings?.readingView || 'Vista de lectura'}
           </button>
           <button className="button button-primary" type="button" onClick={() => saveSong(false)}>
             {wpData?.strings?.saveSong || 'Guardar canción'}
           </button>
-          <span className="wpss-save-status">Guardado manual</span>
+          {canDeleteSong ? (
+            <button className="button button-danger" type="button" onClick={handleDeleteSong}>
+              Eliminar
+            </button>
+          ) : null}
+            {state.saving ? <span className="wpss-save-status">Guardando…</span> : null}
         </div>
       </header>
 
@@ -754,6 +880,111 @@ export default function Editor() {
           </div>
         </div>
 
+        <details className="wpss-section wpss-section--collapsible">
+          <summary>
+            <span>Ficha tecnica</span>
+          </summary>
+          <div className="wpss-field-group">
+            <label>
+              <span>Autor(es)</span>
+              <input
+                type="text"
+                value={editingSong.ficha_autores || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_autores: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+            <label>
+              <span>Año</span>
+              <input
+                type="text"
+                value={editingSong.ficha_anio || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_anio: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+            <label>
+              <span>Pais</span>
+              <input
+                type="text"
+                value={editingSong.ficha_pais || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_pais: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+          </div>
+          <div className="wpss-field-group">
+            <label>
+              <span>Estado legal</span>
+              <select
+                value={editingSong.ficha_estado_legal || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_estado_legal: event.target.value })
+                  scheduleAutosave()
+                }}
+              >
+                <option value="">Selecciona</option>
+                <option value="dominio_publico">Dominio publico</option>
+                <option value="cc">CC</option>
+                <option value="licencia_directa">Licencia directa</option>
+              </select>
+            </label>
+            {editingSong.ficha_estado_legal === 'cc' ? (
+              <label>
+                <span>CC (especificar)</span>
+                <input
+                  type="text"
+                  value={editingSong.ficha_licencia || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_licencia: event.target.value })
+                    scheduleAutosave()
+                  }}
+                />
+              </label>
+            ) : null}
+            <label>
+              <span>Fuente de verificacion</span>
+              <input
+                type="text"
+                value={editingSong.ficha_fuente_verificacion || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_fuente_verificacion: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+          </div>
+          <label className="wpss-toggle">
+            <input
+              type="checkbox"
+              checked={!!editingSong.ficha_incompleta}
+              onChange={(event) => {
+                updateSong({ ...editingSong, ficha_incompleta: event.target.checked })
+                scheduleAutosave()
+              }}
+            />
+            <span>Ficha incompleta</span>
+          </label>
+          {editingSong.ficha_incompleta ? (
+            <label>
+              <span>Motivo</span>
+              <textarea
+                value={editingSong.ficha_incompleta_motivo || ''}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_incompleta_motivo: event.target.value })
+                  scheduleAutosave()
+                }}
+              />
+            </label>
+          ) : null}
+        </details>
+
         <details className="wpss-section wpss-section--collapsible" open>
           <summary>
             <span>Versos</span>
@@ -772,6 +1003,22 @@ export default function Editor() {
             onSplitVerse={splitVerseFromCursor}
             onSplitSection={splitSectionFromCursor}
             onSelectionChange={updateSegmentSelection}
+            compactMidiRows={preferCompactMidiRows}
+            allowMidiRowToggle={preferCompactMidiRows}
+            midiRangePresets={midiRangePresets}
+            midiRangeDefault={midiRangeDefault}
+            lockMidiRange={lockMidiRange}
+          />
+        </details>
+
+        <details className="wpss-section wpss-section--collapsible">
+          <summary>
+            <span>Gestionar estructura de canción</span>
+          </summary>
+          <StructurePanel
+            structure={editingSong.estructura}
+            sections={editingSong.secciones}
+            onChange={handleStructureChange}
           />
         </details>
 

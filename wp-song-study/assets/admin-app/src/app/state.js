@@ -11,6 +11,7 @@ export function createEmptyVerse(order, sectionId) {
     section_id: sectionId || '',
     fin_de_estrofa: false,
     nombre_estrofa: '',
+    instrumental: false,
     midi_clips: [],
   }
 }
@@ -27,11 +28,20 @@ export function createSection(nombre = '', index = 0) {
 export function createEmptySong() {
   return {
     id: null,
+    autor_id: null,
     titulo: '',
     bpm: 120,
     tonica: '',
     campo_armonico: '',
     campo_armonico_predominante: '',
+    ficha_autores: '',
+    ficha_anio: '',
+    ficha_pais: '',
+    ficha_estado_legal: '',
+    ficha_licencia: '',
+    ficha_fuente_verificacion: '',
+    ficha_incompleta: false,
+    ficha_incompleta_motivo: '',
     prestamos: [],
     modulaciones: [],
     versos: [],

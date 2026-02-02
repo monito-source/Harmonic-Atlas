@@ -6,6 +6,10 @@ const MIDI_BASE = 48
 const MIDI_RANGE = 36
 let sharedAudioContext = null
 let sharedMidiClipboard = null
+let activePlayback = null
+let activePlaybackKey = null
+let activePlaybackTimeout = null
+let activePlaybackOnStop = null
 
 function midiToFreq(pitch) {
   return 440 * 2 ** ((pitch - 69) / 12)
@@ -49,6 +53,175 @@ function playPreviewNote(pitch, instrument = 'basic', velocity = 96) {
   osc.stop(start + duration + settings.decay)
 }
 
+function createPlaybackController() {
+  const controller = {
+    stopped: false,
+    durationMs: 0,
+    oscillators: new Set(),
+    timeouts: new Set(),
+    addTimeout(id) {
+      this.timeouts.add(id)
+    },
+    addOscillator(osc) {
+      this.oscillators.add(osc)
+      osc.addEventListener('ended', () => {
+        this.oscillators.delete(osc)
+      })
+    },
+    registerDuration(ms) {
+      if (ms > this.durationMs) {
+        this.durationMs = ms
+      }
+    },
+    stop() {
+      if (this.stopped) return
+      this.stopped = true
+      this.timeouts.forEach((id) => clearTimeout(id))
+      this.timeouts.clear()
+      this.oscillators.forEach((osc) => {
+        try {
+          osc.stop()
+        } catch {
+          // Ignore already-stopped oscillators.
+        }
+      })
+      this.oscillators.clear()
+    },
+  }
+  return controller
+}
+
+function getMidiDurationMs(midi, repeat = 1, defaultTempo = MIDI_DEFAULTS.tempo) {
+  const normalized = normalizeMidiData(midi, defaultTempo)
+  if (!normalized) {
+    return 0
+  }
+  const repeatCount = Math.min(Math.max(parseInt(repeat, 10) || 1, 1), 32)
+  const stepDuration = 60 / normalized.tempo / 4
+  const loopDuration = normalized.steps * stepDuration
+  return Math.max(0, loopDuration * repeatCount * 1000 + 60)
+}
+
+function stopActivePlayback() {
+  if (activePlaybackTimeout) {
+    clearTimeout(activePlaybackTimeout)
+    activePlaybackTimeout = null
+  }
+  if (activePlayback) {
+    activePlayback.stop()
+  }
+  if (activePlaybackOnStop) {
+    activePlaybackOnStop()
+  }
+  activePlayback = null
+  activePlaybackKey = null
+  activePlaybackOnStop = null
+}
+
+export function togglePlayback(key, startFn, onStop = null) {
+  if (activePlayback) {
+    if (activePlaybackKey === key) {
+      stopActivePlayback()
+      return { playing: false }
+    }
+    stopActivePlayback()
+  }
+  const controller = startFn()
+  if (!controller) {
+    return { playing: false }
+  }
+  activePlayback = controller
+  activePlaybackKey = key
+  activePlaybackOnStop = onStop
+  if (controller.durationMs > 0) {
+    activePlaybackTimeout = window.setTimeout(() => {
+      stopActivePlayback()
+    }, controller.durationMs + 80)
+    controller.addTimeout(activePlaybackTimeout)
+  }
+  return { playing: true, controller }
+}
+
+function getClipRepeat(clip, repeatsEnabled) {
+  if (!repeatsEnabled) return 1
+  const repeatRaw = parseInt(clip?.repeat, 10)
+  return Number.isInteger(repeatRaw) && repeatRaw > 0 ? Math.min(repeatRaw, 32) : 1
+}
+
+function getGroupRepeat(group, repeatsEnabled) {
+  if (!repeatsEnabled) return 1
+  const controller =
+    group.find((clip) => clip?.link_id && clip?.clip_id && clip.link_id === clip.clip_id)
+    || group[0]
+  return getClipRepeat(controller, true)
+}
+
+export function buildMidiClipGroups(clips, linkedPlayback = true) {
+  if (!Array.isArray(clips) || !clips.length) {
+    return []
+  }
+  const hasMidi = (clip) => clip && typeof clip === 'object' && clip.midi
+  const available = clips.filter(hasMidi)
+  if (!available.length) {
+    return []
+  }
+  if (!linkedPlayback) {
+    return available.map((clip) => [clip])
+  }
+  const groups = []
+  const seen = new Set()
+  available.forEach((clip) => {
+    const linkId = clip?.link_id ? String(clip.link_id) : ''
+    if (linkId) {
+      if (seen.has(linkId)) return
+      const grouped = available.filter((item) => item?.link_id === linkId)
+      if (grouped.length) {
+        groups.push(grouped)
+        seen.add(linkId)
+      }
+    } else {
+      groups.push([clip])
+    }
+  })
+  return groups
+}
+
+export function playMidiClipGroupsSequence(
+  steps,
+  { defaultTempo = MIDI_DEFAULTS.tempo, repeatsEnabled = true, onStepStart = null } = {},
+) {
+  if (!Array.isArray(steps) || !steps.length) {
+    return null
+  }
+  const controller = createPlaybackController()
+  let offsetMs = 0
+  steps.forEach((step) => {
+    const group = Array.isArray(step) ? step : step?.clips
+    if (!Array.isArray(group) || !group.length) {
+      return
+    }
+    const groupRepeat = getGroupRepeat(group, repeatsEnabled)
+    const durations = group.map((clip) => getMidiDurationMs(clip?.midi, groupRepeat, defaultTempo))
+    const groupDuration = Math.max(0, ...durations)
+    const timeoutId = window.setTimeout(() => {
+      if (controller.stopped) return
+      if (onStepStart && step?.meta) {
+        onStepStart(step.meta)
+      }
+      group.forEach((clip) => {
+        playMidiData(clip?.midi, clip?.instrument || 'basic', groupRepeat, {
+          controller,
+          defaultTempo,
+        })
+      })
+    }, offsetMs)
+    controller.addTimeout(timeoutId)
+    offsetMs += groupDuration
+  })
+  controller.durationMs = offsetMs
+  return controller
+}
+
 export function createDefaultMidi(tempo = MIDI_DEFAULTS.tempo) {
   const normalizedTempo = Number.isInteger(parseInt(tempo, 10)) ? parseInt(tempo, 10) : MIDI_DEFAULTS.tempo
   return { ...MIDI_DEFAULTS, tempo: normalizedTempo, notes: [] }
@@ -61,14 +234,22 @@ const INSTRUMENT_SETTINGS = {
   voice: { type: 'sine', attack: 0.03, decay: 0.08, sustain: 0.16 },
 }
 
-export function playMidiData(midi, instrument = 'basic', repeat = 1) {
-  const normalized = normalizeMidiData(midi)
-  if (!normalized || !normalized.notes.length) {
-    return
+export function playMidiData(midi, instrument = 'basic', repeat = 1, options = {}) {
+  const defaultTempo = options.defaultTempo ?? MIDI_DEFAULTS.tempo
+  const controller = options.controller || createPlaybackController()
+  const normalized = normalizeMidiData(midi, defaultTempo)
+  if (!normalized) {
+    return controller
   }
   const repeatCount = Math.min(Math.max(parseInt(repeat, 10) || 1, 1), 32)
+  const durationMs = getMidiDurationMs(normalized, repeatCount, defaultTempo)
+  controller.registerDuration(durationMs)
+  if (!normalized.notes.length) {
+    return controller
+  }
   const settings = INSTRUMENT_SETTINGS[instrument] || INSTRUMENT_SETTINGS.basic
-  window.setTimeout(() => {
+  const scheduleId = window.setTimeout(() => {
+    if (controller.stopped) return
     const ctx = getSharedAudioContext()
     if (!ctx) return
     const baseTime = ctx.currentTime + 0.05
@@ -96,11 +277,14 @@ export function playMidiData(midi, instrument = 'basic', repeat = 1) {
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration * 0.9 + settings.decay)
         osc.connect(gain)
         gain.connect(ctx.destination)
+        controller.addOscillator(osc)
         osc.start(start)
         osc.stop(start + duration)
       })
     }
   }, 0)
+  controller.addTimeout(scheduleId)
+  return controller
 }
 
 export default function MidiSketch({
@@ -109,6 +293,12 @@ export default function MidiSketch({
   onRemove,
   readOnly = false,
   showOnlyActiveRows = false,
+  compactRows = false,
+  allowRowToggle = false,
+  rowPadding = 6,
+  rangePresets = [],
+  defaultRange = '',
+  lockRange = false,
   instrument = 'basic',
 }) {
   const normalized = useMemo(() => normalizeMidiData(midi), [midi])
@@ -120,9 +310,17 @@ export default function MidiSketch({
   const selectionRef = useRef(null)
   const moveRef = useRef(null)
   const [cursor, setCursor] = useState(null)
-  const [hoverCell, setHoverCell] = useState(null)
   const [tempoInput, setTempoInput] = useState('')
   const [stepsInput, setStepsInput] = useState('')
+  const rafRef = useRef(null)
+  const pendingRef = useRef({
+    selectionBox: undefined,
+    selectionPreview: undefined,
+    dragNote: undefined,
+  })
+  const lastHoverRef = useRef(null)
+  const [useCompactRows, setUseCompactRows] = useState(() => !!compactRows)
+  const [activeRangeId, setActiveRangeId] = useState(() => String(defaultRange || ''))
 
   if (!normalized) {
     return null
@@ -166,14 +364,63 @@ export default function MidiSketch({
     notes.forEach((note) => {
       set.add(note.pitch)
     })
+    if (dragNote && !dragNote.removing) {
+      set.add(dragNote.pitch)
+    }
     return set
-  }, [notes])
+  }, [notes, dragNote])
+  const pitchBounds = useMemo(() => {
+    if (!activePitchSet.size) {
+      return null
+    }
+    let min = null
+    let max = null
+    activePitchSet.forEach((pitch) => {
+      if (min === null || pitch < min) {
+        min = pitch
+      }
+      if (max === null || pitch > max) {
+        max = pitch
+      }
+    })
+    if (min === null || max === null) {
+      return null
+    }
+    return { min, max }
+  }, [activePitchSet])
+  const rangeConfig = useMemo(() => {
+    if (!Array.isArray(rangePresets) || !rangePresets.length) {
+      return null
+    }
+    const found = rangePresets.find((preset) => String(preset.id) === String(activeRangeId))
+    if (found) {
+      return found
+    }
+    return rangePresets[0]
+  }, [rangePresets, activeRangeId])
+
   const visiblePitches = useMemo(() => {
     if (!showOnlyActiveRows) {
-      return pitches
+      if (rangeConfig) {
+        const minPitch = Math.max(MIDI_BASE, Math.min(127, parseInt(rangeConfig.min, 10)))
+        const maxPitch = Math.max(MIDI_BASE, Math.min(127, parseInt(rangeConfig.max, 10)))
+        if (!Number.isInteger(minPitch) || !Number.isInteger(maxPitch)) {
+          return pitches
+        }
+        if (minPitch > maxPitch) {
+          return pitches
+        }
+        return pitches.filter((pitch) => pitch >= minPitch && pitch <= maxPitch)
+      }
+      if (!useCompactRows || !pitchBounds) {
+        return pitches
+      }
+      const minPitch = Math.max(MIDI_BASE, pitchBounds.min - rowPadding)
+      const maxPitch = Math.min(MIDI_BASE + MIDI_RANGE - 1, pitchBounds.max + rowPadding)
+      return pitches.filter((pitch) => pitch >= minPitch && pitch <= maxPitch)
     }
     return pitches.filter((pitch) => activePitchSet.has(pitch))
-  }, [pitches, showOnlyActiveRows, activePitchSet])
+  }, [pitches, showOnlyActiveRows, activePitchSet, useCompactRows, pitchBounds, rowPadding, rangeConfig])
 
   const emitChange = (next) => {
     if (readOnly) {
@@ -184,11 +431,42 @@ export default function MidiSketch({
     }
   }
 
+  const scheduleState = (patch) => {
+    pendingRef.current = { ...pendingRef.current, ...patch }
+    if (rafRef.current) return
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null
+      const pending = pendingRef.current
+      pendingRef.current = {
+        selectionBox: undefined,
+        selectionPreview: undefined,
+        dragNote: undefined,
+      }
+      if (pending.selectionBox !== undefined) {
+        setSelectionBox(pending.selectionBox)
+      }
+      if (pending.selectionPreview !== undefined) {
+        setSelectionPreview(pending.selectionPreview)
+      }
+      if (pending.dragNote !== undefined) {
+        setDragNote(pending.dragNote)
+      }
+    })
+  }
+
   useEffect(() => {
     if (readOnly) return
     setTempoInput(Number.isInteger(parseInt(tempo, 10)) ? String(tempo) : '')
     setStepsInput(Number.isInteger(parseInt(steps, 10)) ? String(steps) : '')
   }, [tempo, steps, readOnly])
+
+  useEffect(() => {
+    setUseCompactRows(!!compactRows)
+  }, [compactRows])
+
+  useEffect(() => {
+    setActiveRangeId(String(defaultRange || ''))
+  }, [defaultRange])
 
   const handleTempoChange = (event) => {
     if (readOnly) {
@@ -342,11 +620,10 @@ export default function MidiSketch({
 
   const handleCellMouseEnter = (step, pitch) => {
     if (readOnly) return
-    setHoverCell({ step, pitch })
     if (selectionRef.current) {
       const next = { ...selectionRef.current, endStep: step, endPitch: pitch }
       selectionRef.current = next
-      setSelectionBox(next)
+      scheduleState({ selectionBox: next, selectionPreview: null })
       return
     }
     if (moveRef.current) {
@@ -359,7 +636,7 @@ export default function MidiSketch({
       const endStep = Math.min(steps - 1, box.endStep + deltaStep)
       const startPitch = Math.max(minPitch, box.startPitch + deltaPitch)
       const endPitch = Math.min(maxPitch, box.endPitch + deltaPitch)
-      setSelectionPreview({ startStep, endStep, startPitch, endPitch })
+      scheduleState({ selectionPreview: { startStep, endStep, startPitch, endPitch } })
       return
     }
     if (!dragRef.current) return
@@ -367,7 +644,17 @@ export default function MidiSketch({
     if (dragRef.current.endStep === step) return
     const next = { ...dragRef.current, endStep: step, removing: false }
     dragRef.current = next
-    setDragNote(next)
+    scheduleState({ dragNote: next })
+  }
+
+  const getCellFromEvent = (event) => {
+    if (!event?.target) return null
+    const target = event.target.closest('[data-step][data-pitch]')
+    if (!target) return null
+    const step = parseInt(target.dataset.step, 10)
+    const pitch = parseInt(target.dataset.pitch, 10)
+    if (!Number.isInteger(step) || !Number.isInteger(pitch)) return null
+    return { step, pitch }
   }
 
   const finalizeDrag = () => {
@@ -456,6 +743,14 @@ export default function MidiSketch({
     return () => window.removeEventListener('mouseup', handleUp)
   }, [dragNote, notes, normalized, selectionBox, cursor])
 
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current)
+      }
+    }
+  }, [])
+
   const hasSelection = !!selectionBox
   const selectionBounds = selectionBox
     ? {
@@ -543,8 +838,16 @@ export default function MidiSketch({
     return () => window.removeEventListener('keydown', handler)
   }, [readOnly, selectionBox, cursor, notes, steps])
 
+  const [isPlaying, setIsPlaying] = useState(false)
+  const playbackKeyRef = useRef(`midi-sketch-${Math.random().toString(36).slice(2, 8)}`)
+
   const play = () => {
-    playMidiData({ ...normalized, tempo }, instrument)
+    const result = togglePlayback(
+      playbackKeyRef.current,
+      () => playMidiData({ ...normalized, tempo }, instrument),
+      () => setIsPlaying(false),
+    )
+    setIsPlaying(result.playing)
   }
 
   return (
@@ -567,6 +870,39 @@ export default function MidiSketch({
               {selectMode ? 'Salir de selección' : 'Seleccionar'}
             </button>
           )}
+          {!readOnly && allowRowToggle ? (
+            <button
+              type="button"
+              className={`button button-small ${useCompactRows ? 'is-active' : ''}`}
+              onClick={() => setUseCompactRows((prev) => !prev)}
+            >
+              {useCompactRows ? 'Mostrar todas' : 'Solo activas'}
+            </button>
+          ) : null}
+          {!readOnly && Array.isArray(rangePresets) && rangePresets.length ? (
+            <div className="wpss-midi__ranges" role="group" aria-label="Rango MIDI">
+              {rangePresets.map((preset) => {
+                const id = String(preset.id)
+                const isActive = String(activeRangeId) === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`button button-small ${isActive ? 'is-active' : ''}`}
+                    onClick={() => {
+                      if (lockRange) {
+                        setActiveRangeId(id)
+                        return
+                      }
+                      setActiveRangeId(id)
+                    }}
+                  >
+                    {preset.label || id}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
           {readOnly ? null : (
             <button type="button" className="button button-small" onClick={copySelection} disabled={!hasSelection}>
               Copiar
@@ -620,7 +956,7 @@ export default function MidiSketch({
             </button>
           )}
           <button type="button" className="button button-small" onClick={play}>
-            Reproducir
+            {isPlaying ? 'Detener' : 'Reproducir'}
           </button>
           {readOnly ? null : (
             <button type="button" className="button button-small" onClick={handleClear}>
@@ -634,59 +970,78 @@ export default function MidiSketch({
           ) : null}
         </div>
       </div>
-      <div
-        className={`wpss-midi__grid ${selectMode ? 'is-selecting' : ''}`}
-        role="grid"
-        aria-label="Piano roll MIDI"
-        style={{ '--wpss-midi-steps': steps }}
-        onMouseLeave={() => {
-          setHoverCell(null)
-          finalizeDrag()
-        }}
-      >
-        {visiblePitches
-          .map((pitch) => ({
-            pitch,
-            label: pitchToLabel(pitch),
-          }))
-          .reverse()
-          .map((row) => (
-            <div key={row.pitch} className="wpss-midi__row" role="row">
-              <span className="wpss-midi__label" role="rowheader">
-                {row.label}
-              </span>
-              {Array.from({ length: steps }).map((_, step) => {
-                const info = noteSet.get(`${step}:${row.pitch}`)
-                const active = !!info
-                const status = info?.status
-                const velocity = info?.velocity || 0
-                const isAccent = status === 'head' && velocity >= 120
-                return (
-                  <button
-                    type="button"
-                    key={`${row.pitch}-${step}`}
-                    className={`wpss-midi__cell ${active ? 'is-active' : ''} ${
-                      status === 'sustain' ? 'is-sustain' : ''
-                    } ${isAccent ? 'is-accent' : ''}`}
-                    aria-pressed={active}
-                    onMouseDown={(event) => handleCellMouseDown(step, row.pitch, event)}
-                    onMouseEnter={() => handleCellMouseEnter(step, row.pitch)}
-                    onContextMenu={(event) => {
-                      event.preventDefault()
-                      handleCellMouseDown(step, row.pitch, event)
-                    }}
-                    disabled={readOnly}
-                    data-selected={isCellSelected(step, row.pitch) ? 'true' : 'false'}
-                  >
-                    {!readOnly && hoverCell?.step === step && hoverCell?.pitch === row.pitch ? (
-                      <span className="wpss-midi__cell-label">{pitchToLabel(row.pitch)}</span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-      </div>
+      <details className="wpss-midi__details" open>
+        <summary>{readOnly ? 'Ver grilla MIDI' : 'Editar grilla MIDI'}</summary>
+        <div
+          className={`wpss-midi__grid ${selectMode ? 'is-selecting' : ''}`}
+          role="grid"
+          aria-label="Piano roll MIDI"
+          style={{ '--wpss-midi-steps': steps }}
+          onPointerDown={(event) => {
+            if (readOnly) return
+            const cell = getCellFromEvent(event)
+            if (!cell) return
+            handleCellMouseDown(cell.step, cell.pitch, event)
+          }}
+          onPointerMove={(event) => {
+            if (readOnly) return
+            if (!selectionRef.current && !moveRef.current && !dragRef.current) return
+            const cell = getCellFromEvent(event)
+            if (!cell) return
+            const key = `${cell.step}:${cell.pitch}`
+            if (lastHoverRef.current === key) return
+            lastHoverRef.current = key
+            handleCellMouseEnter(cell.step, cell.pitch)
+          }}
+          onContextMenu={(event) => {
+            if (readOnly) return
+            const cell = getCellFromEvent(event)
+            if (!cell) return
+            event.preventDefault()
+            handleCellMouseDown(cell.step, cell.pitch, event)
+          }}
+          onMouseLeave={() => {
+            finalizeDrag()
+          }}
+        >
+          {visiblePitches
+            .map((pitch) => ({
+              pitch,
+              label: pitchToLabel(pitch),
+            }))
+            .reverse()
+            .map((row) => (
+              <div key={row.pitch} className="wpss-midi__row" role="row">
+                <span className="wpss-midi__label" role="rowheader">
+                  {row.label}
+                </span>
+                {Array.from({ length: steps }).map((_, step) => {
+                  const info = noteSet.get(`${step}:${row.pitch}`)
+                  const active = !!info
+                  const status = info?.status
+                  const velocity = info?.velocity || 0
+                  const isAccent = status === 'head' && velocity >= 120
+                  return (
+                    <button
+                      type="button"
+                      key={`${row.pitch}-${step}`}
+                      className={`wpss-midi__cell ${active ? 'is-active' : ''} ${
+                        status === 'sustain' ? 'is-sustain' : ''
+                      } ${isAccent ? 'is-accent' : ''}`}
+                      aria-pressed={active}
+                      disabled={readOnly}
+                      data-selected={isCellSelected(step, row.pitch) ? 'true' : 'false'}
+                      data-label={row.label}
+                      data-step={step}
+                      data-pitch={row.pitch}
+                    >
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+        </div>
+      </details>
     </div>
   )
 }

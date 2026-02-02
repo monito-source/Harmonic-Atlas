@@ -20,7 +20,7 @@ export default function StructurePanel({ structure, sections, onChange }) {
 
   const handleAddCall = () => {
     if (!safeSections.length) return
-    const next = [...safeStructure, { ref: safeSections[0].id }]
+    const next = [...safeStructure, { ref: safeSections[0].id, repeat: 1 }]
     onChange(next)
   }
 
@@ -158,6 +158,22 @@ export default function StructurePanel({ structure, sections, onChange }) {
                   </select>
                 </label>
                 <label>
+                  <span>Repeticiones</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="16"
+                    value={call.repeat || 1}
+                    onChange={(event) => {
+                      const parsed = parseInt(event.target.value, 10)
+                      const repeat = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 16) : 1
+                      const next = [...safeStructure]
+                      next[index] = { ...call, repeat }
+                      onChange(next)
+                    }}
+                  />
+                </label>
+                <label>
                   <span>Variante</span>
                   <input
                     type="text"
@@ -196,12 +212,15 @@ export default function StructurePanel({ structure, sections, onChange }) {
 
 function getStructureDisplayLabel(call, sections) {
   if (call?.variante?.trim()) {
-    return call.variante.trim()
+    const base = call.variante.trim()
+    const repeat = parseInt(call?.repeat, 10)
+    return Number.isInteger(repeat) && repeat > 1 ? `${base} x${repeat}` : base
   }
   if (call?.ref) {
     const match = sections.find((section) => section.id === call.ref)
     if (match?.nombre) {
-      return match.nombre
+      const repeat = parseInt(call?.repeat, 10)
+      return Number.isInteger(repeat) && repeat > 1 ? `${match.nombre} x${repeat}` : match.nombre
     }
     return call.ref
   }

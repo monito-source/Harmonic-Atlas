@@ -23,6 +23,53 @@ body {
   line-height: 1.7;
   color: #2c3e50;
   background-color: #ecf0f1;
+  min-height: 100vh;
+}
+
+/* Botones por defecto */
+button,
+.button,
+input[type="submit"],
+input[type="button"],
+input[type="reset"] {
+  appearance: none;
+  border: 1px solid #1e3a8a;
+  background: #1e3a8a;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  box-shadow: 0 8px 16px rgba(30, 58, 138, 0.16);
+}
+
+button:hover,
+.button:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover,
+input[type="reset"]:hover {
+  background: #1e40af;
+  border-color: #1e40af;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(30, 64, 175, 0.2);
+}
+
+button:focus,
+.button:focus,
+input[type="submit"]:focus,
+input[type="button"]:focus,
+input[type="reset"]:focus {
+  outline: 2px solid rgba(30, 58, 138, 0.3);
+  outline-offset: 2px;
+}
+
+.button.button-secondary,
+.button-secondary {
+  background: #e7ecf6;
+  border-color: #d6dff2;
+  color: #1e3a8a;
+  box-shadow: none;
 }
 
 /* Contenedor general del contenido */
@@ -40,7 +87,7 @@ body {
 .site-header {
   background: #2c3e50;
   color: #ecf0f1;
-  padding: 3rem 10%; /* Altura natural con margen vertical */
+  padding: 1.25rem 6%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -53,8 +100,17 @@ body {
 /* Contenedor interno del header */
 .header-inner {
   width: 100%;
-  text-align: center;
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
   transition: all 0.5s ease;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 /* Título en modo expandido */
@@ -71,6 +127,11 @@ body {
   opacity: 0.9;
 }
 
+.site-title {
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
 /* Evitar que el link se vea como "visitado" */
 .site-title a:visited {
   color: inherit;
@@ -79,17 +140,17 @@ body {
 /* Efectos al hacer scroll */
 body.scrolled .site-header {
   height: fit-content;
-  padding: 0.8rem 10%;
+  padding: 0.6rem 6%;
   justify-content: flex-start;
   align-items: center;
 }
 
 body.scrolled .header-inner {
-  text-align: left;
+  grid-template-columns: 1fr auto;
 }
 
 body.scrolled .site-title {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
 }
 
 body.scrolled .site-title .linea-1::after {
@@ -106,7 +167,7 @@ body.scrolled .site-title .linea-2 {
 ======================= */
 
 .main-navigation {
-  margin-top: 0.5rem;
+  margin-top: 0.15rem;
 }
 
 .main-navigation .menu li {
@@ -119,6 +180,28 @@ body.scrolled .site-title .linea-2 {
   text-decoration: none;
 }
 
+.header-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .header-inner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .header-left {
+    align-items: center;
+  }
+
+  .header-actions {
+    justify-self: center;
+  }
+}
+
 /* =======================
    MAIN
 ======================= */
@@ -129,8 +212,40 @@ main {
 }
 
 .site-main {
-  max-width: 1100px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  min-height: calc(100vh - 120px);
+}
+
+.site-main > .container {
+  max-width: none;
+  width: 100%;
+}
+
+.wpss-public-reader__layout {
+  min-height: calc(100vh - 120px);
+}
+
+/* Layout amplio para el lector de canciones */
+body .wpss-public-reader {
+  width: 100%;
+}
+
+body .wpss-public-reader__layout {
+  max-width: none;
+  width: 100%;
+}
+
+body .wpss-public-reader__layout .wpss-panel {
+  width: 100%;
+}
+
+body .wpss-public-reader .site-main,
+body .wpss-public-reader .container,
+body .wpss-public-reader__layout .site-main {
+  max-width: none;
+  width: 100%;
 }
 
 /* =======================

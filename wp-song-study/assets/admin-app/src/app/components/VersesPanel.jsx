@@ -1,7 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
-import { getDefaultSectionName, getValidSegmentIndex, normalizeVerseOrder, stripHtml } from '../utils.js'
+import {
+  formatSegmentsForStackedMode,
+  getChordDisplayValue,
+  getDefaultSectionName,
+  getValidSegmentIndex,
+  normalizeVerseOrder,
+  stripHtml,
+} from '../utils.js'
 import MidiClipList from './MidiClipList.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 
@@ -19,6 +26,11 @@ export default function VersesPanel({
   onSplitVerse,
   onSplitSection,
   onSelectionChange,
+  compactMidiRows = false,
+  allowMidiRowToggle = false,
+  midiRangePresets = [],
+  midiRangeDefault = '',
+  lockMidiRange = false,
 }) {
   const { wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
@@ -485,7 +497,7 @@ export default function VersesPanel({
     return segmentos
       .map((segment) => {
         const texto = segment.texto ? stripHtml(String(segment.texto)).trim() : ''
-        const acorde = segment.acorde ? String(segment.acorde).trim() : ''
+        const acorde = getChordDisplayValue(segment.acorde ? String(segment.acorde).trim() : '')
         if (texto && acorde) {
           return `${texto} ${acorde}`
         }
@@ -494,6 +506,25 @@ export default function VersesPanel({
       .filter(Boolean)
       .join(' ')
       .slice(0, 160)
+  }
+
+  const renderPreviewVerse = (verse, verseIndex) => {
+    const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
+    if (!segmentos.length) {
+      return (
+        <li key={`preview-${verseIndex}`} className="wpss-section-preview__verse is-empty">
+          <span>Verso vacío</span>
+        </li>
+      )
+    }
+
+    const lines = formatSegmentsForStackedMode(segmentos)
+    return (
+      <li key={`preview-${verseIndex}`} className="wpss-section-preview__verse">
+        <pre className="wpss-reading__stack">{`${lines.chords}\n${lines.lyrics}`}</pre>
+        {verse.instrumental ? <span className="wpss-reading__instrumental">Instrumental</span> : null}
+      </li>
+    )
   }
 
   return (
@@ -525,6 +556,11 @@ export default function VersesPanel({
               onSelect={onSelectSection}
               onChange={onSectionsChange}
               onDuplicate={onDuplicateSection}
+              compactMidiRows={compactMidiRows}
+              allowMidiRowToggle={allowMidiRowToggle}
+              midiRangePresets={midiRangePresets}
+              midiRangeDefault={midiRangeDefault}
+              lockMidiRange={lockMidiRange}
             />
           </details>
         </div>
@@ -543,10 +579,28 @@ export default function VersesPanel({
               Añadir verso
             </button>
           </div>
+          <div className="wpss-section-preview">
+            <div className="wpss-section-preview__header">
+              <strong>Vista previa</strong>
+              <span>
+                {safeSections.find((section) => section.id === activeSectionId)?.nombre ||
+                  getDefaultSectionName(0)}
+              </span>
+            </div>
+            {versesInSection.length ? (
+              <ul className="wpss-section-preview__body">
+                {versesInSection.map(({ verse }, index) => renderPreviewVerse(verse, index))}
+              </ul>
+            ) : (
+              <p className="wpss-empty">Sin versos en esta sección.</p>
+            )}
+          </div>
           {versesInSection.length ? (
             versesInSection.map(({ verse, index: verseIndex }) => {
               const isCollapsed = collapsed.has(verseIndex)
               const preview = buildVersePreview(verse)
+              const label = verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`
+              const collapsedLabel = preview ? `${label} · ${preview}` : label
               const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
               const segmentTarget = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
               const eventType = verse.evento_armonico?.tipo || ''
@@ -615,7 +669,7 @@ export default function VersesPanel({
                     >
                       ☰
                     </span>
-                    <strong>{isCollapsed ? preview : `Verso ${verseIndex + 1}`}</strong>
+                    <strong>{isCollapsed ? collapsedLabel : label}</strong>
                     <div className="wpss-verse-actions">
                       <button
                         type="button"
@@ -749,7 +803,13 @@ export default function VersesPanel({
                                       return
                                     }
                                     editorsRef.current.set(key, node)
-                                    if (node.innerHTML !== (segment.texto || '')) {
+                                    const selectionObj = window.getSelection()
+                                    const hasSelection =
+                                      selectionObj && selectionObj.rangeCount
+                                        ? node.contains(selectionObj.anchorNode)
+                                        : false
+                                    const isActive = document.activeElement === node || hasSelection
+                                    if (!isActive && node.innerHTML !== (segment.texto || '')) {
                                       node.innerHTML = segment.texto || ''
                                     }
                                   }}
@@ -846,6 +906,11 @@ export default function VersesPanel({
                                   onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
                                   emptyLabel="Añadir MIDI al segmento"
                                   defaultTempo={bpmDefault}
+                                  compactRows={compactMidiRows}
+                                  allowRowToggle={allowMidiRowToggle}
+                                  rangePresets={midiRangePresets}
+                                  defaultRange={midiRangeDefault}
+                                  lockRange={lockMidiRange}
                                 />
                             </div>
                           </div>
@@ -983,12 +1048,27 @@ export default function VersesPanel({
                           }
                         />
                       </label>
+                      <label className="wpss-toggle">
+                        <input
+                          type="checkbox"
+                          checked={!!verse.instrumental}
+                          onChange={(event) =>
+                            updateVerse(verseIndex, { ...verse, instrumental: event.target.checked })
+                          }
+                        />
+                        <span>Instrumental</span>
+                      </label>
                       <div className="wpss-verse-midi">
                         <MidiClipList
                           clips={verse.midi_clips}
                           onChange={(clips) => handleVerseMidiChange(verseIndex, clips)}
                           emptyLabel="Añadir MIDI al verso"
                           defaultTempo={bpmDefault}
+                          compactRows={compactMidiRows}
+                          allowRowToggle={allowMidiRowToggle}
+                          rangePresets={midiRangePresets}
+                          defaultRange={midiRangeDefault}
+                          lockRange={lockMidiRange}
                         />
                       </div>
                     </div>

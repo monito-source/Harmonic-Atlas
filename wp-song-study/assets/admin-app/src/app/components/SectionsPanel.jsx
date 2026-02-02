@@ -10,6 +10,11 @@ export default function SectionsPanel({
   onSelect,
   onChange,
   onDuplicate,
+  compactMidiRows = false,
+  allowMidiRowToggle = false,
+  midiRangePresets = [],
+  midiRangeDefault = '',
+  lockMidiRange = false,
 }) {
   const safeSections = Array.isArray(sections) ? sections : []
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
@@ -26,6 +31,7 @@ export default function SectionsPanel({
 
   const [draggingIndex, setDraggingIndex] = useState(null)
   const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [collapsed, setCollapsed] = useState(() => new Set())
   const draggingRef = useRef(null)
   const dragOverRef = useRef(null)
 
@@ -105,12 +111,13 @@ export default function SectionsPanel({
         const isActive = selectedSectionId === section.id
         const isDragging = draggingIndex === index
         const isDragOver = dragOverIndex === index && draggingIndex !== null
+        const isCollapsed = collapsed.has(section.id)
         return (
           <div
             key={section.id}
             className={`wpss-section-row ${isActive ? 'is-active' : ''} ${
               isDragging ? 'is-dragging' : ''
-            } ${isDragOver ? 'is-dragover' : ''}`}
+            } ${isDragOver ? 'is-dragover' : ''} ${isCollapsed ? 'is-collapsed' : ''}`}
             onDragOver={(event) => {
               event.preventDefault()
               setDragOverIndex(index)
@@ -140,6 +147,23 @@ export default function SectionsPanel({
             }}
           >
             <div className="wpss-section-row__header">
+              <button
+                type="button"
+                className="button button-small"
+                onClick={() => {
+                  setCollapsed((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(section.id)) {
+                      next.delete(section.id)
+                    } else {
+                      next.add(section.id)
+                    }
+                    return next
+                  })
+                }}
+              >
+                {isCollapsed ? '▸' : '▾'}
+              </button>
               <span
                 className={`wpss-drag-handle ${isDragging ? 'is-dragging' : ''}`}
                 draggable
@@ -193,27 +217,36 @@ export default function SectionsPanel({
                 </button>
               </div>
             </div>
-            <label>
-              <span>Nombre</span>
-              <input
-                type="text"
-                value={section.nombre || ''}
-                maxLength={64}
-                onChange={(event) => {
-                  const next = [...safeSections]
-                  next[index] = { ...section, nombre: event.target.value.slice(0, 64) }
-                  onChange(next)
-                }}
-              />
-            </label>
-            <div className="wpss-section-row__midi">
-              <MidiClipList
-                clips={section.midi_clips}
-                onChange={(clips) => handleMidiChange(index, clips)}
-                emptyLabel="Añadir MIDI a la sección"
-                defaultTempo={bpmDefault}
-              />
-            </div>
+            {isCollapsed ? null : (
+              <div className="wpss-section-row__body">
+                <label>
+                  <span>Nombre</span>
+                  <input
+                    type="text"
+                    value={section.nombre || ''}
+                    maxLength={64}
+                    onChange={(event) => {
+                      const next = [...safeSections]
+                      next[index] = { ...section, nombre: event.target.value.slice(0, 64) }
+                      onChange(next)
+                    }}
+                  />
+                </label>
+                <div className="wpss-section-row__midi">
+                  <MidiClipList
+                    clips={section.midi_clips}
+                    onChange={(clips) => handleMidiChange(index, clips)}
+                    emptyLabel="Añadir MIDI a la sección"
+                    defaultTempo={bpmDefault}
+                    compactRows={compactMidiRows}
+                    allowRowToggle={allowMidiRowToggle}
+                    rangePresets={midiRangePresets}
+                    defaultRange={midiRangeDefault}
+                    lockRange={lockMidiRange}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )
       })}

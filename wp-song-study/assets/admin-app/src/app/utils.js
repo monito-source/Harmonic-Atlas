@@ -18,6 +18,33 @@ export const MIDI_DEFAULTS = {
 
 const MIDI_INSTRUMENTS = ['basic', 'piano', 'guitar', 'voice']
 
+export function decodeUnicodeTokens(value) {
+  if (value === null || value === undefined) {
+    return value
+  }
+  let decoded = String(value)
+  if (decoded.includes('\\u')) {
+    try {
+      const parsed = JSON.parse(`"${decoded.replace(/"/g, '\\"')}"`)
+      if (typeof parsed === 'string') {
+        decoded = parsed
+      }
+    } catch {
+      // Ignore invalid escapes.
+    }
+  }
+  if (/u[0-9a-fA-F]{4}/.test(decoded)) {
+    decoded = decoded.replace(/u([0-9a-fA-F]{4})/g, (match, hex) => {
+      const code = parseInt(hex, 16)
+      if (!Number.isNaN(code)) {
+        return String.fromCharCode(code)
+      }
+      return match
+    })
+  }
+  return decoded
+}
+
 export function normalizeMidiData(midi, defaultTempo = MIDI_DEFAULTS.tempo) {
   if (!midi || typeof midi !== 'object') {
     return null
@@ -70,12 +97,24 @@ export function normalizeMidiClips(clips, legacyMidi = null, defaultTempo = MIDI
     const midiSource = clip.midi ? clip.midi : clip
     const midi = normalizeMidiData(midiSource, defaultTempo)
     if (!midi) return
-    const nameRaw = clip.name ? String(clip.name) : ''
+    const nameRaw = clip.name ? decodeUnicodeTokens(String(clip.name)) : ''
     const name = nameRaw.trim() ? nameRaw.trim().slice(0, 64) : `MIDI ${index + 1}`
     const instrument = MIDI_INSTRUMENTS.includes(clip.instrument) ? clip.instrument : 'basic'
-    const repeatRaw = parseInt(clip.repeat, 10)
+    const repeatCandidate = clip.repeat ?? clip?.midi?.repeat ?? midiSource?.repeat
+    const repeatRaw = parseInt(repeatCandidate, 10)
     const repeat = Number.isInteger(repeatRaw) && repeatRaw > 0 ? Math.min(repeatRaw, 32) : 1
-    normalized.push({ name, instrument, repeat, midi })
+    const clipIdRaw = clip.clip_id ? String(clip.clip_id) : ''
+    const clipId = clipIdRaw.trim() ? clipIdRaw.trim().slice(0, 32) : ''
+    const linkRaw = clip.link_id ? String(clip.link_id) : ''
+    const linkId = linkRaw.trim() ? linkRaw.trim().slice(0, 32) : ''
+    normalized.push({
+      name,
+      instrument,
+      repeat,
+      midi,
+      ...(clipId ? { clip_id: clipId } : {}),
+      ...(linkId ? { link_id: linkId } : {}),
+    })
   })
 
   if (!normalized.length && legacy) {
@@ -95,6 +134,94 @@ export function stripHtml(text) {
   const div = document.createElement('div')
   div.innerHTML = text
   return div.textContent || ''
+}
+
+export function endsWithJoiner(text) {
+  if (!text) {
+    return false
+  }
+  const normalized = stripHtml(String(text)).replace(/\s+$/g, '')
+  return normalized.endsWith('-')
+}
+
+const HOLD_CHORD_TOKENS = new Set(['null', 'still'])
+
+export function isHoldChordToken(value) {
+  if (!value) {
+    return false
+  }
+  const token = String(value).trim().toLowerCase()
+  return HOLD_CHORD_TOKENS.has(token)
+}
+
+export function getChordDisplayValue(value) {
+  if (!value) {
+    return ''
+  }
+  return isHoldChordToken(value) ? '' : String(value)
+}
+
+function padEndSafe(value, length) {
+  let result = String(value)
+  while (result.length < length) {
+    result += ' '
+  }
+  return result
+}
+
+export function formatSegmentsForStackedMode(segmentos) {
+  if (!Array.isArray(segmentos) || !segmentos.length) {
+    return { chords: '', lyrics: '' }
+  }
+
+  const chordsParts = []
+  const lyricsParts = []
+
+  segmentos.forEach((segmento, index) => {
+    const texto = stripHtml(segmento?.texto || '')
+    const acorde = getChordDisplayValue(segmento?.acorde || '')
+    const width = Math.max(texto.length, acorde.length)
+    const joinNext = index < segmentos.length - 1 && endsWithJoiner(segmento?.texto || '')
+    const padding = index === segmentos.length - 1 || joinNext ? width : width + 2
+
+    chordsParts.push(acorde ? padEndSafe(acorde, padding) : padEndSafe('', padding))
+    lyricsParts.push(padEndSafe(texto, padding))
+  })
+
+  return {
+    chords: chordsParts.join('').trimEnd(),
+    lyrics: lyricsParts.join('').trimEnd(),
+  }
+}
+
+export function formatSegmentsForStackedCells(segmentos) {
+  if (!Array.isArray(segmentos) || !segmentos.length) {
+    return { chords: [], lyrics: '' }
+  }
+
+  const chords = []
+  const lyricsParts = []
+
+  segmentos.forEach((segmento, index) => {
+    const texto = stripHtml(segmento?.texto || '')
+    const acorde = getChordDisplayValue(segmento?.acorde || '')
+    const chordLabel = acorde ? `[${acorde}]` : ''
+    const width = Math.max(texto.length, chordLabel.length)
+    const joinNext = index < segmentos.length - 1 && endsWithJoiner(segmento?.texto || '')
+    const padding = index === segmentos.length - 1 || joinNext ? width : width + 2
+    const spacerLength = Math.max(padding - chordLabel.length, 0)
+
+    chords.push({
+      text: chordLabel,
+      spacer: spacerLength ? ' '.repeat(spacerLength) : '',
+    })
+    lyricsParts.push(padEndSafe(texto, padding))
+  })
+
+  return {
+    chords,
+    lyrics: lyricsParts.join('').trimEnd(),
+  }
 }
 
 export function normalizeSectionsFromApi(secciones, defaultTempo = MIDI_DEFAULTS.tempo) {
@@ -158,6 +285,7 @@ export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.temp
       section_id: verso.section_id ? String(verso.section_id) : '',
       fin_de_estrofa: !!verso.fin_de_estrofa,
       nombre_estrofa: verso.nombre_estrofa ? String(verso.nombre_estrofa).slice(0, 64) : '',
+      instrumental: !!verso.instrumental,
       midi_clips: normalizeMidiClips(verso?.midi_clips, verso?.midi, defaultTempo),
     }
   })
@@ -200,6 +328,11 @@ export function normalizeStructureFromApi(estructura, secciones) {
       }
       if (call.notas) {
         normalized.notas = String(call.notas).slice(0, 128)
+      }
+      if (call.repeat !== undefined) {
+        const repeatRaw = parseInt(call.repeat, 10)
+        const repeat = Number.isInteger(repeatRaw) && repeatRaw > 0 ? Math.min(repeatRaw, 16) : 1
+        normalized.repeat = repeat
       }
       return normalized
     })
