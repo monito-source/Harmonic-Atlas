@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
+  formatSegmentsForStackedCells,
+  formatSegmentsForStackedMode,
   getDefaultSectionName,
   getValidSegmentIndex,
   normalizeSectionsFromApi,
@@ -14,6 +16,8 @@ import {
 import { createEmptySegment, createEmptyVerse, createSection } from '../state.js'
 import StructurePanel from './StructurePanel.jsx'
 import VersesPanel from './VersesPanel.jsx'
+import SectionsPanel from './SectionsPanel.jsx'
+import CommentEditor from './CommentEditor.jsx'
 
 const AUTOSAVE_DELAY = 800
 
@@ -21,6 +25,19 @@ export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
   const [selectedSectionId, setSelectedSectionId] = useState(() => state.ui?.selectedSectionId ?? null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [previewScale, setPreviewScale] = useState(100)
+  const [previewRatio, setPreviewRatio] = useState(35)
+  const [isResizingPreview, setIsResizingPreview] = useState(false)
+  const [selectedVerseIndexes, setSelectedVerseIndexes] = useState(() => new Set())
+  const [navLevel, setNavLevel] = useState('sections')
+  const [sidebarWidth, setSidebarWidth] = useState(180)
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const [sectionDragIndex, setSectionDragIndex] = useState(null)
+  const [sectionDragOverIndex, setSectionDragOverIndex] = useState(null)
+  const editingSongRef = useRef(state.editingSong)
+  const layoutRef = useRef(null)
+  const sidebarRef = useRef(null)
   const autosaveRef = useRef(null)
   const selectionRef = useRef({ verse: null, segment: null, start: null, end: null, element: null })
   const lastSilentErrorRef = useRef(null)
@@ -48,6 +65,11 @@ export default function Editor({ onShowList }) {
   useEffect(() => {
     setEditingSong(state.editingSong)
   }, [state.editingSong])
+
+  useEffect(() => {
+    editingSongRef.current = editingSong
+  }, [editingSong])
+
 
   useEffect(() => {
     return () => {
@@ -91,6 +113,7 @@ export default function Editor({ onShowList }) {
   const updateSong = (updater) => {
     setEditingSong((prev) => {
       const next = typeof updater === 'function' ? updater({ ...prev }) : updater
+      editingSongRef.current = next
       return next
     })
   }
@@ -234,6 +257,7 @@ export default function Editor({ onShowList }) {
   }
 
   const saveSong = (silent = false) => {
+    const currentSong = editingSongRef.current
     const normalizeMidiClipsForSave = (clips) => {
       if (!Array.isArray(clips)) return []
       return clips.map((clip) => {
@@ -265,53 +289,53 @@ export default function Editor({ onShowList }) {
       })
     }
 
-    if (!editingSong.titulo.trim()) {
+    if (!currentSong.titulo.trim()) {
       warnSilent(wpData?.strings?.titleRequired || 'El título es obligatorio.')
       return
     }
 
-    if (!editingSong.tonica.trim()) {
+    if (!currentSong.tonica.trim()) {
       warnSilent(wpData?.strings?.tonicaRequired || 'La tónica es obligatoria.')
       return
     }
 
-    const segmentError = validateSegments(editingSong.versos, wpData?.strings)
+    const segmentError = validateSegments(currentSong.versos, wpData?.strings)
     if (segmentError) {
       warnSilent(segmentError)
       return
     }
 
-    const eventError = validateEventosArmonicos(editingSong.versos, wpData?.strings)
+    const eventError = validateEventosArmonicos(currentSong.versos, wpData?.strings)
     if (eventError) {
       warnSilent(eventError)
       return
     }
 
-    const estructuraPayload = normalizeStructureFromApi(editingSong.estructura || [], editingSong.secciones || [])
+    const estructuraPayload = normalizeStructureFromApi(currentSong.estructura || [], currentSong.secciones || [])
       const payload = {
-        id: editingSong.id || null,
-        titulo: editingSong.titulo,
-        bpm: editingSong.bpm,
-        tonica: editingSong.tonica,
-      campo_armonico: editingSong.campo_armonico,
-      campo_armonico_predominante: editingSong.campo_armonico_predominante,
-      ficha_autores: editingSong.ficha_autores || '',
-      ficha_anio: editingSong.ficha_anio || '',
-      ficha_pais: editingSong.ficha_pais || '',
-      ficha_estado_legal: editingSong.ficha_estado_legal || '',
-      ficha_licencia: editingSong.ficha_licencia || '',
-      ficha_fuente_verificacion: editingSong.ficha_fuente_verificacion || '',
-      ficha_incompleta: !!editingSong.ficha_incompleta,
-      ficha_incompleta_motivo: editingSong.ficha_incompleta_motivo || '',
-      prestamos_cancion: editingSong.prestamos,
-      modulaciones_cancion: editingSong.modulaciones,
-      secciones: Array.isArray(editingSong.secciones)
-        ? editingSong.secciones.map((section) => ({
+        id: currentSong.id || null,
+        titulo: currentSong.titulo,
+        bpm: currentSong.bpm,
+        tonica: currentSong.tonica,
+      campo_armonico: currentSong.campo_armonico,
+      campo_armonico_predominante: currentSong.campo_armonico_predominante,
+      ficha_autores: currentSong.ficha_autores || '',
+      ficha_anio: currentSong.ficha_anio || '',
+      ficha_pais: currentSong.ficha_pais || '',
+      ficha_estado_legal: currentSong.ficha_estado_legal || '',
+      ficha_licencia: currentSong.ficha_licencia || '',
+      ficha_fuente_verificacion: currentSong.ficha_fuente_verificacion || '',
+      ficha_incompleta: !!currentSong.ficha_incompleta,
+      ficha_incompleta_motivo: currentSong.ficha_incompleta_motivo || '',
+      prestamos_cancion: currentSong.prestamos,
+      modulaciones_cancion: currentSong.modulaciones,
+      secciones: Array.isArray(currentSong.secciones)
+        ? currentSong.secciones.map((section) => ({
             ...section,
             midi_clips: normalizeMidiClipsForSave(section.midi_clips),
           }))
         : [],
-      versos: editingSong.versos.map((verso) => {
+      versos: currentSong.versos.map((verso) => {
         const segmentos = Array.isArray(verso.segmentos)
           ? verso.segmentos.map((segment) => normalizeSegmentForSave(segment))
           : []
@@ -321,6 +345,7 @@ export default function Editor({ onShowList }) {
           orden: verso.orden,
           segmentos,
           comentario: verso.comentario,
+          comentarios: Array.isArray(verso.comentarios) ? verso.comentarios : [],
           evento_armonico: evento,
           instrumental: !!verso.instrumental,
           midi_clips: normalizeMidiClipsForSave(verso.midi_clips),
@@ -329,7 +354,7 @@ export default function Editor({ onShowList }) {
           nombre_estrofa: verso.fin_de_estrofa ? verso.nombre_estrofa || '' : '',
         }
       }),
-      colecciones: Array.isArray(editingSong.colecciones) ? editingSong.colecciones.map((item) => item.id) : [],
+      colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones.map((item) => item.id) : [],
       estructura: estructuraPayload,
       estructura_personalizada: true,
     }
@@ -347,8 +372,8 @@ export default function Editor({ onShowList }) {
         const body = response.data || {}
         const bpmDefault = Number.isInteger(parseInt(body.bpm, 10))
           ? parseInt(body.bpm, 10)
-          : editingSong.bpm
-        const secciones = normalizeSectionsFromApi(body.secciones || editingSong.secciones, bpmDefault)
+          : currentSong.bpm
+        const secciones = normalizeSectionsFromApi(body.secciones || currentSong.secciones, bpmDefault)
         const estructura = normalizeStructureFromApi(body.estructura || [], secciones)
         const normalizedSong = {
           ...editingSong,
@@ -617,12 +642,222 @@ export default function Editor({ onShowList }) {
     scheduleAutosave()
   }
 
-  const handleSectionSelect = (id) => {
+  const selectSectionOnly = (id) => {
     persistSelectedSection(id)
   }
 
+  const getActiveSectionId = () => {
+    const sections = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
+    if (!sections.length) return ''
+    if (selectedSectionId && sections.some((section) => section.id === selectedSectionId)) {
+      return selectedSectionId
+    }
+    return sections[0].id
+  }
+
+  const activeSectionId = getActiveSectionId()
+  const activeSection = Array.isArray(editingSong.secciones)
+    ? editingSong.secciones.find((section) => section.id === activeSectionId)
+    : null
+  const sectionCounts = useMemo(() => {
+    const map = new Map()
+    if (Array.isArray(editingSong.versos)) {
+      editingSong.versos.forEach((verse) => {
+        const id = verse.section_id || ''
+        map.set(id, (map.get(id) || 0) + 1)
+      })
+    }
+    return map
+  }, [editingSong.versos])
+  const versesInActiveSection = Array.isArray(editingSong.versos)
+    ? editingSong.versos
+        .map((verse, index) => ({ verse, index }))
+        .filter((item) => item.verse.section_id === activeSectionId)
+    : []
+  const hasVerseFilter = selectedVerseIndexes.size > 0
+  const visibleVerses = hasVerseFilter
+    ? versesInActiveSection.filter((item) => selectedVerseIndexes.has(item.index))
+    : versesInActiveSection
+  const showSectionEmptyState = navLevel === 'sections'
+  const showVerseEmptyState = navLevel === 'verses' && selectedVerseIndexes.size === 0
+  const isFocusWork = navLevel !== 'sections'
+  const selectedVerseIndex =
+    selectedVerseIndexes.size === 1 ? Array.from(selectedVerseIndexes.values())[0] : null
+  const selectedVerseLabel =
+    selectedVerseIndex === null
+      ? selectedVerseIndexes.size > 1
+        ? `${selectedVerseIndexes.size} versos`
+        : ''
+      : versesInActiveSection.find((item) => item.index === selectedVerseIndex)?.verse?.instrumental
+        ? `Instrumental ${selectedVerseIndex + 1}`
+        : `Verso ${selectedVerseIndex + 1}`
+
+  const allVerses = Array.isArray(editingSong.versos) ? editingSong.versos : []
+  const sectionsList = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
+  const versesBySection = useMemo(() => {
+    const map = new Map()
+    allVerses.forEach((verse) => {
+      const id = verse.section_id || ''
+      if (!map.has(id)) map.set(id, [])
+      map.get(id).push(verse)
+    })
+    return map
+  }, [allVerses])
+
+  const getVerseSummary = (verse) => {
+    const summary = formatSegmentsForStackedMode(Array.isArray(verse?.segmentos) ? verse.segmentos : [])
+    return summary.lyrics || 'Verso vacío'
+  }
+
+  useEffect(() => {
+    setSelectedVerseIndexes(new Set())
+  }, [activeSectionId])
+
+  const renderStackedPreview = (segmentos, key) => {
+    if (!Array.isArray(segmentos) || !segmentos.length) {
+      return (
+        <li key={key} className="wpss-section-preview__verse is-empty">
+          <span>Verso vacío</span>
+        </li>
+      )
+    }
+    const lines = formatSegmentsForStackedCells(segmentos)
+    return (
+      <li key={key} className="wpss-section-preview__verse">
+        <pre className="wpss-reading__stack">
+          <span className="wpss-reading__stack-chords">
+            {lines.chords.map((cell, cellIndex) => (
+              <span key={`preview-chord-${key}-${cellIndex}`}>
+                {cell.text ? <span className="wpss-reading__stack-chord">{cell.text}</span> : null}
+                {cell.spacer ? <span className="wpss-reading__stack-spacer">{cell.spacer}</span> : null}
+              </span>
+            ))}
+          </span>
+          {'\n'}
+          <span>{lines.lyrics}</span>
+        </pre>
+      </li>
+    )
+  }
+
+  const handleSelectVerse = (index, event) => {
+    const useMulti = event?.metaKey || event?.ctrlKey
+    setSelectedVerseIndexes((prev) => {
+      const next = new Set(prev)
+      if (!useMulti) {
+        next.clear()
+        next.add(index)
+        return next
+      }
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+      }
+      return next
+    })
+  }
+
+  const clearVerseSelection = () => {
+    setSelectedVerseIndexes(new Set())
+  }
+
+  const enterVerseLevel = (sectionId) => {
+    persistSelectedSection(sectionId)
+    clearVerseSelection()
+    setNavLevel('verses')
+  }
+
+  const enterSectionManage = (sectionId) => {
+    persistSelectedSection(sectionId)
+    clearVerseSelection()
+    setNavLevel('manage')
+  }
+
+  const backToSections = () => {
+    clearVerseSelection()
+    setNavLevel('sections')
+  }
+
+  const clampPreviewRatio = (value) => Math.min(Math.max(value, 20), 50)
+  const clampSidebarWidth = (value) => Math.min(Math.max(value, 120), 320)
+
+  useEffect(() => {
+    if (!isResizingPreview) {
+      return undefined
+    }
+
+    const handleMove = (event) => {
+      const layout = layoutRef.current
+      const sidebar = sidebarRef.current
+      if (!layout || !sidebar) {
+        return
+      }
+
+      const layoutRect = layout.getBoundingClientRect()
+      const sidebarRect = sidebar.getBoundingClientRect()
+      const total = layoutRect.right - sidebarRect.right
+      if (total <= 0) {
+        return
+      }
+      const pointer = event.clientX - sidebarRect.right
+      const ratio = clampPreviewRatio(Math.round((1 - pointer / total) * 100))
+      setPreviewRatio(ratio)
+    }
+
+    const handleUp = () => {
+      setIsResizingPreview(false)
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isResizingPreview])
+
+  useEffect(() => {
+    if (!isResizingSidebar) {
+      return undefined
+    }
+
+    const handleMove = (event) => {
+      const layout = layoutRef.current
+      if (!layout) return
+      const rect = layout.getBoundingClientRect()
+      const next = clampSidebarWidth(event.clientX - rect.left)
+      setSidebarWidth(next)
+    }
+
+    const handleUp = () => {
+      setIsResizingSidebar(false)
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+  }, [isResizingSidebar])
+
   const handleSectionChange = (nextSections) => {
-    const nextSong = { ...editingSong, secciones: nextSections }
+    const prevNameMap = new Map(
+      (Array.isArray(editingSong.secciones) ? editingSong.secciones : []).map((section) => [
+        section.id,
+        section.nombre || '',
+      ]),
+    )
+    const normalizedSections = (Array.isArray(nextSections) ? nextSections : []).map((section) => {
+      const incomingName = section?.nombre ? String(section.nombre) : ''
+      if (incomingName.trim()) {
+        return section
+      }
+      const fallbackName = section?.id ? prevNameMap.get(section.id) || '' : ''
+      return fallbackName ? { ...section, nombre: fallbackName } : section
+    })
+    const nextSong = { ...editingSong, secciones: normalizedSections }
     const nextSelected = ensureSectionsIntegrity(nextSong, selectedSectionId)
     persistSelectedSection(nextSelected)
     updateSong({ ...nextSong })
@@ -631,6 +866,18 @@ export default function Editor({ onShowList }) {
 
   const handleStructureChange = (nextStructure) => {
     updateSong({ ...editingSong, estructura: nextStructure })
+    scheduleAutosave()
+  }
+
+  const handleAddVerse = () => {
+    if (!activeSectionId) return
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const newVerse = createEmptyVerse(nextVerses.length + 1, activeSectionId)
+    nextVerses.push(newVerse)
+    normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
     scheduleAutosave()
   }
 
@@ -669,6 +916,38 @@ export default function Editor({ onShowList }) {
     persistSelectedSection(nextSelected)
     updateSong({ ...nextSong })
     scheduleAutosave()
+  }
+
+  const handleRemoveSection = (index) => {
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    if (sections.length <= 1) return
+    sections.splice(index, 1)
+    handleSectionChange(sections)
+  }
+
+  const handleSectionNameChange = (sectionId, value) => {
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    const index = sections.findIndex((section) => section.id === sectionId)
+    if (index === -1) return
+    sections[index] = { ...sections[index], nombre: value.slice(0, 64) }
+    handleSectionChange(sections)
+  }
+
+  const moveSection = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    if (!sections[fromIndex]) return
+    const [moved] = sections.splice(fromIndex, 1)
+    sections.splice(toIndex, 0, moved)
+    handleSectionChange(sections)
+  }
+
+  const handleSectionCommentsChange = (sectionId, comments) => {
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    const index = sections.findIndex((section) => section.id === sectionId)
+    if (index === -1) return
+    sections[index] = { ...sections[index], comentarios: comments }
+    handleSectionChange(sections)
   }
 
   const handleVerseChange = (nextVerses) => {
@@ -808,9 +1087,9 @@ export default function Editor({ onShowList }) {
       ) : null}
 
       <form className="wpss-editor" onSubmit={(event) => event.preventDefault()}>
-        <div className="wpss-section wpss-section--meta">
+        <div className="wpss-section wpss-section--meta wpss-section--discreet">
           <header>
-            <h3>Datos generales</h3>
+            <h3>Datos base</h3>
           </header>
           <div className="wpss-field-group">
             <label>
@@ -878,142 +1157,528 @@ export default function Editor({ onShowList }) {
               />
             </label>
           </div>
-        </div>
-
-        <details className="wpss-section wpss-section--collapsible">
-          <summary>
-            <span>Ficha tecnica</span>
-          </summary>
-          <div className="wpss-field-group">
-            <label>
-              <span>Autor(es)</span>
-              <input
-                type="text"
-                value={editingSong.ficha_autores || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_autores: event.target.value })
-                  scheduleAutosave()
-                }}
-              />
-            </label>
-            <label>
-              <span>Año</span>
-              <input
-                type="text"
-                value={editingSong.ficha_anio || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_anio: event.target.value })
-                  scheduleAutosave()
-                }}
-              />
-            </label>
-            <label>
-              <span>Pais</span>
-              <input
-                type="text"
-                value={editingSong.ficha_pais || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_pais: event.target.value })
-                  scheduleAutosave()
-                }}
-              />
-            </label>
-          </div>
-          <div className="wpss-field-group">
-            <label>
-              <span>Estado legal</span>
-              <select
-                value={editingSong.ficha_estado_legal || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_estado_legal: event.target.value })
-                  scheduleAutosave()
-                }}
-              >
-                <option value="">Selecciona</option>
-                <option value="dominio_publico">Dominio publico</option>
-                <option value="cc">CC</option>
-                <option value="licencia_directa">Licencia directa</option>
-              </select>
-            </label>
-            {editingSong.ficha_estado_legal === 'cc' ? (
+          <details className="wpss-section wpss-section--collapsible wpss-section--nested">
+            <summary>
+              <span>Ficha técnica y metadatos</span>
+            </summary>
+            <div className="wpss-field-group">
               <label>
-                <span>CC (especificar)</span>
+                <span>Autor(es)</span>
                 <input
                   type="text"
-                  value={editingSong.ficha_licencia || ''}
+                  value={editingSong.ficha_autores || ''}
                   onChange={(event) => {
-                    updateSong({ ...editingSong, ficha_licencia: event.target.value })
+                    updateSong({ ...editingSong, ficha_autores: event.target.value })
+                    scheduleAutosave()
+                  }}
+                />
+              </label>
+              <label>
+                <span>Año</span>
+                <input
+                  type="text"
+                  value={editingSong.ficha_anio || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_anio: event.target.value })
+                    scheduleAutosave()
+                  }}
+                />
+              </label>
+              <label>
+                <span>Pais</span>
+                <input
+                  type="text"
+                  value={editingSong.ficha_pais || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_pais: event.target.value })
+                    scheduleAutosave()
+                  }}
+                />
+              </label>
+            </div>
+            <div className="wpss-field-group">
+              <label>
+                <span>Estado legal</span>
+                <select
+                  value={editingSong.ficha_estado_legal || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_estado_legal: event.target.value })
+                    scheduleAutosave()
+                  }}
+                >
+                  <option value="">Selecciona</option>
+                  <option value="dominio_publico">Dominio publico</option>
+                  <option value="cc">CC</option>
+                  <option value="licencia_directa">Licencia directa</option>
+                </select>
+              </label>
+              {editingSong.ficha_estado_legal === 'cc' ? (
+                <label>
+                  <span>CC (especificar)</span>
+                  <input
+                    type="text"
+                    value={editingSong.ficha_licencia || ''}
+                    onChange={(event) => {
+                      updateSong({ ...editingSong, ficha_licencia: event.target.value })
+                      scheduleAutosave()
+                    }}
+                  />
+                </label>
+              ) : null}
+              <label>
+                <span>Fuente de verificacion</span>
+                <input
+                  type="text"
+                  value={editingSong.ficha_fuente_verificacion || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_fuente_verificacion: event.target.value })
+                    scheduleAutosave()
+                  }}
+                />
+              </label>
+            </div>
+            <label className="wpss-toggle">
+              <input
+                type="checkbox"
+                checked={!!editingSong.ficha_incompleta}
+                onChange={(event) => {
+                  updateSong({ ...editingSong, ficha_incompleta: event.target.checked })
+                  scheduleAutosave()
+                }}
+              />
+              <span>Ficha incompleta</span>
+            </label>
+            {editingSong.ficha_incompleta ? (
+              <label>
+                <span>Motivo</span>
+                <textarea
+                  value={editingSong.ficha_incompleta_motivo || ''}
+                  onChange={(event) => {
+                    updateSong({ ...editingSong, ficha_incompleta_motivo: event.target.value })
                     scheduleAutosave()
                   }}
                 />
               </label>
             ) : null}
-            <label>
-              <span>Fuente de verificacion</span>
-              <input
-                type="text"
-                value={editingSong.ficha_fuente_verificacion || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_fuente_verificacion: event.target.value })
-                  scheduleAutosave()
-                }}
-              />
-            </label>
-          </div>
-          <label className="wpss-toggle">
-            <input
-              type="checkbox"
-              checked={!!editingSong.ficha_incompleta}
-              onChange={(event) => {
-                updateSong({ ...editingSong, ficha_incompleta: event.target.checked })
-                scheduleAutosave()
-              }}
-            />
-            <span>Ficha incompleta</span>
-          </label>
-          {editingSong.ficha_incompleta ? (
-            <label>
-              <span>Motivo</span>
-              <textarea
-                value={editingSong.ficha_incompleta_motivo || ''}
-                onChange={(event) => {
-                  updateSong({ ...editingSong, ficha_incompleta_motivo: event.target.value })
-                  scheduleAutosave()
-                }}
-              />
-            </label>
-          ) : null}
-        </details>
+          </details>
+        </div>
 
-        <details className="wpss-section wpss-section--collapsible" open>
-          <summary>
-            <span>Versos</span>
-          </summary>
-          <VersesPanel
-            verses={editingSong.versos}
-            sections={editingSong.secciones}
-            selectedSectionId={selectedSectionId}
-            songBpm={editingSong.bpm}
-            onSelectSection={handleSectionSelect}
-            onSectionsChange={handleSectionChange}
-            onAddSection={handleAddSection}
-            onDuplicateSection={handleDuplicateSection}
-            onChange={handleVerseChange}
-            onSplitSegment={splitSegment}
-            onSplitVerse={splitVerseFromCursor}
-            onSplitSection={splitSectionFromCursor}
-            onSelectionChange={updateSegmentSelection}
-            compactMidiRows={preferCompactMidiRows}
-            allowMidiRowToggle={preferCompactMidiRows}
-            midiRangePresets={midiRangePresets}
-            midiRangeDefault={midiRangeDefault}
-            lockMidiRange={lockMidiRange}
-          />
-        </details>
+        <section className="wpss-section wpss-section--main">
+          <header>
+            <h3>Secciones, versos y segmentos</h3>
+          </header>
+          <div
+            ref={layoutRef}
+            className={`wpss-editor-layout ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
+            style={{
+              gridTemplateColumns: isFocusWork
+                ? `minmax(520px, ${100 - previewRatio}fr) 8px minmax(320px, ${previewRatio}fr)`
+                : `${
+                    isSidebarCollapsed ? '32px' : `${sidebarWidth}px`
+                  } 8px minmax(360px, 1fr)`,
+            }}
+          >
+            {!isFocusWork ? (
+              <aside ref={sidebarRef} className="wpss-editor-sidebar wpss-editor-column">
+                <button
+                  type="button"
+                  className="button button-small wpss-sidebar-toggle"
+                  onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                  aria-label={isSidebarCollapsed ? 'Mostrar secciones' : 'Ocultar secciones'}
+                  title={isSidebarCollapsed ? 'Mostrar secciones' : 'Ocultar secciones'}
+                >
+                  {isSidebarCollapsed ? '▸' : '▾'}
+                </button>
+                <div className={`wpss-editor-sidebar__content nav-${navLevel}`}>
+                  <div className="wpss-editor-sidebar__header">
+                    <strong>Secciones</strong>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      onClick={() => onAddSection && onAddSection()}
+                    >
+                      Añadir sección
+                    </button>
+                  </div>
+                  <div className="wpss-section-pill-list">
+                    {(Array.isArray(editingSong.secciones) ? editingSong.secciones : []).map((section, index) => (
+                      <div
+                        key={section.id}
+                        className={`wpss-section-pill ${activeSectionId === section.id ? 'is-active' : ''} ${
+                          sectionDragOverIndex === index ? 'is-dragover' : ''
+                        }`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          if (event.target && event.target.tagName === 'INPUT') {
+                            return
+                          }
+                          if (event.target && event.target.closest?.('.wpss-section-pill__actions')) {
+                            return
+                          }
+                          selectSectionOnly(section.id)
+                        }}
+                        onDoubleClick={(event) => {
+                          if (event.target && event.target.tagName === 'INPUT') {
+                            return
+                          }
+                          if (event.target && event.target.closest?.('.wpss-section-pill__actions')) {
+                            return
+                          }
+                          enterVerseLevel(section.id)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.target && event.target.tagName === 'INPUT') {
+                            return
+                          }
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            enterVerseLevel(section.id)
+                          }
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          setSectionDragOverIndex(index)
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                          const fromIndex = Number.isNaN(payload) ? sectionDragIndex : payload
+                          if (fromIndex !== null && fromIndex !== undefined) {
+                            moveSection(fromIndex, index)
+                          }
+                          setSectionDragIndex(null)
+                          setSectionDragOverIndex(null)
+                        }}
+                      >
+                        <span
+                          className="wpss-section-pill__drag"
+                          draggable
+                          aria-label="Mover sección"
+                          title="Arrastra para ordenar"
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData('text/plain', String(index))
+                            event.dataTransfer.effectAllowed = 'move'
+                            setSectionDragIndex(index)
+                          }}
+                          onDragEnd={() => {
+                            setSectionDragIndex(null)
+                            setSectionDragOverIndex(null)
+                          }}
+                        >
+                          ☰
+                        </span>
+                        <input
+                          className="wpss-section-pill__name"
+                          type="text"
+                          value={section.nombre || ''}
+                          placeholder={getDefaultSectionName(index)}
+                          maxLength={64}
+                          onClick={(event) => event.stopPropagation()}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => event.stopPropagation()}
+                          onChange={(event) => handleSectionNameChange(section.id, event.target.value)}
+                        />
+                        <em>{sectionCounts.get(section.id) || 0}</em>
+                        <div className="wpss-section-pill__actions">
+                          <details className="wpss-action-menu">
+                            <summary
+                              aria-label="Acciones de sección"
+                              title="Acciones de sección"
+                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                            >
+                              ⋯
+                            </summary>
+                            <div className="wpss-action-menu__panel">
+                              <button
+                                type="button"
+                                className="button button-small"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDuplicateSection(index)
+                                }}
+                              >
+                                Duplicar
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-small"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  enterSectionManage(section.id)
+                                }}
+                              >
+                                MIDI sección
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-link-delete"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleRemoveSection(index)
+                                }}
+                                disabled={(Array.isArray(editingSong.secciones) ? editingSong.secciones.length : 0) <= 1}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            ) : null}
+            {!isFocusWork ? (
+              <div
+                className="wpss-editor-splitter wpss-editor-splitter--sidebar"
+                role="separator"
+                aria-orientation="vertical"
+                title="Arrastra para ajustar el tamaño"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  setIsResizingSidebar(true)
+                }}
+              />
+            ) : null}
+            {isFocusWork ? (
+              <div className={`wpss-editor-work wpss-editor-column nav-${navLevel}`}>
+              {isFocusWork ? (
+                <div className="wpss-work-breadcrumb">
+                  <button type="button" className="button button-small" onClick={backToSections}>
+                    Secciones
+                  </button>
+                  <span className="wpss-breadcrumb-sep">›</span>
+                  <button
+                    type="button"
+                    className="button button-small button-secondary"
+                    onClick={() => {
+                      clearVerseSelection()
+                      setNavLevel('verses')
+                    }}
+                  >
+                    {activeSection?.nombre || getDefaultSectionName(0)}
+                  </button>
+                  {navLevel === 'manage' ? (
+                    <>
+                      <span className="wpss-breadcrumb-sep">›</span>
+                      <span className="wpss-breadcrumb-current">Administrar</span>
+                    </>
+                  ) : null}
+                  {navLevel === 'verses' && selectedVerseLabel ? (
+                    <>
+                      <span className="wpss-breadcrumb-sep">›</span>
+                      <span className="wpss-breadcrumb-current">{selectedVerseLabel}</span>
+                    </>
+                  ) : null}
+                  {navLevel === 'verses' ? (
+                    <div className="wpss-work-breadcrumb__controls">
+                      <label>
+                        <span>Verso</span>
+                        <select
+                          value={selectedVerseIndex ?? ''}
+                          onChange={(event) => {
+                            const nextIndex = Number(event.target.value)
+                            if (Number.isNaN(nextIndex)) {
+                              clearVerseSelection()
+                              return
+                            }
+                            setSelectedVerseIndexes(new Set([nextIndex]))
+                          }}
+                        >
+                          <option value="">Selecciona un verso</option>
+                          {versesInActiveSection.map(({ verse, index }, verseIndex) => (
+                            <option key={`verse-select-${index}`} value={index}>
+                              {verse.instrumental
+                                ? `Instrumental ${verseIndex + 1}`
+                                : `Verso ${verseIndex + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {showSectionEmptyState ? (
+                <div className="wpss-work-empty">
+                  <p>Selecciona una sección para comenzar.</p>
+                </div>
+              ) : showVerseEmptyState ? (
+                <div className="wpss-work-verse-list">
+                  <div className="wpss-work-verse-list__header">
+                    <p>Selecciona un verso para editarlo.</p>
+                    <button type="button" className="button button-secondary" onClick={handleAddVerse}>
+                      Añadir verso
+                    </button>
+                  </div>
+                  <div className="wpss-work-verse-list__grid">
+                    {versesInActiveSection.length ? (
+                      versesInActiveSection.map(({ verse, index }, verseIndex) => (
+                        <button
+                          key={`verse-card-${index}`}
+                          type="button"
+                          className="wpss-verse-card-mini"
+                          onClick={() => setSelectedVerseIndexes(new Set([index]))}
+                        >
+                          <strong>{verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`}</strong>
+                          <p>{getVerseSummary(verse)}</p>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="wpss-empty">Sin versos en esta sección.</p>
+                    )}
+                  </div>
+                </div>
+              ) : navLevel === 'manage' ? (
+                <div className="wpss-work-manage">
+                  <SectionsPanel
+                    sections={editingSong.secciones}
+                    selectedSectionId={activeSectionId}
+                    verses={editingSong.versos}
+                    songBpm={editingSong.bpm}
+                    onSelect={selectSectionOnly}
+                    onChange={handleSectionChange}
+                    onDuplicate={handleDuplicateSection}
+                    compactMidiRows={preferCompactMidiRows}
+                    allowMidiRowToggle={preferCompactMidiRows}
+                    midiRangePresets={midiRangePresets}
+                    midiRangeDefault={midiRangeDefault}
+                    lockMidiRange={lockMidiRange}
+                    filterSectionId={activeSectionId}
+                  />
+                  <CommentEditor
+                    label="Notas de sección"
+                    comments={activeSection?.comentarios || []}
+                    onChange={(next) => handleSectionCommentsChange(activeSectionId, next)}
+                  />
+                </div>
+              ) : (
+                <VersesPanel
+                  verses={editingSong.versos}
+                  sections={editingSong.secciones}
+                  selectedSectionId={activeSectionId}
+                  songBpm={editingSong.bpm}
+                  onSelectSection={selectSectionOnly}
+                  onSectionsChange={handleSectionChange}
+                  onAddSection={handleAddSection}
+                  onDuplicateSection={handleDuplicateSection}
+                  onChange={handleVerseChange}
+                  onSplitSegment={splitSegment}
+                  onSplitVerse={splitVerseFromCursor}
+                  onSplitSection={splitSectionFromCursor}
+                  onSelectionChange={updateSegmentSelection}
+                  compactMidiRows={preferCompactMidiRows}
+                  allowMidiRowToggle={preferCompactMidiRows}
+                  midiRangePresets={midiRangePresets}
+                  midiRangeDefault={midiRangeDefault}
+                  lockMidiRange={lockMidiRange}
+                  showHeader={false}
+                  showPreview={false}
+                  visibleVerseIndexes={hasVerseFilter ? selectedVerseIndexes : null}
+                />
+              )}
+            </div>
+            ) : null}
+            {isFocusWork ? (
+              <div
+                className="wpss-editor-splitter"
+                role="separator"
+                aria-orientation="vertical"
+                title="Arrastra para ajustar el tamaño"
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  setIsResizingPreview(true)
+                }}
+              />
+            ) : null}
+            <aside className={`wpss-editor-preview wpss-editor-column ${isFocusWork ? '' : 'is-sections'}`}>
+              <div className="wpss-section-preview">
+                <div className="wpss-section-preview__header">
+                  <strong>Vista previa</strong>
+                  <span>
+                    {isFocusWork ? activeSection?.nombre || getDefaultSectionName(0) : 'Todas las secciones'}
+                  </span>
+                </div>
+                {isFocusWork ? (
+                  <>
+                    <div className="wpss-section-preview__controls">
+                      <label>
+                        <span>Zoom</span>
+                        <input
+                          type="range"
+                          min="70"
+                          max="130"
+                          step="1"
+                          value={previewScale}
+                          onChange={(event) => setPreviewScale(parseInt(event.target.value, 10))}
+                        />
+                        <strong>{previewScale}%</strong>
+                      </label>
+                    </div>
+                    {versesInActiveSection.length ? (
+                      <ul
+                        className="wpss-section-preview__body"
+                        style={{ '--wpss-preview-scale': previewScale / 100 }}
+                      >
+                        {versesInActiveSection.map(({ verse }, index) =>
+                          renderStackedPreview(Array.isArray(verse.segmentos) ? verse.segmentos : [], index),
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="wpss-empty">Sin versos en esta sección.</p>
+                    )}
+                  </>
+                ) : (
+                  <div className="wpss-section-preview__all">
+                    {sectionsList.length ? (
+                      sectionsList.map((section, index) => {
+                        const verses = versesBySection.get(section.id) || []
+                        const previewVerses = verses.slice(0, 2)
+                        return (
+                          <div
+                            key={`preview-section-${section.id}`}
+                            className={`wpss-section-preview__group ${
+                              section.id === activeSectionId ? 'is-active' : ''
+                            }`}
+                          >
+                            <strong>{section.nombre || getDefaultSectionName(index)}</strong>
+                            {previewVerses.length ? (
+                              <ul>
+                                {previewVerses.map((verse, verseIndex) => (
+                                  <li key={`preview-section-${section.id}-${verseIndex}`}>
+                                    {getVerseSummary(verse)}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="wpss-empty">Sin versos</p>
+                            )}
+                            {verses.length > previewVerses.length ? (
+                              <span className="wpss-section-preview__more">
+                                +{verses.length - previewVerses.length} más
+                              </span>
+                            ) : null}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <p className="wpss-empty">Sin secciones.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
+        </section>
 
         <details className="wpss-section wpss-section--collapsible">
           <summary>
-            <span>Gestionar estructura de canción</span>
+            <span>Estructura personalizada</span>
           </summary>
           <StructurePanel
             structure={editingSong.estructura}

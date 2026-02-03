@@ -255,6 +255,7 @@ export function normalizeSectionsFromApi(secciones, defaultTempo = MIDI_DEFAULTS
     return {
       id,
       nombre: nombre.slice(0, 64),
+      comentarios: Array.isArray(seccion?.comentarios) ? seccion.comentarios : [],
       midi_clips: normalizeMidiClips(seccion?.midi_clips, seccion?.midi, defaultTempo),
     }
   })
@@ -270,9 +271,10 @@ export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.temp
       ? verso.segmentos.map((segmento) => ({
           texto: segmento && segmento.texto ? segmento.texto : '',
           acorde: segmento && segmento.acorde ? segmento.acorde : '',
+          comentarios: Array.isArray(segmento?.comentarios) ? segmento.comentarios : [],
           midi_clips: normalizeMidiClips(segmento?.midi_clips, segmento?.midi, defaultTempo),
         }))
-      : [{ texto: '', acorde: '', midi_clips: [] }]
+      : [{ texto: '', acorde: '', comentarios: [], midi_clips: [] }]
 
     const evento = normalizeEventoArmonico(verso.evento_armonico || null, segmentos.length)
 
@@ -281,6 +283,7 @@ export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.temp
       orden: verso.orden || index + 1,
       segmentos,
       comentario: verso.comentario || '',
+      comentarios: Array.isArray(verso.comentarios) ? verso.comentarios : [],
       evento_armonico: evento,
       section_id: verso.section_id ? String(verso.section_id) : '',
       fin_de_estrofa: !!verso.fin_de_estrofa,

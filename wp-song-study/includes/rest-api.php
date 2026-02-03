@@ -865,6 +865,9 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         $prev_sections = wpss_sanitize_secciones_array(
             wpss_decode_json_meta( get_post_meta( $id, '_secciones_json', true ) )
         );
+        if ( empty( $secciones ) && ! empty( $prev_sections ) ) {
+            $secciones = $prev_sections;
+        }
         $prev_name_map = [];
         foreach ( $prev_sections as $prev ) {
             if ( ! empty( $prev['id'] ) && ! empty( $prev['nombre'] ) ) {
@@ -881,6 +884,13 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
                 $incoming_name = isset( $input_name_map[ $seccion['id'] ] ) ? $input_name_map[ $seccion['id'] ] : '';
                 if ( '' === $incoming_name && isset( $prev_name_map[ $seccion['id'] ] ) ) {
                     $seccion['nombre'] = $prev_name_map[ $seccion['id'] ];
+                } elseif ( isset( $prev_name_map[ $seccion['id'] ] ) ) {
+                    $prev_name = $prev_name_map[ $seccion['id'] ];
+                    $is_default = (bool) preg_match( '/^secci[oó]n\s+\d+$/iu', $incoming_name );
+                    $prev_is_default = (bool) preg_match( '/^secci[oó]n\s+\d+$/iu', $prev_name );
+                    if ( $is_default && ! $prev_is_default ) {
+                        $seccion['nombre'] = $prev_name;
+                    }
                 }
             }
             unset( $seccion );
@@ -995,7 +1005,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         return new WP_REST_Response( [ 'message' => $versos_result->get_error_message() ], 500 );
     }
 
-    $secciones_json = wp_json_encode( $secciones, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+    $secciones_json = wp_json_encode( $secciones, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_QUOT );
     if ( false === $secciones_json ) {
         $secciones_json = wp_json_encode( $secciones );
     }
@@ -1153,9 +1163,77 @@ function wpss_decode_json_meta( $value ) {
         if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
             return $decoded;
         }
+
+        $repaired = wpss_repair_json_quotes( $candidate );
+        if ( $repaired !== $candidate ) {
+            $decoded = json_decode( $repaired, true );
+            if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+                return $decoded;
+            }
+        }
     }
 
     return [];
+}
+
+/**
+ * Repara JSON con comillas no escapadas dentro de cadenas.
+ *
+ * @param string $json JSON recibido.
+ * @return string
+ */
+function wpss_repair_json_quotes( $json ) {
+    if ( ! is_string( $json ) || '' === $json ) {
+        return $json;
+    }
+
+    $len = strlen( $json );
+    $out = '';
+    $in_string = false;
+    $escaped = false;
+
+    for ( $i = 0; $i < $len; $i++ ) {
+        $ch = $json[ $i ];
+
+        if ( $in_string ) {
+            if ( $escaped ) {
+                $escaped = false;
+                $out    .= $ch;
+                continue;
+            }
+
+            if ( '\\' === $ch ) {
+                $escaped = true;
+                $out    .= $ch;
+                continue;
+            }
+
+            if ( '"' === $ch ) {
+                $j = $i + 1;
+                while ( $j < $len && ctype_space( $json[ $j ] ) ) {
+                    $j++;
+                }
+                if ( $j < $len && ( ',' === $json[ $j ] || '}' === $json[ $j ] || ']' === $json[ $j ] ) ) {
+                    $in_string = false;
+                    $out      .= $ch;
+                    continue;
+                }
+
+                $out .= '\\u0022';
+                continue;
+            }
+
+            $out .= $ch;
+            continue;
+        }
+
+        if ( '"' === $ch ) {
+            $in_string = true;
+        }
+        $out .= $ch;
+    }
+
+    return $out;
 }
 
 /**
@@ -1568,6 +1646,60 @@ function wpss_sanitize_segment_text( $texto ) {
 }
 
 /**
+ * Sanitiza texto de comentario permitiendo marcado basico.
+ *
+ * @param string $texto Texto recibido.
+ * @return string
+ */
+function wpss_sanitize_comment_text( $texto ) {
+    return wpss_sanitize_segment_text( $texto );
+}
+
+/**
+ * Sanitiza arreglo de comentarios.
+ *
+ * @param array $comentarios Comentarios recibidos.
+ * @return array
+ */
+function wpss_sanitize_comments_array( $comentarios ) {
+    if ( ! is_array( $comentarios ) ) {
+        return [];
+    }
+
+    $sanitized = [];
+    foreach ( $comentarios as $comentario ) {
+        if ( $comentario instanceof Traversable ) {
+            $comentario = iterator_to_array( $comentario );
+        } elseif ( is_object( $comentario ) ) {
+            $comentario = get_object_vars( $comentario );
+        }
+
+        if ( ! is_array( $comentario ) ) {
+            continue;
+        }
+
+        $texto = isset( $comentario['texto'] ) ? wpss_sanitize_comment_text( $comentario['texto'] ) : '';
+        if ( '' === trim( wp_strip_all_tags( $texto ) ) ) {
+            continue;
+        }
+
+        $color = isset( $comentario['color'] ) ? sanitize_hex_color( $comentario['color'] ) : '';
+        $id    = isset( $comentario['id'] ) ? sanitize_text_field( $comentario['id'] ) : '';
+        if ( '' === $id ) {
+            $id = wp_generate_uuid4();
+        }
+
+        $sanitized[] = [
+            'id'    => wpss_truncate_string( $id, 64 ),
+            'texto' => $texto,
+            'color' => $color ? $color : '#3b82f6',
+        ];
+    }
+
+    return $sanitized;
+}
+
+/**
  * Sanitiza y normaliza un segmento texto-acorde individual.
  *
  * @param array $segmento Segmento recibido.
@@ -1586,6 +1718,7 @@ function wpss_normalize_segmento_item( $segmento ) {
 
     $texto  = isset( $segmento['texto'] ) ? wpss_sanitize_segment_text( $segmento['texto'] ) : '';
     $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
+    $comentarios = isset( $segmento['comentarios'] ) ? wpss_sanitize_comments_array( $segmento['comentarios'] ) : [];
     $midi_clips = [];
 
     if ( array_key_exists( 'midi_clips', $segmento ) ) {
@@ -1610,6 +1743,9 @@ function wpss_normalize_segmento_item( $segmento ) {
 
     if ( ! empty( $midi_clips ) ) {
         $normalized['midi_clips'] = $midi_clips;
+    }
+    if ( ! empty( $comentarios ) ) {
+        $normalized['comentarios'] = $comentarios;
     }
 
     return $normalized;
@@ -1709,6 +1845,7 @@ function wpss_sanitize_secciones_array( array $secciones ) {
         }
 
         $nombre = isset( $seccion['nombre'] ) ? sanitize_text_field( $seccion['nombre'] ) : '';
+        $nombre = wpss_restore_hex_quotes( $nombre );
         $nombre = wpss_truncate_string( $nombre, 64 );
 
         if ( '' === $nombre ) {
@@ -1717,10 +1854,14 @@ function wpss_sanitize_secciones_array( array $secciones ) {
         }
 
         $midi_clips = [];
+        $comentarios = [];
         if ( array_key_exists( 'midi_clips', $seccion ) ) {
             $midi_clips = wpss_sanitize_midi_clips( $seccion['midi_clips'] );
         } elseif ( array_key_exists( 'midi', $seccion ) ) {
             $midi_clips = wpss_sanitize_midi_clips( [], $seccion['midi'] );
+        }
+        if ( array_key_exists( 'comentarios', $seccion ) ) {
+            $comentarios = wpss_sanitize_comments_array( $seccion['comentarios'] );
         }
 
         $normalized_section = [
@@ -1731,12 +1872,29 @@ function wpss_sanitize_secciones_array( array $secciones ) {
         if ( ! empty( $midi_clips ) ) {
             $normalized_section['midi_clips'] = $midi_clips;
         }
+        if ( ! empty( $comentarios ) ) {
+            $normalized_section['comentarios'] = $comentarios;
+        }
 
         $ids_usados[ $id ] = true;
         $normalizadas[]    = $normalized_section;
     }
 
     return $normalizadas;
+}
+
+/**
+ * Restaura comillas hex escapadas que llegan como u0022 sin barra invertida.
+ *
+ * @param string $texto Texto recibido.
+ * @return string
+ */
+function wpss_restore_hex_quotes( $texto ) {
+    if ( ! is_string( $texto ) || '' === $texto ) {
+        return $texto;
+    }
+
+    return preg_replace( '/\\\\?u0022/i', '"', $texto );
 }
 
 /**
@@ -2321,7 +2479,8 @@ function wpss_prepare_coleccion_for_response( WP_Term $term, $include_items = fa
  * @return array[]
  */
 function wpss_prepare_sections_for_output( $post_id, array $versos ) {
-    $secciones_meta = wpss_decode_json_meta( get_post_meta( $post_id, '_secciones_json', true ) );
+    $raw_secciones_meta = get_post_meta( $post_id, '_secciones_json', true );
+    $secciones_meta = wpss_decode_json_meta( $raw_secciones_meta );
     $secciones      = wpss_sanitize_secciones_array( $secciones_meta );
 
     list( $secciones, $versos_actualizados ) = wpss_ensure_sections_for_versos( $secciones, $versos );
@@ -2402,6 +2561,8 @@ function wpss_get_cancion_versos( $post_id ) {
         $midi_raw       = wpss_decode_json_meta( get_post_meta( $verso->ID, '_midi_json', true ) );
         $midi_clips     = wpss_sanitize_midi_clips( $midi_raw );
         $comentario     = sanitize_text_field( get_post_meta( $verso->ID, '_funcion_relativa', true ) );
+        $comentarios_raw = wpss_decode_json_meta( get_post_meta( $verso->ID, '_comentarios_json', true ) );
+        $comentarios     = wpss_sanitize_comments_array( $comentarios_raw );
         $section_id     = sanitize_key( get_post_meta( $verso->ID, '_section_id', true ) );
         $fin_de_estrofa = (bool) absint( get_post_meta( $verso->ID, '_fin_de_estrofa', true ) );
         $nombre_estrofa = sanitize_text_field( get_post_meta( $verso->ID, '_nombre_estrofa', true ) );
@@ -2417,6 +2578,7 @@ function wpss_get_cancion_versos( $post_id ) {
             'acorde'          => $acorde,
             'segmentos'       => $segmentos,
             'comentario'      => $comentario,
+            'comentarios'     => $comentarios,
             'evento_armonico' => $evento,
             'midi_clips'      => $midi_clips,
             'section_id'      => $section_id,
@@ -2630,6 +2792,7 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
 
         $orden        = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
         $comentario   = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
+        $comentarios  = isset( $verso['comentarios'] ) ? wpss_sanitize_comments_array( $verso['comentarios'] ) : [];
         $evento_input = isset( $verso['evento_armonico'] ) ? $verso['evento_armonico'] : null;
         $midi_clips   = [];
 
@@ -2717,6 +2880,7 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             'texto'           => wpss_implode_segmentos_text( $segmentos ),
             'acorde'          => isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '',
             'comentario'      => $comentario,
+            'comentarios'     => $comentarios,
             'evento_armonico' => $evento,
             'midi_clips'      => $midi_clips,
             'section_id'      => $section_id,
@@ -2816,6 +2980,7 @@ function wpss_replace_cancion_versos( $post_id, array $versos ) {
         update_post_meta( $verso_id, '_acorde_absoluto', isset( $segmentos[0]['acorde'] ) ? $segmentos[0]['acorde'] : '' );
         update_post_meta( $verso_id, '_funcion_relativa', $verso['comentario'] );
         update_post_meta( $verso_id, '_notas_verso', '' );
+        update_post_meta( $verso_id, '_comentarios_json', $verso['comentarios'] );
         update_post_meta( $verso_id, '_segmentos_json', $segmentos );
 
         $section_meta = isset( $verso['section_id'] ) ? sanitize_key( $verso['section_id'] ) : '';

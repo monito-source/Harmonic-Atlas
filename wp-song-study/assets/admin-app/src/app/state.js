@@ -1,5 +1,5 @@
 export function createEmptySegment() {
-  return { texto: '', acorde: '', midi_clips: [] }
+  return { texto: '', acorde: '', midi_clips: [], comentarios: [] }
 }
 
 export function createEmptyVerse(order, sectionId) {
@@ -7,6 +7,7 @@ export function createEmptyVerse(order, sectionId) {
     orden: order || 1,
     segmentos: [createEmptySegment()],
     comentario: '',
+    comentarios: [],
     evento_armonico: null,
     section_id: sectionId || '',
     fin_de_estrofa: false,
@@ -22,6 +23,7 @@ export function createSection(nombre = '', index = 0) {
     id: `sec-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     nombre: label,
     midi_clips: [],
+    comentarios: [],
   }
 }
 
@@ -111,6 +113,7 @@ export function buildInitialState(wpData, view = 'dashboard') {
     },
     readingMode: 'inline',
     readingFollowStructure: false,
+    readingShowNotes: true,
     readingQueue: {
       ids: [],
       index: 0,

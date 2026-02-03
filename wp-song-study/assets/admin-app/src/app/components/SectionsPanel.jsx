@@ -10,6 +10,7 @@ export default function SectionsPanel({
   onSelect,
   onChange,
   onDuplicate,
+  filterSectionId = null,
   compactMidiRows = false,
   allowMidiRowToggle = false,
   midiRangePresets = [],
@@ -17,6 +18,9 @@ export default function SectionsPanel({
   lockMidiRange = false,
 }) {
   const safeSections = Array.isArray(sections) ? sections : []
+  const visibleSections = filterSectionId
+    ? safeSections.filter((section) => section.id === filterSectionId)
+    : safeSections
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
   const counts = useMemo(() => {
     const map = new Map()
@@ -35,11 +39,14 @@ export default function SectionsPanel({
   const draggingRef = useRef(null)
   const dragOverRef = useRef(null)
 
-  if (!safeSections.length) {
+  if (!visibleSections.length) {
     return <p className="wpss-empty">Sin secciones registradas.</p>
   }
 
   const moveSectionTo = (fromIndex, toIndex) => {
+    if (filterSectionId) {
+      return
+    }
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
       return
     }
@@ -107,7 +114,7 @@ export default function SectionsPanel({
 
   return (
     <div className="wpss-sections-manager">
-      {safeSections.map((section, index) => {
+      {visibleSections.map((section, index) => {
         const isActive = selectedSectionId === section.id
         const isDragging = draggingIndex === index
         const isDragOver = dragOverIndex === index && draggingIndex !== null
@@ -119,11 +126,13 @@ export default function SectionsPanel({
               isDragging ? 'is-dragging' : ''
             } ${isDragOver ? 'is-dragover' : ''} ${isCollapsed ? 'is-collapsed' : ''}`}
             onDragOver={(event) => {
+              if (filterSectionId) return
               event.preventDefault()
               setDragOverIndex(index)
               dragOverRef.current = index
             }}
             onDrop={(event) => {
+              if (filterSectionId) return
               event.preventDefault()
               let fromIndex = draggingIndex
               if (event.dataTransfer) {
@@ -140,6 +149,7 @@ export default function SectionsPanel({
               dragOverRef.current = null
             }}
             onDragLeave={() => {
+              if (filterSectionId) return
               if (dragOverIndex === index) {
                 setDragOverIndex(null)
                 dragOverRef.current = null
@@ -166,10 +176,11 @@ export default function SectionsPanel({
               </button>
               <span
                 className={`wpss-drag-handle ${isDragging ? 'is-dragging' : ''}`}
-                draggable
+                draggable={!filterSectionId}
                 aria-label="Mover sección"
                 title="Mover sección"
                 onDragStart={(event) => {
+                  if (filterSectionId) return
                   if (event.dataTransfer) {
                     event.dataTransfer.setData('text/plain', String(index))
                   }
@@ -178,6 +189,7 @@ export default function SectionsPanel({
                   draggingRef.current = index
                 }}
                 onDragEnd={() => {
+                  if (filterSectionId) return
                   const fromIndex = draggingRef.current
                   const toIndex = dragOverRef.current
                   if (fromIndex !== null && toIndex !== null) {

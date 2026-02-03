@@ -107,6 +107,12 @@ input[type="reset"]:focus {
   transition: all 0.5s ease;
 }
 
+.site-header .container {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+}
+
 .header-left {
   display: flex;
   flex-direction: column;

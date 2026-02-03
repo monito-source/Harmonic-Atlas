@@ -181,6 +181,18 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             </div>
           </div>
           <div className="wpss-reading__group">
+            <span className="wpss-reading__group-label">Notas</span>
+            <div className="wpss-reading__group-controls">
+              <button
+                type="button"
+                className={`button button-secondary ${state.readingShowNotes ? 'is-active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingShowNotes: !state.readingShowNotes } })}
+              >
+                {state.readingShowNotes ? 'Ocultar notas' : 'Mostrar notas'}
+              </button>
+            </div>
+          </div>
+          <div className="wpss-reading__group">
             <span className="wpss-reading__group-label">Secciones</span>
             <div className="wpss-reading__group-controls">
               <button
@@ -276,6 +288,20 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                     </div>
                   ) : null}
                   {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
+                  {state.readingShowNotes && Array.isArray(group.section?.comentarios) && group.section.comentarios.length ? (
+                    <div className="wpss-reading__notes-block">
+                      {group.section.comentarios.map((note) => (
+                        <div
+                          key={note.id}
+                          className="wpss-reading__note"
+                          style={{ '--note-color': note.color || '#3b82f6' }}
+                        >
+                          <strong>Sección</strong>
+                          <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {showMidi
                     ? renderReadingMidiClips(
                       group.section?.midi_clips,
@@ -295,6 +321,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                             repeatsEnabled={repeatsEnabled}
                             linkedPlayback={linkedPlayback}
                             showMidi={showMidi}
+                            showNotes={state.readingShowNotes}
                             sectionIndex={index}
                             verseIndex={verseIndex}
                             activePlaybackMeta={activePlaybackMeta}
@@ -319,6 +346,7 @@ function ReadingVerse({
   repeatsEnabled,
   linkedPlayback,
   showMidi,
+  showNotes,
   sectionIndex,
   verseIndex,
   activePlaybackMeta,
@@ -329,6 +357,43 @@ function ReadingVerse({
   const comentario = verse.comentario ? <span className="wpss-reading__comment">{verse.comentario}</span> : null
   const metaContent = [instrumental, evento, comentario].filter(Boolean)
   const meta = metaContent.length ? <div className="wpss-reading__meta">{metaContent}</div> : null
+  const verseNotes =
+    showNotes && Array.isArray(verse.comentarios) ? verse.comentarios : []
+  const segmentNotes = showNotes
+    ? segmentos.flatMap((segmento, index) =>
+        Array.isArray(segmento?.comentarios)
+          ? segmento.comentarios.map((note) => ({
+              ...note,
+              scope: `Segmento ${index + 1}`,
+            }))
+          : [],
+      )
+    : []
+  const notesBlock =
+    showNotes && (verseNotes.length || segmentNotes.length) ? (
+      <div className="wpss-reading__notes-block">
+        {verseNotes.map((note) => (
+          <div
+            key={note.id}
+            className="wpss-reading__note"
+            style={{ '--note-color': note.color || '#3b82f6' }}
+          >
+            <strong>Verso</strong>
+            <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
+          </div>
+        ))}
+        {segmentNotes.map((note) => (
+          <div
+            key={note.id}
+            className="wpss-reading__note"
+            style={{ '--note-color': note.color || '#3b82f6' }}
+          >
+            <strong>{note.scope}</strong>
+            <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
+          </div>
+        ))}
+      </div>
+    ) : null
   const verseMidi = showMidi
     ? renderReadingMidiClips(verse.midi_clips, defaultTempo, repeatsEnabled, linkedPlayback)
     : null
@@ -363,6 +428,7 @@ function ReadingVerse({
           <span>{lines.lyrics}</span>
         </pre>
         {meta}
+        {notesBlock}
         {verseMidi}
         {segmentMidis}
       </li>
@@ -389,12 +455,16 @@ function ReadingVerse({
       if (activeSegmentIndex !== null && activeSegmentIndex === index) {
         classes.push('is-playing')
       }
+      if (showNotes && Array.isArray(segmento?.comentarios) && segmento.comentarios.length) {
+        classes.push('has-note')
+      }
       return {
         key: `segment-${index}`,
         classes: classes.join(' '),
         acorde,
         texto,
         joiner: joiners[index] && index < segmentos.length - 1,
+        noteColor: segmento?.comentarios?.[0]?.color || '#3b82f6',
       }
     })
     .filter(Boolean)
@@ -403,7 +473,11 @@ function ReadingVerse({
     <li className={isActive ? 'is-playing' : ''}>
       <div className="wpss-reading__line">
         {parts.map((part, index) => (
-          <span key={part.key} className={part.classes}>
+          <span
+            key={part.key}
+            className={part.classes}
+            style={part.classes.includes('has-note') ? { '--note-color': part.noteColor } : undefined}
+          >
             {part.acorde}
             {part.texto ? <span dangerouslySetInnerHTML={{ __html: part.texto }} /> : null}
             {!part.joiner && index < parts.length - 1 ? <span className="wpss-reading__gap"> </span> : null}
@@ -411,6 +485,7 @@ function ReadingVerse({
         ))}
       </div>
       {meta}
+      {notesBlock}
       {verseMidi}
       {segmentMidis}
     </li>

@@ -10,6 +10,7 @@ import {
   stripHtml,
 } from '../utils.js'
 import MidiClipList from './MidiClipList.jsx'
+import CommentEditor from './CommentEditor.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 
 export default function VersesPanel({
@@ -31,6 +32,9 @@ export default function VersesPanel({
   midiRangePresets = [],
   midiRangeDefault = '',
   lockMidiRange = false,
+  showHeader = true,
+  showPreview = true,
+  visibleVerseIndexes = null,
 }) {
   const { wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
@@ -56,6 +60,7 @@ export default function VersesPanel({
     segmentIndex: null,
   })
   const [dragOver, setDragOver] = useState({ verseIndex: null, segmentIndex: null })
+  const [openNotes, setOpenNotes] = useState(() => new Set())
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const editorsRef = useRef(new Map())
@@ -66,6 +71,13 @@ export default function VersesPanel({
       .map((verse, index) => ({ verse, index }))
       .filter((item) => item.verse.section_id === activeSectionId)
   }, [safeVerses, activeSectionId])
+
+  const visibleVersesInSection = useMemo(() => {
+    if (!visibleVerseIndexes || !(visibleVerseIndexes instanceof Set) || visibleVerseIndexes.size === 0) {
+      return versesInSection
+    }
+    return versesInSection.filter((item) => visibleVerseIndexes.has(item.index))
+  }, [versesInSection, visibleVerseIndexes])
 
   const handleSelectionUpdate = (verseIndex, segmentIndex, event) => {
     const element = event.currentTarget || event.target
@@ -231,6 +243,41 @@ export default function VersesPanel({
       }
       return next
     })
+  }
+
+  const toggleNotes = (key) => {
+    setOpenNotes((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const handleVerseCommentsChange = (verseIndex, comments) => {
+    const nextVerses = [...safeVerses]
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    nextVerses[verseIndex] = { ...verse, comentarios: comments }
+    if (onChange) {
+      onChange(nextVerses)
+    }
+  }
+
+  const handleSegmentCommentsChange = (verseIndex, segmentIndex, comments) => {
+    const nextVerses = [...safeVerses]
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+    if (!segmentos[segmentIndex]) return
+    segmentos[segmentIndex] = { ...segmentos[segmentIndex], comentarios: comments }
+    nextVerses[verseIndex] = { ...verse, segmentos }
+    if (onChange) {
+      onChange(nextVerses)
+    }
   }
 
   const handleAddSegment = (verseIndex) => {
@@ -529,42 +576,44 @@ export default function VersesPanel({
 
   return (
     <div className="wpss-verses">
-      <div className="wpss-verses__header">
-        <div className="wpss-section-selector">
-          {safeSections.map((section, index) => (
-            <button
-              key={section.id}
-              type="button"
-              className={`wpss-section-tab ${activeSectionId === section.id ? 'is-active' : ''}`}
-              onClick={() => onSelectSection && onSelectSection(section.id)}
-            >
-              {section.nombre || getDefaultSectionName(index)}
+      {showHeader ? (
+        <div className="wpss-verses__header">
+          <div className="wpss-section-selector">
+            {safeSections.map((section, index) => (
+              <button
+                key={section.id}
+                type="button"
+                className={`wpss-section-tab ${activeSectionId === section.id ? 'is-active' : ''}`}
+                onClick={() => onSelectSection && onSelectSection(section.id)}
+              >
+                {section.nombre || getDefaultSectionName(index)}
+              </button>
+            ))}
+          </div>
+          <div className="wpss-section-tools">
+            <button type="button" className="button button-secondary" onClick={() => onAddSection && onAddSection()}>
+              Añadir sección
             </button>
-          ))}
+            <details className="wpss-sections-inline">
+              <summary>Gestionar secciones</summary>
+              <SectionsPanel
+                sections={safeSections}
+                selectedSectionId={activeSectionId}
+                verses={safeVerses}
+                songBpm={bpmDefault}
+                onSelect={onSelectSection}
+                onChange={onSectionsChange}
+                onDuplicate={onDuplicateSection}
+                compactMidiRows={compactMidiRows}
+                allowMidiRowToggle={allowMidiRowToggle}
+                midiRangePresets={midiRangePresets}
+                midiRangeDefault={midiRangeDefault}
+                lockMidiRange={lockMidiRange}
+              />
+            </details>
+          </div>
         </div>
-        <div className="wpss-section-tools">
-          <button type="button" className="button button-secondary" onClick={() => onAddSection && onAddSection()}>
-            Añadir sección
-          </button>
-          <details className="wpss-sections-inline">
-            <summary>Gestionar secciones</summary>
-            <SectionsPanel
-              sections={safeSections}
-              selectedSectionId={activeSectionId}
-              verses={safeVerses}
-              songBpm={bpmDefault}
-              onSelect={onSelectSection}
-              onChange={onSectionsChange}
-              onDuplicate={onDuplicateSection}
-              compactMidiRows={compactMidiRows}
-              allowMidiRowToggle={allowMidiRowToggle}
-              midiRangePresets={midiRangePresets}
-              midiRangeDefault={midiRangeDefault}
-              lockMidiRange={lockMidiRange}
-            />
-          </details>
-        </div>
-      </div>
+      ) : null}
       <div className="wpss-verses__panel">
         <div className="wpss-verse-group">
           <div className="wpss-verse-group__header">
@@ -573,30 +622,32 @@ export default function VersesPanel({
                 {safeSections.find((section) => section.id === activeSectionId)?.nombre ||
                   getDefaultSectionName(0)}
               </strong>
-              <span className="wpss-verse-group__meta">{versesInSection.length} versos</span>
+              <span className="wpss-verse-group__meta">{visibleVersesInSection.length} versos</span>
             </div>
             <button type="button" className="button button-secondary" onClick={handleAddVerse}>
               Añadir verso
             </button>
           </div>
-          <div className="wpss-section-preview">
-            <div className="wpss-section-preview__header">
-              <strong>Vista previa</strong>
-              <span>
-                {safeSections.find((section) => section.id === activeSectionId)?.nombre ||
-                  getDefaultSectionName(0)}
-              </span>
+          {showPreview ? (
+            <div className="wpss-section-preview">
+              <div className="wpss-section-preview__header">
+                <strong>Vista previa</strong>
+                <span>
+                  {safeSections.find((section) => section.id === activeSectionId)?.nombre ||
+                    getDefaultSectionName(0)}
+                </span>
+              </div>
+              {visibleVersesInSection.length ? (
+                <ul className="wpss-section-preview__body">
+                  {visibleVersesInSection.map(({ verse }, index) => renderPreviewVerse(verse, index))}
+                </ul>
+              ) : (
+                <p className="wpss-empty">Sin versos en esta sección.</p>
+              )}
             </div>
-            {versesInSection.length ? (
-              <ul className="wpss-section-preview__body">
-                {versesInSection.map(({ verse }, index) => renderPreviewVerse(verse, index))}
-              </ul>
-            ) : (
-              <p className="wpss-empty">Sin versos en esta sección.</p>
-            )}
-          </div>
-          {versesInSection.length ? (
-            versesInSection.map(({ verse, index: verseIndex }) => {
+          ) : null}
+          {visibleVersesInSection.length ? (
+            visibleVersesInSection.map(({ verse, index: verseIndex }) => {
               const isCollapsed = collapsed.has(verseIndex)
               const preview = buildVersePreview(verse)
               const label = verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`
@@ -673,25 +724,37 @@ export default function VersesPanel({
                     <div className="wpss-verse-actions">
                       <button
                         type="button"
-                        className="button button-small"
-                        onClick={() =>
-                          onSplitSection &&
-                          onSplitSection(
-                            verseIndex,
-                            selection.segmentIndex ?? 0,
-                            selection.element,
-                          )
-                        }
+                        className={`button button-small ${openNotes.has(`verse-${verseIndex}`) ? 'is-active' : ''}`}
+                        onClick={() => toggleNotes(`verse-${verseIndex}`)}
                       >
-                        Dividir sección
+                        Notas
                       </button>
-                      <button
-                        type="button"
-                        className="button button-link-delete"
-                        onClick={() => handleRemoveVerse(verseIndex)}
-                      >
-                        Eliminar
-                      </button>
+                      <details className="wpss-action-menu">
+                        <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
+                        <div className="wpss-action-menu__panel">
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() =>
+                              onSplitSection &&
+                              onSplitSection(
+                                verseIndex,
+                                selection.segmentIndex ?? 0,
+                                selection.element,
+                              )
+                            }
+                          >
+                            Dividir sección
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-link-delete"
+                            onClick={() => handleRemoveVerse(verseIndex)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </details>
                     </div>
                   </div>
                   <div className="wpss-verse-card__body">
@@ -846,46 +909,58 @@ export default function VersesPanel({
                             <div className="wpss-segment__actions">
                               <button
                                 type="button"
-                                className="button button-small"
-                                onClick={() => handleDuplicateSegment(verseIndex, segmentIndex)}
+                                className={`button button-small ${openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? 'is-active' : ''}`}
+                                onClick={() => toggleNotes(`segment-${verseIndex}-${segmentIndex}`)}
                               >
-                                {wpData?.strings?.segmentDuplicate || 'Duplicar'}
+                                Notas
                               </button>
-                              <button
-                                type="button"
-                                className="button button-small wpss-segment__split"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={(event) => {
-                                  const key = `${verseIndex}:${segmentIndex}`
-                                  const editor = editorsRef.current.get(key)
-                                  if (editor && onSplitSegment) {
-                                    onSplitSegment(verseIndex, segmentIndex, editor)
-                                  }
-                                }}
-                              >
-                                {wpData?.strings?.segmentSplit || 'Dividir'}
-                              </button>
-                              <button
-                                type="button"
-                                className="button button-small"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={(event) => {
-                                  const key = `${verseIndex}:${segmentIndex}`
-                                  const editor = editorsRef.current.get(key)
-                                  if (editor && onSplitVerse) {
-                                    onSplitVerse(verseIndex, segmentIndex, editor)
-                                  }
-                                }}
-                              >
-                                Cortar verso
-                              </button>
-                              <button
-                                type="button"
-                                className="button button-link-delete"
-                                onClick={() => handleRemoveSegment(verseIndex, segmentIndex)}
-                              >
-                                Eliminar
-                              </button>
+                              <details className="wpss-action-menu">
+                                <summary aria-label="Acciones del segmento" title="Acciones del segmento">⋯</summary>
+                                <div className="wpss-action-menu__panel">
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onClick={() => handleDuplicateSegment(verseIndex, segmentIndex)}
+                                  >
+                                    {wpData?.strings?.segmentDuplicate || 'Duplicar'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small wpss-segment__split"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      const key = `${verseIndex}:${segmentIndex}`
+                                      const editor = editorsRef.current.get(key)
+                                      if (editor && onSplitSegment) {
+                                        onSplitSegment(verseIndex, segmentIndex, editor)
+                                      }
+                                    }}
+                                  >
+                                    {wpData?.strings?.segmentSplit || 'Dividir'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={(event) => {
+                                      const key = `${verseIndex}:${segmentIndex}`
+                                      const editor = editorsRef.current.get(key)
+                                      if (editor && onSplitVerse) {
+                                        onSplitVerse(verseIndex, segmentIndex, editor)
+                                      }
+                                    }}
+                                  >
+                                    Cortar verso
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-link-delete"
+                                    onClick={() => handleRemoveSegment(verseIndex, segmentIndex)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </details>
                             </div>
                             {canSelectEvent ? (
                               <button
@@ -899,6 +974,15 @@ export default function VersesPanel({
                                   ? wpData?.strings?.segmentEventSelected || 'Evento anclado (clic para quitar)'
                                   : wpData?.strings?.segmentEventSelect || 'Anclar evento aquí'}
                               </button>
+                            ) : null}
+                            {openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? (
+                              <CommentEditor
+                                label="Notas del segmento"
+                                comments={segment.comentarios || []}
+                                onChange={(next) =>
+                                  handleSegmentCommentsChange(verseIndex, segmentIndex, next)
+                                }
+                              />
                             ) : null}
                             <div className="wpss-segment__midi">
                                 <MidiClipList
@@ -1072,6 +1156,13 @@ export default function VersesPanel({
                         />
                       </div>
                     </div>
+                    {openNotes.has(`verse-${verseIndex}`) ? (
+                      <CommentEditor
+                        label="Notas del verso"
+                        comments={verse.comentarios || []}
+                        onChange={(next) => handleVerseCommentsChange(verseIndex, next)}
+                      />
+                    ) : null}
                   </div>
                 </div>
               )
