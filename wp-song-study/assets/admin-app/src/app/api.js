@@ -142,6 +142,18 @@ export function createApi(wpData) {
     saveCampos(campos) {
       return request('campos-armonicos', { method: 'POST', body: { campos } })
     },
+    listChords() {
+      return request('acordes')
+    },
+    saveChords(acordes) {
+      return request('acordes', { method: 'POST', body: { acordes } })
+    },
+    getChordsConfig() {
+      return request('acordes-config')
+    },
+    saveChordsConfig(config) {
+      return request('acordes-config', { method: 'POST', body: config })
+    },
     listCollections() {
       return request('colecciones')
     },

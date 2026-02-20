@@ -18,6 +18,7 @@ import StructurePanel from './StructurePanel.jsx'
 import VersesPanel from './VersesPanel.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 import CommentEditor from './CommentEditor.jsx'
+import MidiClipList from './MidiClipList.jsx'
 
 const AUTOSAVE_DELAY = 800
 
@@ -31,10 +32,12 @@ export default function Editor({ onShowList }) {
   const [isResizingPreview, setIsResizingPreview] = useState(false)
   const [selectedVerseIndexes, setSelectedVerseIndexes] = useState(() => new Set())
   const [navLevel, setNavLevel] = useState('sections')
-  const [sidebarWidth, setSidebarWidth] = useState(180)
+  const [sidebarWidth, setSidebarWidth] = useState(null)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [sectionDragIndex, setSectionDragIndex] = useState(null)
   const [sectionDragOverIndex, setSectionDragOverIndex] = useState(null)
+  const [verseDragIndex, setVerseDragIndex] = useState(null)
+  const [verseDragOverIndex, setVerseDragOverIndex] = useState(null)
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
@@ -201,6 +204,7 @@ export default function Editor({ onShowList }) {
       let id = seccion && seccion.id ? String(seccion.id).trim() : ''
       let nombre = seccion && seccion.nombre ? String(seccion.nombre) : ''
       const midiClips = Array.isArray(seccion?.midi_clips) ? seccion.midi_clips : []
+      const comentarios = Array.isArray(seccion?.comentarios) ? seccion.comentarios : []
 
       if (!id) {
         id = createSection('', index).id
@@ -220,6 +224,7 @@ export default function Editor({ onShowList }) {
         id,
         nombre: nombre.slice(0, 64),
         midi_clips: midiClips,
+        comentarios,
       }
     })
 
@@ -942,11 +947,70 @@ export default function Editor({ onShowList }) {
     handleSectionChange(sections)
   }
 
+  const moveVerseInSection = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+      return false
+    }
+
+    const verses = Array.isArray(editingSong.versos) ? editingSong.versos : []
+    if (fromIndex >= verses.length || toIndex >= verses.length) {
+      return false
+    }
+
+    const fromVerse = verses[fromIndex]
+    const toVerse = verses[toIndex]
+    if (!fromVerse || !toVerse) {
+      return false
+    }
+
+    const sectionId = fromVerse.section_id || ''
+    if ((toVerse.section_id || '') !== sectionId) {
+      return false
+    }
+
+    const sectionIndexes = verses
+      .map((verse, index) => ({ verse, index }))
+      .filter((item) => (item.verse.section_id || '') === sectionId)
+      .map((item) => item.index)
+
+    const fromPosition = sectionIndexes.indexOf(fromIndex)
+    const toPosition = sectionIndexes.indexOf(toIndex)
+    if (fromPosition < 0 || toPosition < 0 || fromPosition === toPosition) {
+      return false
+    }
+
+    const reorderedIndexes = [...sectionIndexes]
+    const [movedIndex] = reorderedIndexes.splice(fromPosition, 1)
+    reorderedIndexes.splice(toPosition, 0, movedIndex)
+
+    const nextVerses = [...verses]
+    const targetSlots = [...sectionIndexes].sort((a, b) => a - b)
+    const reorderedVerses = reorderedIndexes.map((index) => verses[index])
+    targetSlots.forEach((slot, slotIndex) => {
+      nextVerses[slot] = reorderedVerses[slotIndex]
+    })
+
+    normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+    return true
+  }
+
   const handleSectionCommentsChange = (sectionId, comments) => {
     const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
     const index = sections.findIndex((section) => section.id === sectionId)
     if (index === -1) return
     sections[index] = { ...sections[index], comentarios: comments }
+    handleSectionChange(sections)
+  }
+
+  const handleSectionMidiChange = (sectionId, clips) => {
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    const index = sections.findIndex((section) => section.id === sectionId)
+    if (index === -1) return
+    sections[index] = { ...sections[index], midi_clips: clips }
     handleSectionChange(sections)
   }
 
@@ -1274,28 +1338,23 @@ export default function Editor({ onShowList }) {
               gridTemplateColumns: isFocusWork
                 ? `minmax(520px, ${100 - previewRatio}fr) 8px minmax(320px, ${previewRatio}fr)`
                 : `${
-                    isSidebarCollapsed ? '32px' : `${sidebarWidth}px`
+                    isSidebarCollapsed
+                      ? '32px'
+                      : sidebarWidth
+                        ? `${sidebarWidth}px`
+                        : 'max-content'
                   } 8px minmax(360px, 1fr)`,
             }}
           >
             {!isFocusWork ? (
               <aside ref={sidebarRef} className="wpss-editor-sidebar wpss-editor-column">
-                <button
-                  type="button"
-                  className="button button-small wpss-sidebar-toggle"
-                  onClick={() => setIsSidebarCollapsed((prev) => !prev)}
-                  aria-label={isSidebarCollapsed ? 'Mostrar secciones' : 'Ocultar secciones'}
-                  title={isSidebarCollapsed ? 'Mostrar secciones' : 'Ocultar secciones'}
-                >
-                  {isSidebarCollapsed ? '▸' : '▾'}
-                </button>
                 <div className={`wpss-editor-sidebar__content nav-${navLevel}`}>
                   <div className="wpss-editor-sidebar__header">
                     <strong>Secciones</strong>
                     <button
                       type="button"
                       className="button button-secondary"
-                      onClick={() => onAddSection && onAddSection()}
+                      onClick={handleAddSection}
                     >
                       Añadir sección
                     </button>
@@ -1408,7 +1467,9 @@ export default function Editor({ onShowList }) {
                                 className="button button-small"
                                 onClick={(event) => {
                                   event.stopPropagation()
-                                  enterSectionManage(section.id)
+                                  selectSectionOnly(section.id)
+                                  clearVerseSelection()
+                                  setNavLevel('verses')
                                 }}
                               >
                                 MIDI sección
@@ -1504,6 +1565,30 @@ export default function Editor({ onShowList }) {
                   ) : null}
                 </div>
               ) : null}
+              {navLevel === 'verses' ? (
+                <div className="wpss-section-tools">
+                  <div className="wpss-section-tools__header">
+                    <strong>{activeSection?.nombre || getDefaultSectionName(0)}</strong>
+                    <span>Notas y MIDI de sección</span>
+                  </div>
+                  <MidiClipList
+                    clips={activeSection?.midi_clips}
+                    onChange={(clips) => handleSectionMidiChange(activeSectionId, clips)}
+                    emptyLabel="Añadir MIDI a la sección"
+                    defaultTempo={editingSong.bpm}
+                    compactRows={preferCompactMidiRows}
+                    allowRowToggle={preferCompactMidiRows}
+                    rangePresets={midiRangePresets}
+                    defaultRange={midiRangeDefault}
+                    lockRange={lockMidiRange}
+                  />
+                  <CommentEditor
+                    label="Notas de sección"
+                    comments={activeSection?.comentarios || []}
+                    onChange={(next) => handleSectionCommentsChange(activeSectionId, next)}
+                  />
+                </div>
+              ) : null}
               {showSectionEmptyState ? (
                 <div className="wpss-work-empty">
                   <p>Selecciona una sección para comenzar.</p>
@@ -1522,9 +1607,43 @@ export default function Editor({ onShowList }) {
                         <button
                           key={`verse-card-${index}`}
                           type="button"
-                          className="wpss-verse-card-mini"
+                          className={`wpss-verse-card-mini ${verseDragOverIndex === index ? 'is-dragover' : ''}`}
                           onClick={() => setSelectedVerseIndexes(new Set([index]))}
+                          onDragOver={(event) => {
+                            if (verseDragIndex === null) return
+                            event.preventDefault()
+                            setVerseDragOverIndex(index)
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
+                            const fromIndex = Number.isNaN(payload) ? verseDragIndex : payload
+                            if (fromIndex !== null && fromIndex !== undefined) {
+                              moveVerseInSection(fromIndex, index)
+                            }
+                            setVerseDragIndex(null)
+                            setVerseDragOverIndex(null)
+                          }}
                         >
+                          <span
+                            className="wpss-verse-card-mini__drag"
+                            draggable
+                            aria-label="Mover verso"
+                            title="Arrastra para ordenar"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData('text/plain', String(index))
+                              event.dataTransfer.effectAllowed = 'move'
+                              setVerseDragIndex(index)
+                            }}
+                            onDragEnd={() => {
+                              setVerseDragIndex(null)
+                              setVerseDragOverIndex(null)
+                            }}
+                          >
+                            ☰
+                          </span>
                           <strong>{verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`}</strong>
                           <p>{getVerseSummary(verse)}</p>
                         </button>
@@ -1645,6 +1764,15 @@ export default function Editor({ onShowList }) {
                             className={`wpss-section-preview__group ${
                               section.id === activeSectionId ? 'is-active' : ''
                             }`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => selectSectionOnly(section.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                selectSectionOnly(section.id)
+                              }
+                            }}
                           >
                             <strong>{section.nombre || getDefaultSectionName(index)}</strong>
                             {previewVerses.length ? (

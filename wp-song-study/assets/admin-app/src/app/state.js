@@ -58,9 +58,24 @@ export function createEmptySong() {
 
 export function buildInitialState(wpData, view = 'dashboard') {
   const camposLibrary = Array.isArray(wpData?.camposArmonicos) ? wpData.camposArmonicos : []
+  const chordsLibrary = Array.isArray(wpData?.chordsLibrary) ? wpData.chordsLibrary : []
+  const chordsConfig = wpData?.chordsConfig && typeof wpData.chordsConfig === 'object'
+    ? wpData.chordsConfig
+    : { paradigms: [], qualities: {} }
   const camposNames = Array.isArray(wpData?.camposArmonicosNombres)
     ? wpData.camposArmonicosNombres
-    : camposLibrary.filter((campo) => campo && campo.activo).map((campo) => campo.nombre || campo.slug || '')
+    : camposLibrary
+        .filter((campo) => campo && campo.activo)
+        .flatMap((campo) => {
+          const labels = []
+          if (campo.nombre) labels.push(campo.nombre)
+          if (Array.isArray(campo.aliases)) {
+            campo.aliases.forEach((alias) => {
+              if (alias) labels.push(alias)
+            })
+          }
+          return labels.length ? labels : [campo.slug || '']
+        })
 
   return {
     view,
@@ -91,6 +106,20 @@ export function buildInitialState(wpData, view = 'dashboard') {
       feedback: null,
       error: null,
     },
+    chords: {
+      library: chordsLibrary,
+      draft: JSON.parse(JSON.stringify(chordsLibrary || [])),
+      saving: false,
+      feedback: null,
+      error: null,
+    },
+    chordsConfig: {
+      library: chordsConfig,
+      draft: JSON.parse(JSON.stringify(chordsConfig || {})),
+      saving: false,
+      feedback: null,
+      error: null,
+    },
     camposNames,
     segmentSelection: {
       verse: null,
@@ -111,9 +140,10 @@ export function buildInitialState(wpData, view = 'dashboard') {
       catalog: [],
       catalogLoading: false,
     },
-    readingMode: 'inline',
+    readingMode: 'stacked',
     readingFollowStructure: false,
     readingShowNotes: true,
+    readingInstrument: 'guitar',
     readingQueue: {
       ids: [],
       index: 0,

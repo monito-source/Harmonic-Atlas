@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
   endsWithJoiner,
   formatSegmentsForStackedCells,
   formatSegmentsForStackedMode,
+  buildChordLookup,
+  getChordFromLookup,
   getChordDisplayValue,
+  isHoldChordToken,
   getDefaultSectionName,
   getValidSegmentIndex,
 } from '../utils.js'
@@ -16,6 +19,21 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const song = state.editingSong
   const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
   const hasVerses = Array.isArray(song.versos) && song.versos.length
+  const chordsLibrary = Array.isArray(state.chords?.library) ? state.chords.library : []
+  const chordLookup = useMemo(() => buildChordLookup(chordsLibrary), [chordsLibrary])
+  const camposLibrary = Array.isArray(state.campos?.library) ? state.campos.library : []
+  const camposLookup = useMemo(() => {
+    const map = new Map()
+    camposLibrary.forEach((campo) => {
+      if (!campo) return
+      const key = campo.slug || campo.nombre
+      if (key) {
+        map.set(key, campo.nombre || campo.slug)
+      }
+    })
+    return map
+  }, [camposLibrary])
+  const readingInstrument = state.readingInstrument || 'guitar'
   const [repeatsEnabled, setRepeatsEnabled] = useState(true)
   const [linkedPlayback, setLinkedPlayback] = useState(true)
   const [showMidi, setShowMidi] = useState(true)
@@ -204,6 +222,20 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
               </button>
             </div>
           </div>
+          <div className="wpss-reading__group">
+            <span className="wpss-reading__group-label">Instrumento</span>
+            <div className="wpss-reading__group-controls">
+              <select
+                value={readingInstrument}
+                onChange={(event) =>
+                  dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
+                }
+              >
+                <option value="guitar">Guitarra</option>
+                <option value="piano">Piano</option>
+              </select>
+            </div>
+          </div>
           <div className="wpss-reading__group wpss-reading__group--actions">
             <span className="wpss-reading__group-label">Acciones</span>
             <div className="wpss-reading__group-controls">
@@ -248,6 +280,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
           groups.map((group, index) => {
             const heading = group.variant ? `${group.title} (${group.variant})` : group.title
             const canPlaySection = showMidi && hasMidiInGroup(group)
+            const sectionNotes = Array.isArray(group.section?.comentarios) ? group.section.comentarios : []
             return (
               <details
                 key={`reading-${index}`}
@@ -270,65 +303,79 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   )}
                 </summary>
                 <div className="wpss-reading__section-body">
-                  {canPlaySection ? (
-                    <div className="wpss-reading__section-actions">
-                      <button
-                        type="button"
-                        className="button button-small"
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          const key = `section-${index}`
-                          const steps = buildSectionSteps(group, index)
-                          handlePlaySteps(key, steps)
-                        }}
-                      >
-                        {activePlaybackKey === `section-${index}` ? 'Detener sección' : 'Reproducir sección'}
-                      </button>
-                    </div>
-                  ) : null}
-                  {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
-                  {state.readingShowNotes && Array.isArray(group.section?.comentarios) && group.section.comentarios.length ? (
-                    <div className="wpss-reading__notes-block">
-                      {group.section.comentarios.map((note) => (
-                        <div
-                          key={note.id}
-                          className="wpss-reading__note"
-                          style={{ '--note-color': note.color || '#3b82f6' }}
-                        >
-                          <strong>Sección</strong>
-                          <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
+                  <SectionNotes
+                    notes={state.readingShowNotes ? sectionNotes : []}
+                    verseNotes={state.readingShowNotes ? group.versos : []}
+                  >
+                    {(activeNote) => {
+                      const activeScope = activeNote?.scope || null
+                      const activeVerseIndex =
+                        activeScope === 'Verso' || String(activeScope || '').startsWith('Segmento')
+                          ? activeNote?.verseIndex ?? null
+                          : null
+                      const activeSegmentIndex =
+                        String(activeScope || '').startsWith('Segmento')
+                          ? activeNote?.segmentIndex ?? null
+                          : null
+                      const sectionClass =
+                        activeScope === 'Nota' ? 'wpss-reading__note-scope--section' : ''
+                      return (
+                        <div className={sectionClass}>
+                          {canPlaySection ? (
+                            <div className="wpss-reading__section-actions">
+                              <button
+                                type="button"
+                                className="button button-small"
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  const key = `section-${index}`
+                                  const steps = buildSectionSteps(group, index)
+                                  handlePlaySteps(key, steps)
+                                }}
+                              >
+                                {activePlaybackKey === `section-${index}` ? 'Detener sección' : 'Reproducir sección'}
+                              </button>
+                            </div>
+                          ) : null}
+                          {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
+                          {showMidi
+                            ? renderReadingMidiClips(
+                              group.section?.midi_clips,
+                              bpmDefault,
+                              repeatsEnabled,
+                              linkedPlayback,
+                            )
+                          : null}
+                          <ol className="wpss-reading__verses">
+                            {Array.isArray(group.versos)
+                              ? group.versos.map((verse, verseIndex) => (
+                                  <ReadingVerse
+                                    key={`verse-${index}-${verseIndex}`}
+                                    verse={verse}
+                                    mode={state.readingMode}
+                                    defaultTempo={bpmDefault}
+                                    repeatsEnabled={repeatsEnabled}
+                                    linkedPlayback={linkedPlayback}
+                                    showMidi={showMidi}
+                                    showNotes={state.readingShowNotes}
+                                    sectionIndex={index}
+                                    verseIndex={verseIndex}
+                                    activePlaybackMeta={activePlaybackMeta}
+                                    activeNoteScope={activeScope}
+                                    activeVerseIndex={activeVerseIndex}
+                                    activeSegmentIndex={activeSegmentIndex}
+                                      chordLookup={chordLookup}
+                                      chordInstrument={readingInstrument}
+                                      camposLookup={camposLookup}
+                                    />
+                                  ))
+                              : null}
+                          </ol>
                         </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {showMidi
-                    ? renderReadingMidiClips(
-                      group.section?.midi_clips,
-                      bpmDefault,
-                      repeatsEnabled,
-                      linkedPlayback,
-                    )
-                  : null}
-                  <ol className="wpss-reading__verses">
-                    {Array.isArray(group.versos)
-                      ? group.versos.map((verse, verseIndex) => (
-                          <ReadingVerse
-                            key={`verse-${index}-${verseIndex}`}
-                            verse={verse}
-                            mode={state.readingMode}
-                            defaultTempo={bpmDefault}
-                            repeatsEnabled={repeatsEnabled}
-                            linkedPlayback={linkedPlayback}
-                            showMidi={showMidi}
-                            showNotes={state.readingShowNotes}
-                            sectionIndex={index}
-                            verseIndex={verseIndex}
-                            activePlaybackMeta={activePlaybackMeta}
-                          />
-                        ))
-                      : null}
-                  </ol>
+                      )
+                    }}
+                  </SectionNotes>
                 </div>
               </details>
             )
@@ -350,6 +397,12 @@ function ReadingVerse({
   sectionIndex,
   verseIndex,
   activePlaybackMeta,
+  activeNoteScope,
+  activeVerseIndex,
+  activeSegmentIndex,
+  chordLookup,
+  chordInstrument,
+  camposLookup,
 }) {
   const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
   const instrumental = verse.instrumental ? <span className="wpss-reading__instrumental">Instrumental</span> : null
@@ -357,43 +410,6 @@ function ReadingVerse({
   const comentario = verse.comentario ? <span className="wpss-reading__comment">{verse.comentario}</span> : null
   const metaContent = [instrumental, evento, comentario].filter(Boolean)
   const meta = metaContent.length ? <div className="wpss-reading__meta">{metaContent}</div> : null
-  const verseNotes =
-    showNotes && Array.isArray(verse.comentarios) ? verse.comentarios : []
-  const segmentNotes = showNotes
-    ? segmentos.flatMap((segmento, index) =>
-        Array.isArray(segmento?.comentarios)
-          ? segmento.comentarios.map((note) => ({
-              ...note,
-              scope: `Segmento ${index + 1}`,
-            }))
-          : [],
-      )
-    : []
-  const notesBlock =
-    showNotes && (verseNotes.length || segmentNotes.length) ? (
-      <div className="wpss-reading__notes-block">
-        {verseNotes.map((note) => (
-          <div
-            key={note.id}
-            className="wpss-reading__note"
-            style={{ '--note-color': note.color || '#3b82f6' }}
-          >
-            <strong>Verso</strong>
-            <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
-          </div>
-        ))}
-        {segmentNotes.map((note) => (
-          <div
-            key={note.id}
-            className="wpss-reading__note"
-            style={{ '--note-color': note.color || '#3b82f6' }}
-          >
-            <strong>{note.scope}</strong>
-            <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
-          </div>
-        ))}
-      </div>
-    ) : null
   const verseMidi = showMidi
     ? renderReadingMidiClips(verse.midi_clips, defaultTempo, repeatsEnabled, linkedPlayback)
     : null
@@ -409,28 +425,43 @@ function ReadingVerse({
   const isActive =
     activePlaybackMeta?.sectionIndex === sectionIndex
     && activePlaybackMeta?.verseIndex === verseIndex
-  const activeSegmentIndex = isActive ? activePlaybackMeta?.segmentIndex : null
+  const playbackSegmentIndex = isActive ? activePlaybackMeta?.segmentIndex : null
+  const isVerseNoteActive =
+    showNotes && activeNoteScope === 'Verso' && activeVerseIndex === verseIndex
+  const isSegmentNoteActive =
+    showNotes
+    && String(activeNoteScope || '').startsWith('Segmento')
+    && activeVerseIndex === verseIndex
 
   if (mode === 'stacked') {
     const lines = formatSegmentsForStackedCells(segmentos)
     return (
       <li className={isActive ? 'is-playing' : ''}>
-        <pre className="wpss-reading__stack">
-          <span className="wpss-reading__stack-chords">
-            {lines.chords.map((cell, cellIndex) => (
-              <span key={`chord-${cellIndex}`}>
-                {cell.text ? <span className="wpss-reading__stack-chord">{cell.text}</span> : null}
-                {cell.spacer ? <span className="wpss-reading__stack-spacer">{cell.spacer}</span> : null}
-              </span>
-            ))}
-          </span>
-          {'\n'}
-          <span>{lines.lyrics}</span>
-        </pre>
-        {meta}
-        {notesBlock}
-        {verseMidi}
-        {segmentMidis}
+        <div className={`wpss-reading__verse-body ${isVerseNoteActive || isSegmentNoteActive ? 'is-note-active' : ''}`}>
+          <pre className="wpss-reading__stack">
+            <span className="wpss-reading__stack-chords">
+              {lines.chords.map((cell, cellIndex) => (
+                <span key={`chord-${cellIndex}`}>
+                  {cell.text ? (
+                    <ChordHover
+                      label={cell.text}
+                      chord={getChordFromLookup(cell.text, chordLookup)}
+                      instrument={chordInstrument}
+                      camposLookup={camposLookup}
+                      className="wpss-reading__stack-chord"
+                    />
+                  ) : null}
+                  {cell.spacer ? <span className="wpss-reading__stack-spacer">{cell.spacer}</span> : null}
+                </span>
+              ))}
+            </span>
+            {'\n'}
+            <span>{lines.lyrics}</span>
+          </pre>
+          {meta}
+          {verseMidi}
+          {segmentMidis}
+        </div>
       </li>
     )
   }
@@ -439,10 +470,22 @@ function ReadingVerse({
   const joiners = segmentos.map((segmento) => endsWithJoiner(segmento?.texto || ''))
   const parts = segmentos
     .map((segmento, index) => {
-      const acordeValue = getChordDisplayValue(segmento?.acorde || '')
-      const acorde = acordeValue ? <span className="wpss-reading__chord">[{acordeValue}]</span> : null
+      const chordToken = segmento?.acorde || ''
+      const acordeValue = getChordDisplayValue(chordToken)
+      const isHoldChord = isHoldChordToken(chordToken)
+      const acorde = acordeValue ? (
+        <ChordHover
+          label={`[${acordeValue}]`}
+          chord={getChordFromLookup(acordeValue, chordLookup)}
+          instrument={chordInstrument}
+          camposLookup={camposLookup}
+        />
+      ) : null
       const texto = segmento.texto || ''
       const classes = ['wpss-reading__segment']
+      if (isHoldChord) {
+        classes.push('is-hold-chord')
+      }
       if (index > 0 && joiners[index - 1]) {
         classes.push('is-joined-prev')
       }
@@ -452,11 +495,14 @@ function ReadingVerse({
       if (targetIndex !== null && targetIndex === index) {
         classes.push('is-event-target')
       }
-      if (activeSegmentIndex !== null && activeSegmentIndex === index) {
+      if (playbackSegmentIndex !== null && playbackSegmentIndex === index) {
         classes.push('is-playing')
       }
       if (showNotes && Array.isArray(segmento?.comentarios) && segmento.comentarios.length) {
         classes.push('has-note')
+      }
+      if (isSegmentNoteActive && activeSegmentIndex === index) {
+        classes.push('is-note-active')
       }
       return {
         key: `segment-${index}`,
@@ -471,24 +517,299 @@ function ReadingVerse({
 
   return (
     <li className={isActive ? 'is-playing' : ''}>
-      <div className="wpss-reading__line">
-        {parts.map((part, index) => (
-          <span
-            key={part.key}
-            className={part.classes}
-            style={part.classes.includes('has-note') ? { '--note-color': part.noteColor } : undefined}
-          >
-            {part.acorde}
-            {part.texto ? <span dangerouslySetInnerHTML={{ __html: part.texto }} /> : null}
-            {!part.joiner && index < parts.length - 1 ? <span className="wpss-reading__gap"> </span> : null}
+      <div className={`wpss-reading__verse-body ${isVerseNoteActive ? 'is-note-active' : ''}`}>
+        <div className="wpss-reading__line">
+          {parts.map((part, index) => (
+            <span
+              key={part.key}
+              className={part.classes}
+              style={part.classes.includes('has-note') ? { '--note-color': part.noteColor } : undefined}
+            >
+              {part.acorde}
+              {part.texto ? <span dangerouslySetInnerHTML={{ __html: part.texto }} /> : null}
+              {!part.joiner && index < parts.length - 1 ? <span className="wpss-reading__gap"> </span> : null}
+            </span>
+          ))}
+        </div>
+        {meta}
+        {verseMidi}
+        {segmentMidis}
+      </div>
+    </li>
+  )
+}
+
+function ChordHover({ label, chord, instrument, camposLookup, className = '' }) {
+  if (!label) {
+    return null
+  }
+
+  const hasChord = !!chord
+  const tooltip = hasChord ? (
+    <ChordTooltip chord={chord} instrument={instrument} camposLookup={camposLookup} />
+  ) : null
+
+  return (
+    <span
+      className={`wpss-reading__chord wpss-chord-hover ${className} ${hasChord ? 'has-data' : ''}`.trim()}
+      tabIndex={0}
+    >
+      {label}
+      {tooltip}
+    </span>
+  )
+}
+
+function ChordTooltip({ chord, instrument, camposLookup }) {
+  if (!chord) {
+    return null
+  }
+  const aliases = Array.isArray(chord.aliases) ? chord.aliases : []
+  const notes = Array.isArray(chord.notes) ? chord.notes : []
+  const voicing = Array.isArray(chord.voicing) ? chord.voicing : []
+  const enarmonics = Array.isArray(chord.enarmonics) ? chord.enarmonics : []
+  const relations = Array.isArray(chord.relations) ? chord.relations : []
+  const root = chord.root_base || ''
+  const voices = Number.isInteger(chord.voices) && chord.voices > 0 ? chord.voices : null
+  const quality =
+    chord.quality === 'other' ? chord.quality_other || 'Otro' : chord.quality || ''
+  const paradigm = chord.paradigm || ''
+  const evolution = Array.isArray(chord.evolution) ? chord.evolution : []
+  const diagrams = chord?.diagrams?.[instrument]
+  const shapes = Array.isArray(diagrams) ? diagrams : []
+  const instrumentLabel = instrument === 'piano' ? 'Piano' : instrument === 'guitar' ? 'Guitarra' : instrument
+  const relationLabels = relations
+    .map((relation) => {
+      const campoLabel =
+        relation.campo && camposLookup && camposLookup.get(relation.campo)
+          ? camposLookup.get(relation.campo)
+          : relation.campo || ''
+      const grado = formatRomanCase(relation.grado || '', relation.case || 'original')
+      if (!campoLabel && !grado) {
+        return ''
+      }
+      return `${campoLabel || 'Campo'}: ${grado || '—'}`
+    })
+    .filter(Boolean)
+
+  return (
+    <span className="wpss-chord-tooltip">
+      <strong className="wpss-chord-tooltip__title">{chord.name || chord.id || 'Acorde'}</strong>
+      {root ? <span className="wpss-chord-tooltip__meta">Root: {root}</span> : null}
+      {quality ? <span className="wpss-chord-tooltip__meta">Quality: {quality}</span> : null}
+      {voices ? <span className="wpss-chord-tooltip__meta">Voces: {voices}</span> : null}
+      {aliases.length ? (
+        <span className="wpss-chord-tooltip__meta">Alias: {aliases.join(', ')}</span>
+      ) : null}
+      {evolution.length ? (
+        <span className="wpss-chord-tooltip__meta">Evolución: {evolution.join(' → ')}</span>
+      ) : null}
+      {enarmonics.length ? (
+        <span className="wpss-chord-tooltip__meta">Enarmónicos: {enarmonics.join(', ')}</span>
+      ) : null}
+      {notes.length ? (
+        <span className="wpss-chord-tooltip__meta">Notas: {notes.join(', ')}</span>
+      ) : null}
+      {voicing.length ? (
+        <span className="wpss-chord-tooltip__meta">Voicing: {voicing.join(', ')}</span>
+      ) : null}
+      {paradigm ? (
+        <span className="wpss-chord-tooltip__meta">Paradigma: {paradigm}</span>
+      ) : null}
+      {relationLabels.length ? (
+        <span className="wpss-chord-tooltip__meta">
+          Campos: {relationLabels.join(' · ')}
+        </span>
+      ) : null}
+      <span className="wpss-chord-tooltip__meta">Instrumento: {instrumentLabel}</span>
+      {shapes.length ? (
+        <span className="wpss-chord-tooltip__diagrams">
+          {shapes.map((shape, index) => (
+            <ChordDiagram key={`diagram-${index}`} shape={shape} instrument={instrument} />
+          ))}
+        </span>
+      ) : (
+        <span className="wpss-chord-tooltip__meta">Sin diagrama para este instrumento.</span>
+      )}
+    </span>
+  )
+}
+
+function formatRomanCase(value, mode) {
+  if (!value) {
+    return ''
+  }
+  const text = String(value)
+  if (mode === 'upper') {
+    return text.replace(/[ivxlcdm]/gi, (match) => match.toUpperCase())
+  }
+  if (mode === 'lower') {
+    return text.replace(/[ivxlcdm]/gi, (match) => match.toLowerCase())
+  }
+  return text
+}
+
+function ChordDiagram({ shape, instrument }) {
+  if (!shape) {
+    return null
+  }
+
+  if (instrument === 'guitar') {
+    return <GuitarDiagram shape={shape} />
+  }
+
+  const notes = Array.isArray(shape.notes) ? shape.notes : []
+  return (
+    <span className="wpss-chord-diagram__notes">
+      {shape.label ? <strong>{shape.label}</strong> : null}
+      <span>{notes.length ? notes.join(', ') : 'Sin notas'}</span>
+    </span>
+  )
+}
+
+function GuitarDiagram({ shape }) {
+  const fretsRaw = Array.isArray(shape.frets) ? shape.frets : []
+  const frets = fretsRaw.map((value) => {
+    if (typeof value === 'number') {
+      return value
+    }
+    const token = String(value || '').trim().toLowerCase()
+    if (token === 'x') return 'x'
+    const numeric = parseInt(token, 10)
+    return Number.isNaN(numeric) ? null : numeric
+  })
+  const parsedBase = parseInt(shape.baseFret, 10)
+  const baseFret = Number.isInteger(parsedBase) && parsedBase > 0 ? parsedBase : 1
+  const strings = ['E', 'A', 'D', 'G', 'B', 'e']
+  const maxFret = frets.reduce((acc, value) => (typeof value === 'number' ? Math.max(acc, value) : acc), 0)
+  const startFret = maxFret > baseFret + 3 ? Math.max(1, maxFret - 3) : baseFret
+  const fretRows = Array.from({ length: 4 }, (_, index) => startFret + index)
+
+  return (
+    <span className="wpss-guitar-diagram">
+      {shape.label ? <strong className="wpss-guitar-diagram__label">{shape.label}</strong> : null}
+      <span className="wpss-guitar-diagram__open">
+        {strings.map((stringLabel, index) => {
+          const value = frets[index]
+          const state = value === 'x' ? 'x' : value === 0 ? 'o' : ''
+          return (
+            <span key={`open-${stringLabel}`} className="wpss-guitar-diagram__open-cell">
+              {state}
+            </span>
+          )
+        })}
+      </span>
+      <span className="wpss-guitar-diagram__grid">
+        {fretRows.map((fret) => (
+          <span key={`fret-${fret}`} className="wpss-guitar-diagram__row">
+            {strings.map((stringLabel, index) => {
+              const value = frets[index]
+              const isActive = typeof value === 'number' && value === fret
+              return (
+                <span
+                  key={`cell-${stringLabel}-${fret}`}
+                  className={`wpss-guitar-diagram__cell ${isActive ? 'is-active' : ''}`}
+                />
+              )
+            })}
           </span>
         ))}
-      </div>
-      {meta}
-      {notesBlock}
-      {verseMidi}
-      {segmentMidis}
-    </li>
+      </span>
+      <span className="wpss-guitar-diagram__frets">
+        {fretRows.map((fret) => (
+          <span key={`label-${fret}`} className="wpss-guitar-diagram__fret-label">
+            {fret}
+          </span>
+        ))}
+      </span>
+    </span>
+  )
+}
+
+function SectionNotes({ notes, verseNotes, children }) {
+  const flattened = useMemo(() => {
+    const sectionNotes = Array.isArray(notes) ? notes : []
+    const verses = Array.isArray(verseNotes) ? verseNotes : []
+    const verseItems = verses.flatMap((verse, verseIndex) => {
+      const verseComments = Array.isArray(verse?.comentarios) ? verse.comentarios : []
+      const segmentComments = Array.isArray(verse?.segmentos)
+        ? verse.segmentos.flatMap((segment, segmentIndex) =>
+            Array.isArray(segment?.comentarios)
+              ? segment.comentarios.map((note) => ({
+                  ...note,
+                  scope: `Segmento ${segmentIndex + 1}`,
+                  verseIndex,
+                  segmentIndex,
+                }))
+              : [],
+          )
+        : []
+      return [
+        ...verseComments.map((note) => ({ ...note, scope: 'Verso', verseIndex })),
+        ...segmentComments,
+      ]
+    })
+    return [
+      ...sectionNotes.map((note) => ({ ...note, scope: 'Nota' })),
+      ...verseItems,
+    ]
+  }, [notes, verseNotes])
+
+  const [activeNoteId, setActiveNoteId] = useState(flattened[0]?.id || null)
+
+  useEffect(() => {
+    if (!flattened.length) {
+      setActiveNoteId(null)
+      return
+    }
+    if (!activeNoteId || !flattened.some((note) => note.id === activeNoteId)) {
+      setActiveNoteId(flattened[0].id)
+    }
+  }, [flattened, activeNoteId])
+
+  const activeNote = flattened.find((note) => note.id === activeNoteId) || null
+  const frameColor = activeNote?.color || flattened[0]?.color || '#3b82f6'
+
+  if (!flattened.length) {
+    return typeof children === 'function' ? children(null) : children
+  }
+
+  return (
+    <div className="wpss-reading__note-frame has-notes" style={{ '--note-color': frameColor }}>
+      <NoteTabs notes={flattened} activeNoteId={activeNoteId} onSelect={setActiveNoteId} />
+      {typeof children === 'function' ? children(activeNote) : children}
+      {activeNote ? <NoteCard note={activeNote} /> : null}
+    </div>
+  )
+}
+
+function NoteTabs({ notes, activeNoteId, onSelect }) {
+  return (
+    <div className="wpss-reading__note-tabs">
+      {notes.map((note, index) => {
+        const label = note.scope ? note.scope : `Nota ${index + 1}`
+        return (
+          <button
+            key={note.id}
+            type="button"
+            className={`wpss-reading__note-tab ${note.id === activeNoteId ? 'is-active' : ''}`}
+            onClick={() => onSelect(note.id)}
+            style={{ '--note-color': note.color || '#3b82f6' }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function NoteCard({ note }) {
+  if (!note) return null
+  return (
+    <div className="wpss-reading__note-card" style={{ '--note-color': note.color || '#3b82f6' }}>
+      <span dangerouslySetInnerHTML={{ __html: note.texto || '' }} />
+    </div>
   )
 }
 

@@ -641,6 +641,10 @@
                 intervalos: '',
                 descripcion: '',
                 notas: '',
+                campo: '',
+                paradigma: '',
+                referencia: '',
+                aliases: [],
                 activo: true,
             };
         }
@@ -2164,12 +2168,8 @@
         }
 
         function renderVersos() {
-            const versos = state.editingSong.versos;
+            const versos = Array.isArray( state.editingSong.versos ) ? state.editingSong.versos : [];
             const secciones = Array.isArray( state.editingSong.secciones ) ? state.editingSong.secciones : [];
-
-            if ( ! versos.length ) {
-                return `<p class="wpss-empty">${ escapeHtml( data.strings.versesEmpty ) }</p>`;
-            }
 
             if ( secciones.length ) {
                 const selectedId = state.ui.selectedSectionId || secciones[ 0 ].id;
@@ -2210,7 +2210,9 @@
 
             return `
                 <div class="wpss-verses">
-                    ${ versos.map( ( verso, verseIndex ) => renderVerseCard( verso, verseIndex ) ).join( '' ) }
+                    ${ versos.length
+                        ? versos.map( ( verso, verseIndex ) => renderVerseCard( verso, verseIndex ) ).join( '' )
+                        : `<p class="wpss-empty">${ escapeHtml( data.strings.versesEmpty ) }</p>` }
                 </div>
             `;
         }
@@ -2454,6 +2456,20 @@
                                         <input type="text" data-model="campo" data-field="intervalos" data-index="${ index }" value="${ escapeAttr( campo.intervalos || '' ) }" />
                                     </label>
                                 </div>
+                                <div class="wpss-field-group">
+                                    <label>
+                                        <span>Campo</span>
+                                        <input type="text" data-model="campo" data-field="campo" data-index="${ index }" value="${ escapeAttr( campo.campo || '' ) }" />
+                                    </label>
+                                    <label>
+                                        <span>Paradigma</span>
+                                        <input type="text" data-model="campo" data-field="paradigma" data-index="${ index }" value="${ escapeAttr( campo.paradigma || '' ) }" />
+                                    </label>
+                                </div>
+                                <label>
+                                    <span>Alias / nombres alternativos (separados por coma)</span>
+                                    <input type="text" data-model="campo" data-field="aliases" data-index="${ index }" value="${ escapeAttr( Array.isArray( campo.aliases ) ? campo.aliases.join( ', ' ) : '' ) }" />
+                                </label>
                                 <label>
                                     <span>Descripción contextual / ayudas</span>
                                     <textarea data-model="campo" data-field="descripcion" data-index="${ index }">${ escapeHtml( campo.descripcion || '' ) }</textarea>
@@ -2461,6 +2477,10 @@
                                 <label>
                                     <span>Notas</span>
                                     <textarea data-model="campo" data-field="notas" data-index="${ index }">${ escapeHtml( campo.notas || '' ) }</textarea>
+                                </label>
+                                <label>
+                                    <span>Referencia teórica</span>
+                                    <textarea data-model="campo" data-field="referencia" data-index="${ index }">${ escapeHtml( campo.referencia || '' ) }</textarea>
                                 </label>
                             </div>
                         </div>
@@ -2793,6 +2813,9 @@
             case 'add-verso-section':
                 {
                     const sectionId = target.dataset.section || '';
+                    if ( ! Array.isArray( state.editingSong.versos ) ) {
+                        state.editingSong.versos = [];
+                    }
                     state.editingSong.versos.push( createEmptyVerse( state.editingSong.versos.length + 1, sectionId ) );
                 }
                 normalizeVerseOrder();
@@ -2872,6 +2895,9 @@
                     const primarySection = Array.isArray( state.editingSong.secciones ) && state.editingSong.secciones[ 0 ]
                         ? state.editingSong.secciones[ 0 ].id
                         : '';
+                    if ( ! Array.isArray( state.editingSong.versos ) ) {
+                        state.editingSong.versos = [];
+                    }
                     state.editingSong.versos.push( createEmptyVerse( state.editingSong.versos.length + 1, primarySection ) );
                 }
                 normalizeVerseOrder();
@@ -3238,7 +3264,14 @@
             } else if ( 'campo' === model ) {
                 const index = parseInt( event.target.dataset.index, 10 );
                 if ( ! Number.isNaN( index ) && state.campos.draft[ index ] ) {
-                    state.campos.draft[ index ][ event.target.dataset.field ] = event.target.value;
+                    if ( 'aliases' === event.target.dataset.field ) {
+                        state.campos.draft[ index ][ event.target.dataset.field ] = event.target.value
+                            .split( ',' )
+                            .map( ( item ) => item.trim() )
+                            .filter( Boolean );
+                    } else {
+                        state.campos.draft[ index ][ event.target.dataset.field ] = event.target.value;
+                    }
                 }
             } else if ( 'collection' === model ) {
                 updateActiveCollectionField( event.target.dataset.field, event.target.value );

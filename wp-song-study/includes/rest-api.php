@@ -223,6 +223,40 @@ function wpss_register_rest_routes() {
 
     register_rest_route(
         'wpss/v1',
+        '/acordes',
+        [
+            [
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => 'wpss_rest_get_acordes',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => 'wpss_rest_save_acordes',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/acordes-config',
+        [
+            [
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => 'wpss_rest_get_acordes_config',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => 'wpss_rest_save_acordes_config',
+                'permission_callback' => 'wpss_rest_verify_permissions',
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
         '/colecciones',
         [
             'methods'             => WP_REST_Server::READABLE,
@@ -3133,6 +3167,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 2 3 4 5 6 7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'dorico' => [
@@ -3142,6 +3180,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 2 b3 4 5 6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'frigio' => [
@@ -3151,6 +3193,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 b2 b3 4 5 b6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'lidio' => [
@@ -3160,6 +3206,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 2 3 #4 5 6 7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'mixolidio' => [
@@ -3169,6 +3219,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 2 3 4 5 6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'eolico' => [
@@ -3178,6 +3232,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 2 b3 4 5 b6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'locrio' => [
@@ -3187,6 +3245,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 b2 b3 4 b5 b6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
         'frigio_dominante' => [
@@ -3196,6 +3258,10 @@ function wpss_get_default_campos_armonicos() {
             'intervalos'  => '1 b2 3 4 5 b6 b7',
             'descripcion' => '',
             'notas'       => '',
+            'campo'       => '',
+            'paradigma'   => '',
+            'referencia'  => '',
+            'aliases'     => [],
             'activo'      => true,
         ],
     ];
@@ -3239,6 +3305,17 @@ function wpss_normalize_campo_armonico_item( $item ) {
     $intervalos  = isset( $item['intervalos'] ) ? sanitize_textarea_field( $item['intervalos'] ) : '';
     $descripcion = isset( $item['descripcion'] ) ? sanitize_textarea_field( $item['descripcion'] ) : '';
     $notas       = isset( $item['notas'] ) ? sanitize_textarea_field( $item['notas'] ) : '';
+    $campo       = isset( $item['campo'] ) ? sanitize_text_field( $item['campo'] ) : '';
+    $paradigma   = isset( $item['paradigma'] ) ? sanitize_text_field( $item['paradigma'] ) : '';
+    $referencia  = isset( $item['referencia'] ) ? sanitize_textarea_field( $item['referencia'] ) : '';
+    $aliases_raw = isset( $item['aliases'] ) && is_array( $item['aliases'] ) ? $item['aliases'] : [];
+    $aliases = [];
+    foreach ( $aliases_raw as $alias ) {
+        $alias = sanitize_text_field( $alias );
+        if ( '' !== $alias ) {
+            $aliases[] = $alias;
+        }
+    }
     $activo      = isset( $item['activo'] ) ? (bool) $item['activo'] : true;
 
     return [
@@ -3248,6 +3325,10 @@ function wpss_normalize_campo_armonico_item( $item ) {
         'intervalos'  => $intervalos,
         'descripcion' => $descripcion,
         'notas'       => $notas,
+        'campo'       => $campo,
+        'paradigma'   => $paradigma,
+        'referencia'  => $referencia,
+        'aliases'     => $aliases,
         'activo'      => $activo,
     ];
 }
@@ -3349,6 +3430,469 @@ function wpss_rest_save_campos_armonicos( WP_REST_Request $request ) {
         [
             'ok'     => true,
             'campos' => array_values( $library ),
+        ]
+    );
+}
+
+/**
+ * Devuelve la biblioteca base de acordes.
+ *
+ * @return array
+ */
+function wpss_get_default_acordes() {
+    return [];
+}
+
+/**
+ * Normaliza un acorde arbitrario.
+ *
+ * @param array $item Datos a limpiar.
+ * @param int   $index Indice de respaldo.
+ * @return array|null
+ */
+function wpss_normalize_acorde_item( $item, $index = 0 ) {
+    if ( ! is_array( $item ) ) {
+        return null;
+    }
+
+    $name = isset( $item['name'] ) ? sanitize_text_field( $item['name'] ) : '';
+    $id_source = '';
+    if ( isset( $item['id'] ) ) {
+        $id_source = sanitize_key( $item['id'] );
+    }
+    if ( '' === $id_source && '' !== $name ) {
+        $id_source = sanitize_key( $name );
+    }
+    if ( '' === $id_source ) {
+        $id_source = 'acorde-' . absint( $index );
+    }
+
+    $aliases_raw = isset( $item['aliases'] ) && is_array( $item['aliases'] ) ? $item['aliases'] : [];
+    $aliases = [];
+    foreach ( $aliases_raw as $alias ) {
+        $alias = sanitize_text_field( $alias );
+        if ( '' !== $alias ) {
+            $aliases[] = $alias;
+        }
+    }
+
+    $notes_raw = isset( $item['notes'] ) && is_array( $item['notes'] ) ? $item['notes'] : [];
+    $notes = [];
+    foreach ( $notes_raw as $note ) {
+        $note = sanitize_text_field( $note );
+        if ( '' !== $note ) {
+            $notes[] = $note;
+        }
+    }
+
+    $voicing_raw = isset( $item['voicing'] ) && is_array( $item['voicing'] ) ? $item['voicing'] : [];
+    $voicing = [];
+    foreach ( $voicing_raw as $note ) {
+        $note = sanitize_text_field( $note );
+        if ( '' !== $note ) {
+            $voicing[] = $note;
+        }
+    }
+
+    $root_base = '';
+    if ( isset( $item['root_base'] ) ) {
+        $root_base = sanitize_text_field( $item['root_base'] );
+    } elseif ( isset( $item['root'] ) ) {
+        $root_base = sanitize_text_field( $item['root'] );
+    }
+    $quality = isset( $item['quality'] ) ? sanitize_key( $item['quality'] ) : '';
+    $quality_other = isset( $item['quality_other'] ) ? sanitize_text_field( $item['quality_other'] ) : '';
+    $voices = isset( $item['voices'] ) ? absint( $item['voices'] ) : 0;
+    $paradigm = isset( $item['paradigm'] ) ? sanitize_key( $item['paradigm'] ) : '';
+
+    $enarmonics_raw = isset( $item['enarmonics'] ) && is_array( $item['enarmonics'] ) ? $item['enarmonics'] : [];
+    $enarmonics = [];
+    foreach ( $enarmonics_raw as $enarmonic ) {
+        $enarmonic = sanitize_text_field( $enarmonic );
+        if ( '' !== $enarmonic ) {
+            $enarmonics[] = $enarmonic;
+        }
+    }
+
+    $relations_raw = isset( $item['relations'] ) && is_array( $item['relations'] ) ? $item['relations'] : [];
+    $relations = [];
+    foreach ( $relations_raw as $relation ) {
+        if ( ! is_array( $relation ) ) {
+            continue;
+        }
+        $campo = isset( $relation['campo'] ) ? sanitize_key( $relation['campo'] ) : '';
+        $grado = isset( $relation['grado'] ) ? sanitize_text_field( $relation['grado'] ) : '';
+        $case = isset( $relation['case'] ) ? sanitize_key( $relation['case'] ) : 'original';
+        $allowed_cases = [ 'original', 'upper', 'lower' ];
+        if ( ! in_array( $case, $allowed_cases, true ) ) {
+            $case = 'original';
+        }
+        if ( '' === $campo && '' === $grado ) {
+            continue;
+        }
+        $relations[] = [
+            'campo' => $campo,
+            'grado' => $grado,
+            'case'  => $case,
+        ];
+    }
+
+    $evolution_raw = isset( $item['evolution'] ) && is_array( $item['evolution'] ) ? $item['evolution'] : [];
+    $evolution = [];
+    foreach ( $evolution_raw as $evo ) {
+        $evo = sanitize_text_field( $evo );
+        if ( '' !== $evo ) {
+            $evolution[] = $evo;
+        }
+    }
+
+    $diagrams = [];
+    if ( isset( $item['diagrams'] ) && is_array( $item['diagrams'] ) ) {
+        foreach ( $item['diagrams'] as $instrument => $shapes ) {
+            if ( ! is_array( $shapes ) ) {
+                continue;
+            }
+            $instrument_key = sanitize_key( $instrument );
+            if ( '' === $instrument_key ) {
+                continue;
+            }
+            $normalized_shapes = [];
+            foreach ( $shapes as $shape ) {
+                if ( ! is_array( $shape ) ) {
+                    continue;
+                }
+                $label = isset( $shape['label'] ) ? sanitize_text_field( $shape['label'] ) : '';
+                $base_fret = isset( $shape['baseFret'] ) ? absint( $shape['baseFret'] ) : 1;
+
+                $frets = [];
+                if ( isset( $shape['frets'] ) && is_array( $shape['frets'] ) ) {
+                    foreach ( $shape['frets'] as $fret ) {
+                        if ( is_numeric( $fret ) ) {
+                            $frets[] = (int) $fret;
+                        } else {
+                            $token = trim( (string) $fret );
+                            if ( '' !== $token ) {
+                                $frets[] = $token;
+                            }
+                        }
+                    }
+                }
+
+                $shape_notes = [];
+                if ( isset( $shape['notes'] ) && is_array( $shape['notes'] ) ) {
+                    foreach ( $shape['notes'] as $note ) {
+                        $note = sanitize_text_field( $note );
+                        if ( '' !== $note ) {
+                            $shape_notes[] = $note;
+                        }
+                    }
+                }
+
+                if ( '' === $label && empty( $frets ) && empty( $shape_notes ) ) {
+                    continue;
+                }
+
+                $normalized_shapes[] = [
+                    'label'   => $label,
+                    'baseFret'=> $base_fret,
+                    'frets'   => $frets,
+                    'notes'   => $shape_notes,
+                ];
+            }
+
+            if ( ! empty( $normalized_shapes ) ) {
+                $diagrams[ $instrument_key ] = $normalized_shapes;
+            }
+        }
+    }
+
+    return [
+        'id'       => $id_source,
+        'name'     => $name,
+        'aliases'  => $aliases,
+        'root_base' => $root_base,
+        'enarmonics' => $enarmonics,
+        'quality'  => $quality,
+        'quality_other' => $quality_other,
+        'voices'   => $voices,
+        'paradigm' => $paradigm,
+        'notes'    => $notes,
+        'voicing'  => $voicing,
+        'relations' => $relations,
+        'evolution' => $evolution,
+        'diagrams' => $diagrams,
+    ];
+}
+
+/**
+ * Obtiene la biblioteca de acordes.
+ *
+ * @return array
+ */
+function wpss_get_acordes_library() {
+    $defaults = wpss_get_default_acordes();
+    $stored   = get_option( 'wpss_acordes', [] );
+
+    if ( ! is_array( $stored ) ) {
+        $stored = [];
+    }
+
+    $library = [];
+    $index = 0;
+    foreach ( $stored as $item ) {
+        $acorde = wpss_normalize_acorde_item( $item, $index );
+        $index++;
+        if ( ! $acorde ) {
+            continue;
+        }
+        $library[] = $acorde;
+    }
+
+    foreach ( $defaults as $item ) {
+        $acorde = wpss_normalize_acorde_item( $item, $index );
+        $index++;
+        if ( $acorde ) {
+            $library[] = $acorde;
+        }
+    }
+
+    return $library;
+}
+
+/**
+ * Persiste la biblioteca de acordes.
+ *
+ * @param array $items Elementos recibidos.
+ * @return array Biblioteca final.
+ */
+function wpss_save_acordes_library( array $items ) {
+    $normalized = [];
+    $index = 0;
+    foreach ( $items as $item ) {
+        $acorde = wpss_normalize_acorde_item( $item, $index );
+        $index++;
+        if ( ! $acorde ) {
+            continue;
+        }
+        $normalized[] = $acorde;
+    }
+
+    update_option( 'wpss_acordes', array_values( $normalized ), false );
+
+    return wpss_get_acordes_library();
+}
+
+/**
+ * Devuelve la biblioteca de acordes vía REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_acordes( WP_REST_Request $request ) {
+    $acordes = wpss_get_acordes_library();
+
+    return rest_ensure_response( $acordes );
+}
+
+/**
+ * Guarda la biblioteca de acordes vía REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_save_acordes( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    if ( isset( $params['acordes'] ) ) {
+        $params = $params['acordes'];
+    }
+
+    $items = is_array( $params ) ? $params : [];
+
+    $library = wpss_save_acordes_library( $items );
+
+    return rest_ensure_response(
+        [
+            'ok'      => true,
+            'acordes' => $library,
+        ]
+    );
+}
+
+/**
+ * Configuracion base de acordes.
+ *
+ * @return array
+ */
+function wpss_get_default_acordes_config() {
+    return [
+        'paradigms' => [
+            [ 'id' => 'functional', 'label' => __( 'Funcional', 'wp-song-study' ) ],
+            [ 'id' => 'quartal', 'label' => __( 'Cuartal', 'wp-song-study' ) ],
+            [ 'id' => 'chromatic', 'label' => __( 'Cromático', 'wp-song-study' ) ],
+        ],
+        'qualities' => [
+            1 => [ [ 'value' => 'note', 'label' => __( 'Nota', 'wp-song-study' ) ] ],
+            2 => [
+                [ 'value' => '5', 'label' => __( '5 (quinta)', 'wp-song-study' ) ],
+                [ 'value' => '4', 'label' => __( '4 (cuarta)', 'wp-song-study' ) ],
+                [ 'value' => 'tritone', 'label' => __( 'Tritono', 'wp-song-study' ) ],
+                [ 'value' => '3', 'label' => __( '3 (tercera)', 'wp-song-study' ) ],
+                [ 'value' => '6', 'label' => __( '6 (sexta)', 'wp-song-study' ) ],
+                [ 'value' => 'b2', 'label' => __( 'b2 (segunda bemol)', 'wp-song-study' ) ],
+                [ 'value' => 'b3', 'label' => __( 'b3 (tercera bemol)', 'wp-song-study' ) ],
+                [ 'value' => '#4', 'label' => __( '#4 (cuarta aumentada)', 'wp-song-study' ) ],
+            ],
+            3 => [
+                [ 'value' => 'major', 'label' => __( 'Mayor', 'wp-song-study' ) ],
+                [ 'value' => 'minor', 'label' => __( 'Menor', 'wp-song-study' ) ],
+                [ 'value' => 'diminished', 'label' => __( 'Disminuido', 'wp-song-study' ) ],
+                [ 'value' => 'augmented', 'label' => __( 'Aumentado', 'wp-song-study' ) ],
+                [ 'value' => 'sus2', 'label' => __( 'Sus2', 'wp-song-study' ) ],
+                [ 'value' => 'sus4', 'label' => __( 'Sus4', 'wp-song-study' ) ],
+                [ 'value' => 'quartal', 'label' => __( 'Cuartal', 'wp-song-study' ) ],
+            ],
+            4 => [
+                [ 'value' => '7', 'label' => __( 'Dominante 7', 'wp-song-study' ) ],
+                [ 'value' => 'maj7', 'label' => __( 'Maj7', 'wp-song-study' ) ],
+                [ 'value' => 'm7', 'label' => __( 'm7', 'wp-song-study' ) ],
+                [ 'value' => 'm7b5', 'label' => __( 'm7b5', 'wp-song-study' ) ],
+                [ 'value' => 'dim7', 'label' => __( 'Dim7', 'wp-song-study' ) ],
+            ],
+            5 => [
+                [ 'value' => '9', 'label' => __( '9', 'wp-song-study' ) ],
+                [ 'value' => '11', 'label' => __( '11', 'wp-song-study' ) ],
+                [ 'value' => '13', 'label' => __( '13', 'wp-song-study' ) ],
+                [ 'value' => 'add9', 'label' => __( 'Add9', 'wp-song-study' ) ],
+            ],
+            6 => [
+                [ 'value' => '9', 'label' => __( '9', 'wp-song-study' ) ],
+                [ 'value' => '11', 'label' => __( '11', 'wp-song-study' ) ],
+                [ 'value' => '13', 'label' => __( '13', 'wp-song-study' ) ],
+                [ 'value' => 'add9', 'label' => __( 'Add9', 'wp-song-study' ) ],
+            ],
+        ],
+    ];
+}
+
+/**
+ * Normaliza configuracion de acordes.
+ *
+ * @param array $config Configuracion recibida.
+ * @return array
+ */
+function wpss_normalize_acordes_config( $config ) {
+    $defaults = wpss_get_default_acordes_config();
+    if ( ! is_array( $config ) ) {
+        return $defaults;
+    }
+
+    $paradigms = [];
+    if ( isset( $config['paradigms'] ) && is_array( $config['paradigms'] ) ) {
+        foreach ( $config['paradigms'] as $item ) {
+            if ( ! is_array( $item ) ) {
+                continue;
+            }
+            $id = isset( $item['id'] ) ? sanitize_key( $item['id'] ) : '';
+            $label = isset( $item['label'] ) ? sanitize_text_field( $item['label'] ) : '';
+            if ( '' === $id || '' === $label ) {
+                continue;
+            }
+            $paradigms[] = [ 'id' => $id, 'label' => $label ];
+        }
+    }
+    if ( empty( $paradigms ) ) {
+        $paradigms = $defaults['paradigms'];
+    }
+
+    $qualities = [];
+    if ( isset( $config['qualities'] ) && is_array( $config['qualities'] ) ) {
+        foreach ( $config['qualities'] as $voice => $items ) {
+            $voice = absint( $voice );
+            if ( $voice < 1 || $voice > 6 || ! is_array( $items ) ) {
+                continue;
+            }
+            $normalized = [];
+            foreach ( $items as $item ) {
+                if ( ! is_array( $item ) ) {
+                    continue;
+                }
+                $value = isset( $item['value'] ) ? sanitize_text_field( $item['value'] ) : '';
+                $label = isset( $item['label'] ) ? sanitize_text_field( $item['label'] ) : '';
+                if ( '' === $value || '' === $label ) {
+                    continue;
+                }
+                $normalized[] = [ 'value' => $value, 'label' => $label ];
+            }
+            if ( ! empty( $normalized ) ) {
+                $qualities[ $voice ] = $normalized;
+            }
+        }
+    }
+    if ( empty( $qualities ) ) {
+        $qualities = $defaults['qualities'];
+    }
+
+    return [
+        'paradigms' => $paradigms,
+        'qualities' => $qualities,
+    ];
+}
+
+/**
+ * Obtiene configuracion de acordes.
+ *
+ * @return array
+ */
+function wpss_get_acordes_config() {
+    $stored = get_option( 'wpss_acordes_config', [] );
+    return wpss_normalize_acordes_config( $stored );
+}
+
+/**
+ * Guarda configuracion de acordes.
+ *
+ * @param array $config Configuracion recibida.
+ * @return array
+ */
+function wpss_save_acordes_config( array $config ) {
+    $normalized = wpss_normalize_acordes_config( $config );
+    update_option( 'wpss_acordes_config', $normalized, false );
+    return $normalized;
+}
+
+/**
+ * Devuelve configuracion de acordes via REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_acordes_config( WP_REST_Request $request ) {
+    return rest_ensure_response( wpss_get_acordes_config() );
+}
+
+/**
+ * Guarda configuracion de acordes via REST.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_save_acordes_config( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    $config = is_array( $params ) ? $params : [];
+    $saved = wpss_save_acordes_config( $config );
+
+    return rest_ensure_response(
+        [
+            'ok'     => true,
+            'config' => $saved,
         ]
     );
 }

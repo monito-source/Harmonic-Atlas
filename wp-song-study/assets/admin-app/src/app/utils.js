@@ -161,6 +161,53 @@ export function getChordDisplayValue(value) {
   return isHoldChordToken(value) ? '' : String(value)
 }
 
+export function normalizeChordToken(value) {
+  if (!value) {
+    return ''
+  }
+  return String(value)
+    .replace(/[\[\]\(\)]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+}
+
+export function buildChordLookup(chords) {
+  const lookup = new Map()
+  if (!Array.isArray(chords)) {
+    return lookup
+  }
+
+  chords.forEach((chord) => {
+    if (!chord) {
+      return
+    }
+    const tokens = []
+    if (chord.name) tokens.push(chord.name)
+    if (chord.id) tokens.push(chord.id)
+    if (Array.isArray(chord.aliases)) tokens.push(...chord.aliases)
+    if (Array.isArray(chord.enarmonics)) tokens.push(...chord.enarmonics)
+
+    tokens.forEach((token) => {
+      const key = normalizeChordToken(token)
+      if (!key || lookup.has(key)) {
+        return
+      }
+      lookup.set(key, chord)
+    })
+  })
+
+  return lookup
+}
+
+export function getChordFromLookup(token, lookup) {
+  if (!token || !lookup) {
+    return null
+  }
+  const key = normalizeChordToken(token)
+  return key ? lookup.get(key) || null : null
+}
+
 function padEndSafe(value, length) {
   let result = String(value)
   while (result.length < length) {

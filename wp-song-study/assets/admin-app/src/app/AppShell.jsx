@@ -10,6 +10,7 @@ import SongList from './components/SongList.jsx'
 import Editor from './components/Editor.jsx'
 import ReadingView from './components/ReadingView.jsx'
 import PublicReader from './components/PublicReader.jsx'
+import ChordLibrary from './components/ChordLibrary.jsx'
 
 export default function AppShell() {
   const { state, dispatch, api, wpData } = useAppState()
@@ -118,6 +119,8 @@ export default function AppShell() {
     <div className="wpss-app-layout">
       {state.view === 'public' ? (
         <PublicReader />
+      ) : state.view === 'chords' ? (
+        <ChordLibrary />
       ) : (
         <>
           {showSongList ? (

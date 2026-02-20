@@ -63,6 +63,7 @@ export default function VersesPanel({
   const [openNotes, setOpenNotes] = useState(() => new Set())
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
+  const dragDropHandledRef = useRef(false)
   const editorsRef = useRef(new Map())
 
   const versesInSection = useMemo(() => {
@@ -222,15 +223,85 @@ export default function VersesPanel({
     onChange(next)
   }
 
-  const moveVerseTo = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return
-    if (fromIndex >= safeVerses.length || toIndex >= safeVerses.length) return
+  const cloneDeep = (value) => {
+    if (value === undefined) return undefined
+    try {
+      return JSON.parse(JSON.stringify(value))
+    } catch {
+      return value
+    }
+  }
+
+  const handleDuplicateVerse = (verseIndex) => {
+    const source = safeVerses[verseIndex]
+    if (!source) return
+
+    const clone = {
+      ...source,
+      id: null,
+      segmentos: (Array.isArray(source.segmentos) ? source.segmentos : []).map((segment) => ({
+        ...createEmptySegment(),
+        ...segment,
+        comentarios: cloneDeep(Array.isArray(segment?.comentarios) ? segment.comentarios : []),
+        midi_clips: cloneDeep(Array.isArray(segment?.midi_clips) ? segment.midi_clips : []),
+      })),
+      comentarios: cloneDeep(Array.isArray(source.comentarios) ? source.comentarios : []),
+      evento_armonico: source.evento_armonico ? cloneDeep(source.evento_armonico) : null,
+      midi_clips: cloneDeep(Array.isArray(source.midi_clips) ? source.midi_clips : []),
+    }
+
     const next = [...safeVerses]
-    const [moved] = next.splice(fromIndex, 1)
-    const target = fromIndex < toIndex ? toIndex - 1 : toIndex
-    next.splice(target, 0, moved)
+    next.splice(verseIndex + 1, 0, clone)
     normalizeVerseOrder(next)
     onChange(next)
+  }
+
+  const resetDragState = () => {
+    setDragState({ type: null, verseIndex: null, segmentIndex: null })
+    setDragOver({ verseIndex: null, segmentIndex: null })
+    dragRef.current = { type: null, verseIndex: null, segmentIndex: null }
+    dragOverRef.current = { verseIndex: null, segmentIndex: null }
+    dragDropHandledRef.current = false
+  }
+
+  const moveVerseTo = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return false
+    if (fromIndex >= safeVerses.length || toIndex >= safeVerses.length) return false
+
+    const fromVerse = safeVerses[fromIndex]
+    const toVerse = safeVerses[toIndex]
+    if (!fromVerse || !toVerse) return false
+
+    const sectionId = fromVerse.section_id || ''
+    if ((toVerse.section_id || '') !== sectionId) {
+      return false
+    }
+
+    const sectionIndexes = safeVerses
+      .map((verse, index) => ({ verse, index }))
+      .filter((item) => (item.verse.section_id || '') === sectionId)
+      .map((item) => item.index)
+
+    const fromPosition = sectionIndexes.indexOf(fromIndex)
+    const toPosition = sectionIndexes.indexOf(toIndex)
+    if (fromPosition < 0 || toPosition < 0 || fromPosition === toPosition) {
+      return false
+    }
+
+    const reorderedIndexes = [...sectionIndexes]
+    const [movedIndex] = reorderedIndexes.splice(fromPosition, 1)
+    reorderedIndexes.splice(toPosition, 0, movedIndex)
+
+    const next = [...safeVerses]
+    const targetSlots = [...sectionIndexes].sort((a, b) => a - b)
+    const reorderedVerses = reorderedIndexes.map((index) => safeVerses[index])
+    targetSlots.forEach((slot, slotIndex) => {
+      next[slot] = reorderedVerses[slotIndex]
+    })
+
+    normalizeVerseOrder(next)
+    onChange(next)
+    return true
   }
 
   const handleToggleCollapsed = (verseIndex) => {
@@ -380,21 +451,22 @@ export default function VersesPanel({
         const payload = event.dataTransfer.getData('text/plain') || ''
         const parts = payload.split('-').map((part) => parseInt(part, 10))
         if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
-          if (parts[0] !== verseIndex) return
+          if (parts[0] !== verseIndex) return false
           fromIndex = parts[1]
         } else {
-          return
+          return false
         }
       } else {
-        return
+        return false
       }
     }
 
-    if (dragState.type === 'segment' && dragState.verseIndex !== verseIndex) return
-    if (fromIndex === null || fromIndex === segmentIndex) return
+    if (dragState.type === 'segment' && dragState.verseIndex !== verseIndex) return false
+    if (fromIndex === null || fromIndex === segmentIndex) return false
     updateVerse(verseIndex, (verse) => {
       const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
       const [moved] = segmentos.splice(fromIndex, 1)
+      if (!moved) return verse
       const target = fromIndex < segmentIndex ? segmentIndex - 1 : segmentIndex
       segmentos.splice(target, 0, moved)
 
@@ -414,8 +486,7 @@ export default function VersesPanel({
 
       return { ...verse, segmentos, evento_armonico: evento }
     })
-    setDragState({ type: null, verseIndex: null, segmentIndex: null })
-    setDragOver({ verseIndex: null, segmentIndex: null })
+    return true
   }
 
   const toggleSegmentEvent = (verseIndex, segmentIndex) => {
@@ -677,11 +748,9 @@ export default function VersesPanel({
                           fromIndex = payload
                         }
                       }
-                      moveVerseTo(fromIndex, verseIndex)
-                      setDragState({ type: null, verseIndex: null, segmentIndex: null })
-                      setDragOver({ verseIndex: null, segmentIndex: null })
-                      dragRef.current = { type: null, verseIndex: null, segmentIndex: null }
-                      dragOverRef.current = { verseIndex: null, segmentIndex: null }
+                      const moved = moveVerseTo(fromIndex, verseIndex)
+                      dragDropHandledRef.current = moved
+                      resetDragState()
                     }
                   }}
                 >
@@ -703,19 +772,21 @@ export default function VersesPanel({
                           event.dataTransfer.setData('text/plain', String(verseIndex))
                         }
                         event.dataTransfer.effectAllowed = 'move'
+                        dragDropHandledRef.current = false
                         setDragState({ type: 'verse', verseIndex, segmentIndex: null })
                         dragRef.current = { type: 'verse', verseIndex, segmentIndex: null }
                       }}
                       onDragEnd={() => {
                         const refState = dragRef.current
                         const refOver = dragOverRef.current
-                        if (refState.type === 'verse' && refOver.verseIndex !== null) {
+                        if (
+                          !dragDropHandledRef.current
+                          && refState.type === 'verse'
+                          && refOver.verseIndex !== null
+                        ) {
                           moveVerseTo(refState.verseIndex, refOver.verseIndex)
                         }
-                        setDragState({ type: null, verseIndex: null, segmentIndex: null })
-                        setDragOver({ verseIndex: null, segmentIndex: null })
-                        dragRef.current = { type: null, verseIndex: null, segmentIndex: null }
-                        dragOverRef.current = { verseIndex: null, segmentIndex: null }
+                        resetDragState()
                       }}
                     >
                       ☰
@@ -732,6 +803,13 @@ export default function VersesPanel({
                       <details className="wpss-action-menu">
                         <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
                         <div className="wpss-action-menu__panel">
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() => handleDuplicateVerse(verseIndex)}
+                          >
+                            Duplicar verso
+                          </button>
                           <button
                             type="button"
                             className="button button-small"
@@ -780,7 +858,9 @@ export default function VersesPanel({
                             }}
                             onDrop={(event) => {
                               event.preventDefault()
-                              handleSegmentDrop(verseIndex, segmentIndex, event)
+                              const moved = handleSegmentDrop(verseIndex, segmentIndex, event)
+                              dragDropHandledRef.current = moved
+                              resetDragState()
                             }}
                           >
                             <div className="wpss-segment__drag">
@@ -796,6 +876,7 @@ export default function VersesPanel({
                                     event.dataTransfer.setData('text/plain', `${verseIndex}-${segmentIndex}`)
                                   }
                                   event.dataTransfer.effectAllowed = 'move'
+                                  dragDropHandledRef.current = false
                                   setDragState({ type: 'segment', verseIndex, segmentIndex })
                                   dragRef.current = { type: 'segment', verseIndex, segmentIndex }
                                 }}
@@ -803,16 +884,15 @@ export default function VersesPanel({
                                   const refState = dragRef.current
                                   const refOver = dragOverRef.current
                                   if (
+                                    !dragDropHandledRef.current
+                                    &&
                                     refState.type === 'segment'
                                     && refOver.verseIndex === verseIndex
                                     && refOver.segmentIndex !== null
                                   ) {
                                     handleSegmentDrop(verseIndex, refOver.segmentIndex)
                                   }
-                                  setDragState({ type: null, verseIndex: null, segmentIndex: null })
-                                  setDragOver({ verseIndex: null, segmentIndex: null })
-                                  dragRef.current = { type: null, verseIndex: null, segmentIndex: null }
-                                  dragOverRef.current = { verseIndex: null, segmentIndex: null }
+                                  resetDragState()
                                 }}
                               >
                                 ⋮⋮

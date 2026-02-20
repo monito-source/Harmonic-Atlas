@@ -59,7 +59,16 @@ function wpss_register_admin_pages() {
         'wpss_render_new_song_page'
     );
 
-    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook ];
+    $chords_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Acordes', 'wp-song-study' ),
+        __( 'Acordes', 'wp-song-study' ),
+        $capability,
+        'wpss-acordes',
+        'wpss_render_chords_page'
+    );
+
+    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook ];
 
     add_submenu_page(
         $parent_slug,
@@ -83,6 +92,13 @@ function wpss_render_dashboard_page() {
  */
 function wpss_render_new_song_page() {
     echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="new"></div>';
+}
+
+/**
+ * Renderiza el contenedor del SPA para administrar acordes.
+ */
+function wpss_render_chords_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="chords"></div>';
 }
 
 /**
@@ -227,18 +243,35 @@ function wpss_get_admin_localized_data() {
 
     $campos_library = array_values( wpss_get_campos_armonicos_library() );
     $campos_armonicos = array_values(
-        array_map(
-            static function( $campo ) {
-                return isset( $campo['nombre'] ) ? $campo['nombre'] : '';
-            },
-            array_filter(
-                $campos_library,
-                static function( $campo ) {
-                    return ! empty( $campo['activo'] );
-                }
+        array_filter(
+            array_merge(
+                ...array_map(
+                    static function( $campo ) {
+                        $labels = [];
+                        if ( isset( $campo['nombre'] ) && '' !== $campo['nombre'] ) {
+                            $labels[] = $campo['nombre'];
+                        }
+                        if ( isset( $campo['aliases'] ) && is_array( $campo['aliases'] ) ) {
+                            foreach ( $campo['aliases'] as $alias ) {
+                                if ( '' !== $alias ) {
+                                    $labels[] = $alias;
+                                }
+                            }
+                        }
+                        return $labels;
+                    },
+                    array_filter(
+                        $campos_library,
+                        static function( $campo ) {
+                            return ! empty( $campo['activo'] );
+                        }
+                    )
+                )
             )
         )
     );
+    $acordes_library = array_values( wpss_get_acordes_library() );
+    $acordes_config = wpss_get_acordes_config();
 
     return [
         'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
@@ -251,6 +284,8 @@ function wpss_get_admin_localized_data() {
         'tonicas'      => $tonicas,
         'camposArmonicos' => $campos_library,
         'camposArmonicosNombres' => $campos_armonicos,
+        'chordsLibrary' => $acordes_library,
+        'chordsConfig' => $acordes_config,
         'strings'      => [
             'filtersTitle'     => __( 'Canciones registradas', 'wp-song-study' ),
             'newSong'          => __( 'Nueva canción', 'wp-song-study' ),
@@ -347,6 +382,12 @@ function wpss_get_admin_localized_data() {
             'readingFollowStructure' => __( 'Seguir estructura', 'wp-song-study' ),
             'readingFollowSections' => __( 'Ordenar por secciones', 'wp-song-study' ),
             'structureNotesPrefix' => __( 'Notas', 'wp-song-study' ),
+            'chordsView'    => __( 'Acordes', 'wp-song-study' ),
+            'chordsSaved'   => __( 'Acordes actualizados.', 'wp-song-study' ),
+            'chordsError'   => __( 'No fue posible guardar la biblioteca de acordes.', 'wp-song-study' ),
+            'chordsEmpty'   => __( 'Aún no hay acordes registrados.', 'wp-song-study' ),
+            'chordsAdd'     => __( 'Añadir acorde', 'wp-song-study' ),
+            'chordsRemove'  => __( 'Eliminar', 'wp-song-study' ),
         ],
     ];
 }

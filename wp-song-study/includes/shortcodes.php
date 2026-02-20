@@ -395,6 +395,37 @@ function wpss_get_public_localized_data() {
 
     $can_manage = defined( 'WPSS_CAP_MANAGE' ) ? current_user_can( WPSS_CAP_MANAGE ) : current_user_can( 'edit_posts' );
     $is_admin = current_user_can( 'manage_options' );
+    $acordes_library = array_values( wpss_get_acordes_library() );
+    $acordes_config = wpss_get_acordes_config();
+    $campos_library = array_values( wpss_get_campos_armonicos_library() );
+    $campos_armonicos = array_values(
+        array_filter(
+            array_merge(
+                ...array_map(
+                    static function( $campo ) {
+                        $labels = [];
+                        if ( isset( $campo['nombre'] ) && '' !== $campo['nombre'] ) {
+                            $labels[] = $campo['nombre'];
+                        }
+                        if ( isset( $campo['aliases'] ) && is_array( $campo['aliases'] ) ) {
+                            foreach ( $campo['aliases'] as $alias ) {
+                                if ( '' !== $alias ) {
+                                    $labels[] = $alias;
+                                }
+                            }
+                        }
+                        return $labels;
+                    },
+                    array_filter(
+                        $campos_library,
+                        static function( $campo ) {
+                            return ! empty( $campo['activo'] );
+                        }
+                    )
+                )
+            )
+        )
+    );
 
     return [
         'restUrl'      => esc_url_raw( rest_url( 'wpss/v1/' ) ),
@@ -408,6 +439,10 @@ function wpss_get_public_localized_data() {
         'midiRanges'   => wpss_get_midi_range_presets(),
         'midiRangeDefault' => wpss_get_midi_range_default(),
         'tonicas'      => $tonicas,
+        'camposArmonicos' => $campos_library,
+        'camposArmonicosNombres' => $campos_armonicos,
+        'chordsLibrary' => $acordes_library,
+        'chordsConfig' => $acordes_config,
         'strings'      => [
             'filtersTitle'     => __( 'Canciones disponibles', 'wp-song-study' ),
             'filtersLabel'     => __( 'Filtrar canciones', 'wp-song-study' ),
