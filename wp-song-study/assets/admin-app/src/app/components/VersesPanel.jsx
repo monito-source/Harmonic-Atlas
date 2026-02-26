@@ -45,6 +45,8 @@ export default function VersesPanel({
     selectedSectionId && safeSections.some((section) => section.id === selectedSectionId)
       ? selectedSectionId
       : fallbackSection?.id || ''
+  const activeSectionName =
+    safeSections.find((section) => section.id === activeSectionId)?.nombre || getDefaultSectionName(0)
 
   const [collapsed, setCollapsed] = useState(() => new Set())
   const [selection, setSelection] = useState({
@@ -61,6 +63,7 @@ export default function VersesPanel({
   })
   const [dragOver, setDragOver] = useState({ verseIndex: null, segmentIndex: null })
   const [openNotes, setOpenNotes] = useState(() => new Set())
+  const [moveTargets, setMoveTargets] = useState({})
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const dragDropHandledRef = useRef(false)
@@ -223,6 +226,15 @@ export default function VersesPanel({
     onChange(next)
   }
 
+  const handleMoveVerseToSection = (verseIndex, sectionId) => {
+    const next = [...safeVerses]
+    const verse = next[verseIndex]
+    if (!verse) return
+    next[verseIndex] = { ...verse, section_id: sectionId }
+    normalizeVerseOrder(next)
+    onChange(next)
+  }
+
   const cloneDeep = (value) => {
     if (value === undefined) return undefined
     try {
@@ -354,7 +366,10 @@ export default function VersesPanel({
   const handleAddSegment = (verseIndex) => {
     updateVerse(verseIndex, (verse) => ({
       ...verse,
-      segmentos: [...(Array.isArray(verse.segmentos) ? verse.segmentos : []), createEmptySegment()],
+      segmentos: [
+        ...(Array.isArray(verse.segmentos) ? verse.segmentos : []),
+        { ...createEmptySegment(), texto: '...' },
+      ],
     }))
   }
 
@@ -727,6 +742,14 @@ export default function VersesPanel({
               const segmentTarget = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
               const eventType = verse.evento_armonico?.tipo || ''
               const templates = eventType ? getEventTemplates(eventType, verseIndex) : []
+              const moveTarget = moveTargets[verseIndex] ?? (verse.section_id || activeSectionId || '')
+              const activeSegmentIndex =
+                selection.verseIndex === verseIndex && selection.segmentIndex !== null
+                  ? selection.segmentIndex
+                  : null
+              const canQuickSplitVerse =
+                activeSegmentIndex !== null && canSplitAt(verseIndex, activeSegmentIndex)
+              const canQuickSplitSection = canSplitSectionAtVerse(verseIndex)
               return (
                 <div
                   key={`verse-${verseIndex}`}
@@ -793,6 +816,40 @@ export default function VersesPanel({
                     </span>
                     <strong>{isCollapsed ? collapsedLabel : label}</strong>
                     <div className="wpss-verse-actions">
+                      {activeSegmentIndex !== null ? (
+                        <>
+                          <button
+                            type="button"
+                            className="button button-small"
+                            disabled={!canQuickSplitSection}
+                            onClick={() =>
+                              onSplitSection &&
+                              onSplitSection(
+                                verseIndex,
+                                activeSegmentIndex ?? 0,
+                                selection.element,
+                              )
+                            }
+                          >
+                            Dividir sección
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-small"
+                            disabled={!canQuickSplitVerse}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              const key = `${verseIndex}:${activeSegmentIndex}`
+                              const editor = activeSegmentIndex === null ? null : editorsRef.current.get(key)
+                              if (editor && onSplitVerse && activeSegmentIndex !== null) {
+                                onSplitVerse(verseIndex, activeSegmentIndex, editor)
+                              }
+                            }}
+                          >
+                            Cortar verso
+                          </button>
+                        </>
+                      ) : null}
                       <button
                         type="button"
                         className={`button button-small ${openNotes.has(`verse-${verseIndex}`) ? 'is-active' : ''}`}
@@ -800,9 +857,39 @@ export default function VersesPanel({
                       >
                         Notas
                       </button>
+                      <button
+                        type="button"
+                        className={`button button-small ${verse.instrumental ? 'is-active' : ''}`}
+                        onClick={() => updateVerse(verseIndex, { ...verse, instrumental: !verse.instrumental })}
+                      >
+                        Instrumental
+                      </button>
                       <details className="wpss-action-menu">
                         <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
                         <div className="wpss-action-menu__panel">
+                          <label>
+                            <span>Mover a sección</span>
+                            <select
+                              value={moveTarget}
+                              onChange={(event) =>
+                                setMoveTargets((prev) => ({ ...prev, [verseIndex]: event.target.value }))
+                              }
+                            >
+                              {safeSections.map((section, index) => (
+                                <option key={`move-${verseIndex}-${section.id}`} value={section.id}>
+                                  {section.nombre || getDefaultSectionName(index)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() => handleMoveVerseToSection(verseIndex, moveTarget)}
+                            disabled={!moveTarget || moveTarget === (verse.section_id || '')}
+                          >
+                            Mover verso
+                          </button>
                           <button
                             type="button"
                             className="button button-small"
@@ -836,11 +923,49 @@ export default function VersesPanel({
                     </div>
                   </div>
                   <div className="wpss-verse-card__body">
+                    {activeSegmentIndex !== null ? (
+                      <div className="wpss-verse-format-toolbar">
+                        <span>Formato</span>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => applyTextFormat('bold', verseIndex, activeSegmentIndex)}
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => applyTextFormat('underline', verseIndex, activeSegmentIndex)}
+                        >
+                          U
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => applyTextFormat('light', verseIndex, activeSegmentIndex)}
+                        >
+                          Light
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => applyTextFormat('clear', verseIndex, activeSegmentIndex)}
+                        >
+                          Normal
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="wpss-segment-list">
                       {segmentos.map((segment, segmentIndex) => {
                         const isEventTarget = segmentTarget !== null && segmentTarget === segmentIndex
-                        const canSelectEvent = !!eventType
-                        const canSplit = canSplitAt(verseIndex, segmentIndex)
+                        const isEditingSegment =
+                          selection.verseIndex === verseIndex && selection.segmentIndex === segmentIndex
+                        const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
 
@@ -849,7 +974,7 @@ export default function VersesPanel({
                             key={`segment-${verseIndex}-${segmentIndex}`}
                             className={`wpss-segment ${isEventTarget ? 'is-event-target' : ''} ${
                               isDragOver ? 'is-dragover' : ''
-                            }`}
+                            } ${isEditingSegment ? 'is-editing' : ''}`}
                             onDragOver={(event) => {
                               if (dragState.type !== 'segment') return
                               event.preventDefault()
@@ -898,43 +1023,38 @@ export default function VersesPanel({
                                 ⋮⋮
                               </span>
                             </div>
+                            <button
+                              type="button"
+                              className="wpss-segment__summary"
+                              onClick={() => {
+                                setSelection({
+                                  verseIndex,
+                                  segmentIndex,
+                                  start: null,
+                                  end: null,
+                                  element: null,
+                                })
+                                if (onSelectionChange) {
+                                  onSelectionChange(verseIndex, segmentIndex, null, null, null)
+                                }
+                              }}
+                            >
+                              <strong>{segment.acorde || '—'}</strong>
+                              <span>{segmentPreviewText}</span>
+                            </button>
                             <div className="wpss-segment__fields">
+                              <label>
+                                <span>Acorde</span>
+                                <input
+                                  type="text"
+                                  value={segment.acorde || ''}
+                                  onChange={(event) =>
+                                    handleSegmentChange(verseIndex, segmentIndex, 'acorde', event.target.value)
+                                  }
+                                />
+                              </label>
                               <div>
                                 <span>Texto</span>
-                                <div className="wpss-text-tools">
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => applyTextFormat('bold', verseIndex, segmentIndex)}
-                                  >
-                                    B
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => applyTextFormat('underline', verseIndex, segmentIndex)}
-                                  >
-                                    U
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => applyTextFormat('light', verseIndex, segmentIndex)}
-                                  >
-                                    Light
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => applyTextFormat('clear', verseIndex, segmentIndex)}
-                                  >
-                                    Normal
-                                  </button>
-                                </div>
                                 <div
                                   className="wpss-segment__text"
                                   contentEditable
@@ -975,16 +1095,6 @@ export default function VersesPanel({
                                   onMouseUp={(event) => handleSelectionUpdate(verseIndex, segmentIndex, event)}
                                 />
                               </div>
-                              <label>
-                                <span>Acorde</span>
-                                <input
-                                  type="text"
-                                  value={segment.acorde || ''}
-                                  onChange={(event) =>
-                                    handleSegmentChange(verseIndex, segmentIndex, 'acorde', event.target.value)
-                                  }
-                                />
-                              </label>
                             </div>
                             <div className="wpss-segment__actions">
                               <button
@@ -1039,26 +1149,107 @@ export default function VersesPanel({
                                   >
                                     Eliminar
                                   </button>
+                                  <label>
+                                    <span>Evento armónico</span>
+                                    <select
+                                      value={eventType}
+                                      onChange={(event) => updateEventType(verseIndex, event.target.value)}
+                                    >
+                                      <option value="">Sin evento</option>
+                                      <option value="modulacion">Modulación</option>
+                                      <option value="prestamo">Préstamo</option>
+                                    </select>
+                                  </label>
+                                  {eventType ? (
+                                    <button
+                                      type="button"
+                                      className={`button button-small ${isEventTarget ? 'is-active' : ''}`}
+                                      onClick={() => toggleSegmentEvent(verseIndex, segmentIndex)}
+                                    >
+                                      {isEventTarget ? 'Desanclar evento' : 'Anclar evento aquí'}
+                                    </button>
+                                  ) : null}
+                                  {eventType === 'modulacion' ? (
+                                    <>
+                                      <label>
+                                        <span>Tónica destino</span>
+                                        <input
+                                          type="text"
+                                          list="wpss-tonicas"
+                                          value={verse.evento_armonico?.tonica_destino || ''}
+                                          onChange={(event) =>
+                                            updateEventField(verseIndex, 'tonica_destino', event.target.value)
+                                          }
+                                        />
+                                      </label>
+                                      <label>
+                                        <span>Campo destino</span>
+                                        <input
+                                          type="text"
+                                          list="wpss-campos-armonicos"
+                                          value={verse.evento_armonico?.campo_armonico_destino || ''}
+                                          onChange={(event) =>
+                                            updateEventField(verseIndex, 'campo_armonico_destino', event.target.value)
+                                          }
+                                        />
+                                      </label>
+                                    </>
+                                  ) : null}
+                                  {eventType === 'prestamo' ? (
+                                    <>
+                                      <label>
+                                        <span>Tónica origen</span>
+                                        <input
+                                          type="text"
+                                          list="wpss-tonicas"
+                                          value={verse.evento_armonico?.tonica_origen || ''}
+                                          onChange={(event) =>
+                                            updateEventField(verseIndex, 'tonica_origen', event.target.value)
+                                          }
+                                        />
+                                      </label>
+                                      <label>
+                                        <span>Campo origen</span>
+                                        <input
+                                          type="text"
+                                          list="wpss-campos-armonicos"
+                                          value={verse.evento_armonico?.campo_armonico_origen || ''}
+                                          onChange={(event) =>
+                                            updateEventField(verseIndex, 'campo_armonico_origen', event.target.value)
+                                          }
+                                        />
+                                      </label>
+                                    </>
+                                  ) : null}
+                                  {eventType && templates.length ? (
+                                    <label>
+                                      <span>Usar evento existente</span>
+                                      <select
+                                        defaultValue=""
+                                        onChange={(event) => {
+                                          const value = event.target.value
+                                          if (value === '') return
+                                          applyEventTemplate(verseIndex, eventType, parseInt(value, 10))
+                                          event.target.value = ''
+                                        }}
+                                      >
+                                        <option value="">Selecciona un evento</option>
+                                        {templates.map((template, index) => (
+                                          <option key={`template-${verseIndex}-${index}`} value={index}>
+                                            {getEventTemplateLabel(template)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  ) : null}
                                 </div>
                               </details>
                             </div>
-                            {canSelectEvent ? (
-                              <button
-                                type="button"
-                                className={`button button-small wpss-segment__event ${
-                                  isEventTarget ? 'is-active' : ''
-                                }`}
-                                onClick={() => toggleSegmentEvent(verseIndex, segmentIndex)}
-                              >
-                                {isEventTarget
-                                  ? wpData?.strings?.segmentEventSelected || 'Evento anclado (clic para quitar)'
-                                  : wpData?.strings?.segmentEventSelect || 'Anclar evento aquí'}
-                              </button>
-                            ) : null}
                             {openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? (
                               <CommentEditor
                                 label="Notas del segmento"
                                 comments={segment.comentarios || []}
+                                defaultTitle={activeSectionName}
                                 onChange={(next) =>
                                   handleSegmentCommentsChange(verseIndex, segmentIndex, next)
                                 }
@@ -1083,163 +1274,19 @@ export default function VersesPanel({
                       <div className="wpss-segment-add">
                         <button
                           type="button"
-                          className="button button-secondary"
+                          className="button button-secondary wpss-segment-add__ghost"
                           onClick={() => handleAddSegment(verseIndex)}
                         >
-                          {wpData?.strings?.segmentAdd || 'Añadir segmento'}
+                          + Segmento
                         </button>
                       </div>
                     </div>
 
-                    <div className="wpss-verse-detail">
-                      <label>
-                        <span>Sección</span>
-                        <select
-                          value={verse.section_id || ''}
-                          onChange={(event) => {
-                            updateVerse(verseIndex, { ...verse, section_id: event.target.value })
-                          }}
-                        >
-                          {safeSections.map((section, index) => (
-                            <option key={section.id} value={section.id}>
-                              {section.nombre || getDefaultSectionName(index)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Evento armónico</span>
-                        <select
-                          value={eventType}
-                          onChange={(event) => updateEventType(verseIndex, event.target.value)}
-                        >
-                          <option value="">Sin evento</option>
-                          <option value="modulacion">Modulación</option>
-                          <option value="prestamo">Préstamo</option>
-                        </select>
-                      </label>
-
-                      {eventType === 'modulacion' ? (
-                        <div className="wpss-verse-event">
-                          <label>
-                            <span>Tónica destino</span>
-                            <input
-                              type="text"
-                              list="wpss-tonicas"
-                              value={verse.evento_armonico?.tonica_destino || ''}
-                              onChange={(event) =>
-                                updateEventField(verseIndex, 'tonica_destino', event.target.value)
-                              }
-                            />
-                          </label>
-                          <label>
-                            <span>Campo destino</span>
-                            <input
-                              type="text"
-                              list="wpss-campos-armonicos"
-                              value={verse.evento_armonico?.campo_armonico_destino || ''}
-                              onChange={(event) =>
-                                updateEventField(verseIndex, 'campo_armonico_destino', event.target.value)
-                              }
-                            />
-                          </label>
-                        </div>
-                      ) : null}
-
-                      {eventType === 'prestamo' ? (
-                        <div className="wpss-verse-event">
-                          <label>
-                            <span>Tónica origen</span>
-                            <input
-                              type="text"
-                              list="wpss-tonicas"
-                              value={verse.evento_armonico?.tonica_origen || ''}
-                              onChange={(event) =>
-                                updateEventField(verseIndex, 'tonica_origen', event.target.value)
-                              }
-                            />
-                          </label>
-                          <label>
-                            <span>Campo origen</span>
-                            <input
-                              type="text"
-                              list="wpss-campos-armonicos"
-                              value={verse.evento_armonico?.campo_armonico_origen || ''}
-                              onChange={(event) =>
-                                updateEventField(verseIndex, 'campo_armonico_origen', event.target.value)
-                              }
-                            />
-                          </label>
-                        </div>
-                      ) : null}
-
-                      {eventType ? (
-                        <p className="wpss-verse-event__hint">
-                          {segmentTarget !== null
-                            ? `${wpData?.strings?.segmentEventLabel || 'Segmento'} ${segmentTarget + 1}`
-                            : wpData?.strings?.segmentEventHint || 'Selecciona un segmento para resaltar el evento.'}
-                        </p>
-                      ) : null}
-
-                      {eventType && templates.length ? (
-                        <label>
-                          <span>Usar evento existente</span>
-                          <select
-                            defaultValue=""
-                            onChange={(event) => {
-                              const value = event.target.value
-                              if (value === '') return
-                              applyEventTemplate(verseIndex, eventType, parseInt(value, 10))
-                              event.target.value = ''
-                            }}
-                          >
-                            <option value="">Selecciona un evento</option>
-                            {templates.map((template, index) => (
-                              <option key={`template-${verseIndex}-${index}`} value={index}>
-                                {getEventTemplateLabel(template)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
-
-                      <label>
-                        <span>Comentario</span>
-                        <textarea
-                          value={verse.comentario || ''}
-                          onChange={(event) =>
-                            updateVerse(verseIndex, { ...verse, comentario: event.target.value })
-                          }
-                        />
-                      </label>
-                      <label className="wpss-toggle">
-                        <input
-                          type="checkbox"
-                          checked={!!verse.instrumental}
-                          onChange={(event) =>
-                            updateVerse(verseIndex, { ...verse, instrumental: event.target.checked })
-                          }
-                        />
-                        <span>Instrumental</span>
-                      </label>
-                      <div className="wpss-verse-midi">
-                        <MidiClipList
-                          clips={verse.midi_clips}
-                          onChange={(clips) => handleVerseMidiChange(verseIndex, clips)}
-                          emptyLabel="Añadir MIDI al verso"
-                          defaultTempo={bpmDefault}
-                          compactRows={compactMidiRows}
-                          allowRowToggle={allowMidiRowToggle}
-                          rangePresets={midiRangePresets}
-                          defaultRange={midiRangeDefault}
-                          lockRange={lockMidiRange}
-                        />
-                      </div>
-                    </div>
                     {openNotes.has(`verse-${verseIndex}`) ? (
                       <CommentEditor
                         label="Notas del verso"
                         comments={verse.comentarios || []}
+                        defaultTitle={activeSectionName}
                         onChange={(next) => handleVerseCommentsChange(verseIndex, next)}
                       />
                     ) : null}

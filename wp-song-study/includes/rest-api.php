@@ -1719,15 +1719,20 @@ function wpss_sanitize_comments_array( $comentarios ) {
 
         $color = isset( $comentario['color'] ) ? sanitize_hex_color( $comentario['color'] ) : '';
         $id    = isset( $comentario['id'] ) ? sanitize_text_field( $comentario['id'] ) : '';
+        $titulo = isset( $comentario['titulo'] ) ? sanitize_text_field( $comentario['titulo'] ) : '';
         if ( '' === $id ) {
             $id = wp_generate_uuid4();
         }
 
-        $sanitized[] = [
+        $item = [
             'id'    => wpss_truncate_string( $id, 64 ),
             'texto' => $texto,
             'color' => $color ? $color : '#3b82f6',
         ];
+        if ( '' !== $titulo ) {
+            $item['titulo'] = wpss_truncate_string( $titulo, 64 );
+        }
+        $sanitized[] = $item;
     }
 
     return $sanitized;

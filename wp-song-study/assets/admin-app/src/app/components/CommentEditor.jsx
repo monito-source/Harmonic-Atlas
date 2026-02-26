@@ -23,7 +23,7 @@ const unwrapNode = (node) => {
   parent.removeChild(node)
 }
 
-export default function CommentEditor({ comments = [], onChange, label }) {
+export default function CommentEditor({ comments = [], onChange, label, defaultTitle = '' }) {
   const editorsRef = useRef(new Map())
 
   const updateComments = (next) => {
@@ -49,6 +49,7 @@ export default function CommentEditor({ comments = [], onChange, label }) {
       ...comments,
       {
         id: `cmt-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        titulo: defaultTitle ? String(defaultTitle).slice(0, 64) : '',
         texto: '',
         color: DEFAULT_COLOR,
       },
@@ -124,6 +125,13 @@ export default function CommentEditor({ comments = [], onChange, label }) {
 
           return (
             <div key={key} className="wpss-comment" style={{ '--note-color': color }}>
+              <input
+                type="text"
+                className="wpss-comment__title"
+                placeholder="Título de nota"
+                value={comment.titulo || ''}
+                onChange={(event) => updateComment(index, { titulo: event.target.value.slice(0, 64) })}
+              />
               <div className="wpss-comment__toolbar">
                 <button type="button" className="button button-small" onClick={() => applyCommentFormat('bold', key, index)}>
                   B

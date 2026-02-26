@@ -38,6 +38,7 @@ export default function Editor({ onShowList }) {
   const [sectionDragOverIndex, setSectionDragOverIndex] = useState(null)
   const [verseDragIndex, setVerseDragIndex] = useState(null)
   const [verseDragOverIndex, setVerseDragOverIndex] = useState(null)
+  const [expandedSectionId, setExpandedSectionId] = useState(null)
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
@@ -649,6 +650,13 @@ export default function Editor({ onShowList }) {
 
   const selectSectionOnly = (id) => {
     persistSelectedSection(id)
+    setSelectedVerseIndexes((prev) => {
+      if (!prev.size) return prev
+      const next = new Set(
+        Array.from(prev).filter((index) => (Array.isArray(editingSong.versos) ? editingSong.versos[index] : null)?.section_id === id),
+      )
+      return next
+    })
   }
 
   const getActiveSectionId = () => {
@@ -680,31 +688,36 @@ export default function Editor({ onShowList }) {
         .filter((item) => item.verse.section_id === activeSectionId)
     : []
   const hasVerseFilter = selectedVerseIndexes.size > 0
-  const visibleVerses = hasVerseFilter
-    ? versesInActiveSection.filter((item) => selectedVerseIndexes.has(item.index))
-    : versesInActiveSection
   const showSectionEmptyState = navLevel === 'sections'
-  const showVerseEmptyState = navLevel === 'verses' && selectedVerseIndexes.size === 0
   const isFocusWork = navLevel !== 'sections'
+  const useMasterPreview = navLevel === 'verses'
   const selectedVerseIndex =
     selectedVerseIndexes.size === 1 ? Array.from(selectedVerseIndexes.values())[0] : null
+  const selectedVerseInSectionPosition =
+    selectedVerseIndex === null
+      ? -1
+      : versesInActiveSection.findIndex((item) => item.index === selectedVerseIndex)
+  const selectedVerse =
+    selectedVerseIndex === null ? null : (Array.isArray(editingSong.versos) ? editingSong.versos[selectedVerseIndex] : null)
   const selectedVerseLabel =
     selectedVerseIndex === null
       ? selectedVerseIndexes.size > 1
         ? `${selectedVerseIndexes.size} versos`
         : ''
-      : versesInActiveSection.find((item) => item.index === selectedVerseIndex)?.verse?.instrumental
-        ? `Instrumental ${selectedVerseIndex + 1}`
-        : `Verso ${selectedVerseIndex + 1}`
+      : selectedVerse?.nombre
+        ? String(selectedVerse.nombre)
+        : selectedVerse?.instrumental
+          ? `Instrumental ${selectedVerseInSectionPosition + 1}`
+          : `Verso ${selectedVerseInSectionPosition + 1}`
 
   const allVerses = Array.isArray(editingSong.versos) ? editingSong.versos : []
   const sectionsList = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
   const versesBySection = useMemo(() => {
     const map = new Map()
-    allVerses.forEach((verse) => {
+    allVerses.forEach((verse, index) => {
       const id = verse.section_id || ''
       if (!map.has(id)) map.set(id, [])
-      map.get(id).push(verse)
+      map.get(id).push({ verse, index })
     })
     return map
   }, [allVerses])
@@ -714,9 +727,15 @@ export default function Editor({ onShowList }) {
     return summary.lyrics || 'Verso vacío'
   }
 
-  useEffect(() => {
-    setSelectedVerseIndexes(new Set())
-  }, [activeSectionId])
+  const getVerseStackPreview = (verse) => {
+    const summary = formatSegmentsForStackedMode(Array.isArray(verse?.segmentos) ? verse.segmentos : [])
+    const chords = (summary.chords || '').replace(/\s+$/g, '')
+    const lyrics = (summary.lyrics || '').replace(/\s+$/g, '')
+    return {
+      chords: chords || ' ',
+      lyrics: lyrics || 'Verso vacío',
+    }
+  }
 
   const renderStackedPreview = (segmentos, key) => {
     if (!Array.isArray(segmentos) || !segmentos.length) {
@@ -745,31 +764,22 @@ export default function Editor({ onShowList }) {
     )
   }
 
-  const handleSelectVerse = (index, event) => {
-    const useMulti = event?.metaKey || event?.ctrlKey
-    setSelectedVerseIndexes((prev) => {
-      const next = new Set(prev)
-      if (!useMulti) {
-        next.clear()
-        next.add(index)
-        return next
-      }
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
-      return next
-    })
+  const handleSelectVerse = (sectionId, index) => {
+    persistSelectedSection(sectionId)
+    setSelectedVerseIndexes(new Set([index]))
+    setExpandedSectionId(sectionId)
+    setNavLevel('verses')
   }
 
   const clearVerseSelection = () => {
     setSelectedVerseIndexes(new Set())
+    setExpandedSectionId(null)
   }
 
   const enterVerseLevel = (sectionId) => {
     persistSelectedSection(sectionId)
     clearVerseSelection()
+    setExpandedSectionId(sectionId)
     setNavLevel('verses')
   }
 
@@ -781,6 +791,7 @@ export default function Editor({ onShowList }) {
 
   const backToSections = () => {
     clearVerseSelection()
+    setExpandedSectionId(null)
     setNavLevel('sections')
   }
 
@@ -876,10 +887,72 @@ export default function Editor({ onShowList }) {
 
   const handleAddVerse = () => {
     if (!activeSectionId) return
+    handleAddVerseToSection(activeSectionId)
+  }
+
+  const handleAddVerseToSection = (sectionId) => {
+    if (!sectionId) return
     const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
-    const newVerse = createEmptyVerse(nextVerses.length + 1, activeSectionId)
-    nextVerses.push(newVerse)
+    const newVerse = { ...createEmptyVerse(nextVerses.length + 1, sectionId), nombre: '' }
+    const insertAfter = nextVerses.reduce((lastIndex, verse, index) => {
+      if ((verse.section_id || '') === sectionId) {
+        return index
+      }
+      return lastIndex
+    }, -1)
+    if (insertAfter >= 0) {
+      nextVerses.splice(insertAfter + 1, 0, newVerse)
+    } else {
+      nextVerses.push(newVerse)
+    }
     normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+  }
+
+  const handleDuplicateVerseAtIndex = (verseIndex) => {
+    const source = Array.isArray(editingSong.versos) ? editingSong.versos[verseIndex] : null
+    if (!source) return
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const clone = JSON.parse(JSON.stringify(source))
+    clone.id = null
+    nextVerses.splice(verseIndex + 1, 0, clone)
+    normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+  }
+
+  const handleRemoveVerseAtIndex = (verseIndex) => {
+    const source = Array.isArray(editingSong.versos) ? editingSong.versos[verseIndex] : null
+    if (!source) return
+    const sourceSectionId = source.section_id || ''
+    const totalInSection = (Array.isArray(editingSong.versos) ? editingSong.versos : []).filter(
+      (verse) => (verse.section_id || '') === sourceSectionId,
+    ).length
+    if (totalInSection <= 1) return
+
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    nextVerses.splice(verseIndex, 1)
+    normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+    clearVerseSelection()
+  }
+
+  const handleRenameVerseAtIndex = (verseIndex) => {
+    const source = Array.isArray(editingSong.versos) ? editingSong.versos[verseIndex] : null
+    if (!source) return
+    const currentName = source.nombre ? String(source.nombre) : ''
+    const nextName = window.prompt('Nombre del verso', currentName)
+    if (nextName === null) return
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    nextVerses[verseIndex] = { ...source, nombre: String(nextName).slice(0, 64) }
     const nextSong = { ...editingSong, versos: nextVerses }
     syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
     updateSong(nextSong)
@@ -996,6 +1069,43 @@ export default function Editor({ onShowList }) {
     updateSong(nextSong)
     scheduleAutosave()
     return true
+  }
+
+  const beginVerseDrag = (event, fromIndex) => {
+    event.dataTransfer.setData('text/plain', String(fromIndex))
+    event.dataTransfer.effectAllowed = 'move'
+    setVerseDragIndex(fromIndex)
+  }
+
+  const getDraggedVerseIndex = (event) => {
+    const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
+    if (!Number.isNaN(payload)) {
+      return payload
+    }
+    return verseDragIndex
+  }
+
+  const handleVerseCardDragOver = (event, toIndex) => {
+    if (verseDragIndex === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    setVerseDragOverIndex(toIndex)
+  }
+
+  const handleVerseCardDrop = (event, toIndex) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const fromIndex = getDraggedVerseIndex(event)
+    if (fromIndex !== null && fromIndex !== undefined) {
+      moveVerseInSection(fromIndex, toIndex)
+    }
+    setVerseDragIndex(null)
+    setVerseDragOverIndex(null)
+  }
+
+  const handleVerseCardDragEnd = () => {
+    setVerseDragIndex(null)
+    setVerseDragOverIndex(null)
   }
 
   const handleSectionCommentsChange = (sectionId, comments) => {
@@ -1335,7 +1445,7 @@ export default function Editor({ onShowList }) {
             ref={layoutRef}
             className={`wpss-editor-layout ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
             style={{
-              gridTemplateColumns: isFocusWork
+              gridTemplateColumns: isFocusWork && !useMasterPreview
                 ? `minmax(520px, ${100 - previewRatio}fr) 8px minmax(320px, ${previewRatio}fr)`
                 : `${
                     isSidebarCollapsed
@@ -1343,10 +1453,10 @@ export default function Editor({ onShowList }) {
                       : sidebarWidth
                         ? `${sidebarWidth}px`
                         : 'max-content'
-                  } 8px minmax(360px, 1fr)`,
+                    } 8px minmax(360px, 1fr)`,
             }}
           >
-            {!isFocusWork ? (
+            {!isFocusWork || useMasterPreview ? (
               <aside ref={sidebarRef} className="wpss-editor-sidebar wpss-editor-column">
                 <div className={`wpss-editor-sidebar__content nav-${navLevel}`}>
                   <div className="wpss-editor-sidebar__header">
@@ -1376,6 +1486,10 @@ export default function Editor({ onShowList }) {
                             return
                           }
                           selectSectionOnly(section.id)
+                          if (navLevel === 'verses') {
+                            setSelectedVerseIndexes(new Set())
+                            setExpandedSectionId(section.id)
+                          }
                         }}
                         onDoubleClick={(event) => {
                           if (event.target && event.target.tagName === 'INPUT') {
@@ -1384,7 +1498,7 @@ export default function Editor({ onShowList }) {
                           if (event.target && event.target.closest?.('.wpss-section-pill__actions')) {
                             return
                           }
-                          enterVerseLevel(section.id)
+                          event.preventDefault()
                         }}
                         onKeyDown={(event) => {
                           if (event.target && event.target.tagName === 'INPUT') {
@@ -1392,7 +1506,13 @@ export default function Editor({ onShowList }) {
                           }
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault()
-                            enterVerseLevel(section.id)
+                            if (navLevel === 'verses') {
+                              selectSectionOnly(section.id)
+                              setSelectedVerseIndexes(new Set())
+                              setExpandedSectionId(section.id)
+                            } else {
+                              enterVerseLevel(section.id)
+                            }
                           }
                         }}
                         onDragOver={(event) => {
@@ -1490,11 +1610,19 @@ export default function Editor({ onShowList }) {
                         </div>
                       </div>
                     ))}
+                    <button
+                      type="button"
+                      className="wpss-section-pill wpss-section-pill--ghost"
+                      onClick={handleAddSection}
+                    >
+                      <span className="wpss-section-pill__ghost-plus">＋</span>
+                      <span>Nueva sección</span>
+                    </button>
                   </div>
                 </div>
               </aside>
             ) : null}
-            {!isFocusWork ? (
+            {!isFocusWork || useMasterPreview ? (
               <div
                 className="wpss-editor-splitter wpss-editor-splitter--sidebar"
                 role="separator"
@@ -1506,7 +1634,7 @@ export default function Editor({ onShowList }) {
                 }}
               />
             ) : null}
-            {isFocusWork ? (
+            {isFocusWork && !useMasterPreview ? (
               <div className={`wpss-editor-work wpss-editor-column nav-${navLevel}`}>
               {isFocusWork ? (
                 <div className="wpss-work-breadcrumb">
@@ -1554,9 +1682,11 @@ export default function Editor({ onShowList }) {
                           <option value="">Selecciona un verso</option>
                           {versesInActiveSection.map(({ verse, index }, verseIndex) => (
                             <option key={`verse-select-${index}`} value={index}>
-                              {verse.instrumental
-                                ? `Instrumental ${verseIndex + 1}`
-                                : `Verso ${verseIndex + 1}`}
+                              {verse.nombre
+                                ? String(verse.nombre)
+                                : verse.instrumental
+                                  ? `Instrumental ${verseIndex + 1}`
+                                  : `Verso ${verseIndex + 1}`}
                             </option>
                           ))}
                         </select>
@@ -1585,6 +1715,7 @@ export default function Editor({ onShowList }) {
                   <CommentEditor
                     label="Notas de sección"
                     comments={activeSection?.comentarios || []}
+                    defaultTitle={activeSection?.nombre || getDefaultSectionName(0)}
                     onChange={(next) => handleSectionCommentsChange(activeSectionId, next)}
                   />
                 </div>
@@ -1592,66 +1723,6 @@ export default function Editor({ onShowList }) {
               {showSectionEmptyState ? (
                 <div className="wpss-work-empty">
                   <p>Selecciona una sección para comenzar.</p>
-                </div>
-              ) : showVerseEmptyState ? (
-                <div className="wpss-work-verse-list">
-                  <div className="wpss-work-verse-list__header">
-                    <p>Selecciona un verso para editarlo.</p>
-                    <button type="button" className="button button-secondary" onClick={handleAddVerse}>
-                      Añadir verso
-                    </button>
-                  </div>
-                  <div className="wpss-work-verse-list__grid">
-                    {versesInActiveSection.length ? (
-                      versesInActiveSection.map(({ verse, index }, verseIndex) => (
-                        <button
-                          key={`verse-card-${index}`}
-                          type="button"
-                          className={`wpss-verse-card-mini ${verseDragOverIndex === index ? 'is-dragover' : ''}`}
-                          onClick={() => setSelectedVerseIndexes(new Set([index]))}
-                          onDragOver={(event) => {
-                            if (verseDragIndex === null) return
-                            event.preventDefault()
-                            setVerseDragOverIndex(index)
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault()
-                            const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
-                            const fromIndex = Number.isNaN(payload) ? verseDragIndex : payload
-                            if (fromIndex !== null && fromIndex !== undefined) {
-                              moveVerseInSection(fromIndex, index)
-                            }
-                            setVerseDragIndex(null)
-                            setVerseDragOverIndex(null)
-                          }}
-                        >
-                          <span
-                            className="wpss-verse-card-mini__drag"
-                            draggable
-                            aria-label="Mover verso"
-                            title="Arrastra para ordenar"
-                            onClick={(event) => event.stopPropagation()}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onDragStart={(event) => {
-                              event.dataTransfer.setData('text/plain', String(index))
-                              event.dataTransfer.effectAllowed = 'move'
-                              setVerseDragIndex(index)
-                            }}
-                            onDragEnd={() => {
-                              setVerseDragIndex(null)
-                              setVerseDragOverIndex(null)
-                            }}
-                          >
-                            ☰
-                          </span>
-                          <strong>{verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`}</strong>
-                          <p>{getVerseSummary(verse)}</p>
-                        </button>
-                      ))
-                    ) : (
-                      <p className="wpss-empty">Sin versos en esta sección.</p>
-                    )}
-                  </div>
                 </div>
               ) : navLevel === 'manage' ? (
                 <div className="wpss-work-manage">
@@ -1673,8 +1744,192 @@ export default function Editor({ onShowList }) {
                   <CommentEditor
                     label="Notas de sección"
                     comments={activeSection?.comentarios || []}
+                    defaultTitle={activeSection?.nombre || getDefaultSectionName(0)}
                     onChange={(next) => handleSectionCommentsChange(activeSectionId, next)}
                   />
+                </div>
+              ) : navLevel === 'verses' ? (
+                <div className="wpss-work-verse-explorer">
+                  <div className="wpss-work-verse-list">
+                    <div className="wpss-work-verse-list__header">
+                      <p>Selecciona un verso para editarlo.</p>
+                      <button type="button" className="button button-secondary" onClick={handleAddVerse}>
+                        Añadir verso
+                      </button>
+                    </div>
+                    <div className="wpss-work-verse-sections">
+                      {sectionsList.map((section, sectionIndex) => {
+                        const sectionVerses = versesBySection.get(section.id) || []
+                        const isActiveSection = section.id === activeSectionId
+                        const previewVerses = sectionVerses.slice(0, 2)
+                        return (
+                          <section
+                            key={`verse-browser-${section.id}`}
+                            className={`wpss-verse-section-mini ${isActiveSection ? 'is-active' : ''}`}
+                          >
+                            <header className="wpss-verse-section-mini__header">
+                              <button
+                                type="button"
+                                className="wpss-verse-section-mini__title"
+                                onClick={() => selectSectionOnly(section.id)}
+                              >
+                                {section.nombre || getDefaultSectionName(sectionIndex)}
+                              </button>
+                              <span>{sectionVerses.length} versos</span>
+                              <button
+                                type="button"
+                                className="button button-small"
+                                onClick={() => handleAddVerseToSection(section.id)}
+                              >
+                                + verso
+                              </button>
+                            </header>
+                            {!isActiveSection ? (
+                              <div className="wpss-verse-section-mini__summary">
+                                {previewVerses.length ? (
+                                  <ul>
+                                    {previewVerses.map(({ verse, index: verseId }) => (
+                                      <li key={`verse-mini-summary-${section.id}-${verseId}`}>{getVerseSummary(verse)}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="wpss-empty">Sin versos en esta sección.</p>
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                <div className="wpss-work-verse-list__grid">
+                                  {sectionVerses.length ? (
+                                    sectionVerses.map(({ verse, index }, verseIndex) => {
+                                      const isSelectedCard =
+                                        selectedVerseIndex !== null
+                                        && selectedVerseIndex === index
+                                        && selectedVerse?.section_id === section.id
+                                      const preview = getVerseStackPreview(verse)
+                                      if (isSelectedCard) {
+                                        return (
+                                          <div
+                                            key={`verse-card-editor-${section.id}-${index}`}
+                                            className="wpss-verse-inline-editor"
+                                          >
+                                            <VersesPanel
+                                              verses={editingSong.versos}
+                                              sections={editingSong.secciones}
+                                              selectedSectionId={activeSectionId}
+                                              songBpm={editingSong.bpm}
+                                              onSelectSection={selectSectionOnly}
+                                              onSectionsChange={handleSectionChange}
+                                              onAddSection={handleAddSection}
+                                              onDuplicateSection={handleDuplicateSection}
+                                              onChange={handleVerseChange}
+                                              onSplitSegment={splitSegment}
+                                              onSplitVerse={splitVerseFromCursor}
+                                              onSplitSection={splitSectionFromCursor}
+                                              onSelectionChange={updateSegmentSelection}
+                                              compactMidiRows={preferCompactMidiRows}
+                                              allowMidiRowToggle={preferCompactMidiRows}
+                                              midiRangePresets={midiRangePresets}
+                                              midiRangeDefault={midiRangeDefault}
+                                              lockMidiRange={lockMidiRange}
+                                              showHeader={false}
+                                              showPreview={false}
+                                              visibleVerseIndexes={new Set([index])}
+                                            />
+                                          </div>
+                                        )
+                                      }
+                                      return (
+                                      <div
+                                        key={`verse-card-${section.id}-${index}`}
+                                        className={`wpss-verse-card-mini ${
+                                          selectedVerseIndex === index ? 'is-selected' : ''
+                                        } ${verseDragOverIndex === index ? 'is-dragover' : ''}`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => handleSelectVerse(section.id, index)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault()
+                                            handleSelectVerse(section.id, index)
+                                          }
+                                        }}
+                                        onDragOver={(event) => handleVerseCardDragOver(event, index)}
+                                        onDrop={(event) => handleVerseCardDrop(event, index)}
+                                      >
+                                        <span
+                                          className={`wpss-verse-card-mini__drag ${
+                                            verseDragIndex === index ? 'is-dragging' : ''
+                                          }`}
+                                          draggable
+                                          aria-label="Mover verso"
+                                          title="Arrastra para ordenar"
+                                          onClick={(event) => event.stopPropagation()}
+                                          onPointerDown={(event) => event.stopPropagation()}
+                                          onDragStart={(event) => beginVerseDrag(event, index)}
+                                          onDragEnd={handleVerseCardDragEnd}
+                                        >
+                                          ☰
+                                        </span>
+                                        <strong>
+                                          {verse.nombre
+                                            ? verse.nombre
+                                            : verse.instrumental
+                                              ? `Instrumental ${verseIndex + 1}`
+                                              : `Verso ${verseIndex + 1}`}
+                                        </strong>
+                                        <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
+                                        <details
+                                          className="wpss-verse-card-mini__menu wpss-action-menu"
+                                          onClick={(event) => event.stopPropagation()}
+                                        >
+                                          <summary aria-label="Opciones del verso" title="Opciones del verso">
+                                            ⋯
+                                          </summary>
+                                          <div className="wpss-action-menu__panel">
+                                            <button
+                                              type="button"
+                                              className="button button-small"
+                                              onClick={() => handleRenameVerseAtIndex(index)}
+                                            >
+                                              Renombrar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="button button-small"
+                                              onClick={() => handleDuplicateVerseAtIndex(index)}
+                                            >
+                                              Duplicar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="button button-link-delete"
+                                              onClick={() => handleRemoveVerseAtIndex(index)}
+                                              disabled={sectionVerses.length <= 1}
+                                            >
+                                              Eliminar
+                                            </button>
+                                          </div>
+                                        </details>
+                                      </div>
+                                      )
+                                    })
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className="wpss-verse-card-mini wpss-verse-card-mini--ghost"
+                                    onClick={() => handleAddVerseToSection(section.id)}
+                                  >
+                                    <strong>Nuevo verso</strong>
+                                    <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </section>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <VersesPanel
@@ -1703,7 +1958,7 @@ export default function Editor({ onShowList }) {
               )}
             </div>
             ) : null}
-            {isFocusWork ? (
+            {isFocusWork && !useMasterPreview ? (
               <div
                 className="wpss-editor-splitter"
                 role="separator"
@@ -1715,90 +1970,212 @@ export default function Editor({ onShowList }) {
                 }}
               />
             ) : null}
-            <aside className={`wpss-editor-preview wpss-editor-column ${isFocusWork ? '' : 'is-sections'}`}>
+            <aside className={`wpss-editor-preview wpss-editor-column ${isFocusWork && !useMasterPreview ? '' : 'is-sections'}`}>
               <div className="wpss-section-preview">
                 <div className="wpss-section-preview__header">
                   <strong>Vista previa</strong>
-                  <span>
-                    {isFocusWork ? activeSection?.nombre || getDefaultSectionName(0) : 'Todas las secciones'}
-                  </span>
-                </div>
-                {isFocusWork ? (
-                  <>
-                    <div className="wpss-section-preview__controls">
-                      <label>
-                        <span>Zoom</span>
-                        <input
-                          type="range"
-                          min="70"
-                          max="130"
-                          step="1"
-                          value={previewScale}
-                          onChange={(event) => setPreviewScale(parseInt(event.target.value, 10))}
-                        />
-                        <strong>{previewScale}%</strong>
-                      </label>
-                    </div>
-                    {versesInActiveSection.length ? (
-                      <ul
-                        className="wpss-section-preview__body"
-                        style={{ '--wpss-preview-scale': previewScale / 100 }}
-                      >
-                        {versesInActiveSection.map(({ verse }, index) =>
-                          renderStackedPreview(Array.isArray(verse.segmentos) ? verse.segmentos : [], index),
-                        )}
-                      </ul>
-                    ) : (
-                      <p className="wpss-empty">Sin versos en esta sección.</p>
-                    )}
-                  </>
-                ) : (
-                  <div className="wpss-section-preview__all">
-                    {sectionsList.length ? (
-                      sectionsList.map((section, index) => {
-                        const verses = versesBySection.get(section.id) || []
-                        const previewVerses = verses.slice(0, 2)
-                        return (
-                          <div
-                            key={`preview-section-${section.id}`}
-                            className={`wpss-section-preview__group ${
-                              section.id === activeSectionId ? 'is-active' : ''
-                            }`}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => selectSectionOnly(section.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                selectSectionOnly(section.id)
-                              }
-                            }}
-                          >
-                            <strong>{section.nombre || getDefaultSectionName(index)}</strong>
-                            {previewVerses.length ? (
-                              <ul>
-                                {previewVerses.map((verse, verseIndex) => (
-                                  <li key={`preview-section-${section.id}-${verseIndex}`}>
-                                    {getVerseSummary(verse)}
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p className="wpss-empty">Sin versos</p>
-                            )}
-                            {verses.length > previewVerses.length ? (
-                              <span className="wpss-section-preview__more">
-                                +{verses.length - previewVerses.length} más
-                              </span>
-                            ) : null}
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <p className="wpss-empty">Sin secciones.</p>
-                    )}
+                  <div className="wpss-section-preview__header-actions">
+                    <span>
+                      {useMasterPreview ? 'Todas las secciones' : isFocusWork ? activeSection?.nombre || getDefaultSectionName(0) : 'Todas las secciones'}
+                    </span>
+                    {useMasterPreview ? (
+                      <button type="button" className="button button-small" onClick={clearVerseSelection}>
+                        Plegar todo
+                      </button>
+                    ) : null}
                   </div>
-                )}
+                </div>
+                <div className="wpss-section-preview__all wpss-section-preview__all--interactive">
+                  {sectionsList.length ? (
+                    sectionsList.map((section, index) => {
+                      const verses = versesBySection.get(section.id) || []
+                      const isActiveSection = section.id === activeSectionId
+                      const isExpandedSection = expandedSectionId === section.id
+                      return (
+                        <div
+                          key={`preview-section-${section.id}`}
+                          className={`wpss-section-preview__group ${isActiveSection ? 'is-active' : ''}`}
+                        >
+                          <button
+                            type="button"
+                            className="wpss-section-preview__group-title"
+                            onClick={() => {
+                              selectSectionOnly(section.id)
+                              setSelectedVerseIndexes(new Set())
+                              setExpandedSectionId((prev) => (prev === section.id ? null : section.id))
+                            }}
+                            aria-label={`Sección ${index + 1}`}
+                          >
+                            <span>{isExpandedSection ? '▾' : '▸'}</span>
+                            <span>{verses.length} versos</span>
+                          </button>
+                          {isExpandedSection ? (
+                            <details className="wpss-preview-section-menu">
+                              <summary>Opciones de sección</summary>
+                              <div className="wpss-preview-section-menu__body">
+                                <MidiClipList
+                                  clips={section?.midi_clips}
+                                  onChange={(clips) => handleSectionMidiChange(section.id, clips)}
+                                  emptyLabel="Añadir MIDI a la sección"
+                                  defaultTempo={editingSong.bpm}
+                                  compactRows={preferCompactMidiRows}
+                                  allowRowToggle={preferCompactMidiRows}
+                                  rangePresets={midiRangePresets}
+                                  defaultRange={midiRangeDefault}
+                                  lockRange={lockMidiRange}
+                                />
+                                <CommentEditor
+                                  label="Notas de sección"
+                                  comments={section?.comentarios || []}
+                                  defaultTitle={section?.nombre || getDefaultSectionName(index)}
+                                  onChange={(next) => handleSectionCommentsChange(section.id, next)}
+                                />
+                              </div>
+                            </details>
+                          ) : null}
+                          {verses.length ? (
+                            <div className="wpss-preview-verse-list">
+                              {verses.map(({ verse, index: verseId }) => {
+                                const preview = getVerseStackPreview(verse)
+                                const isActiveVerse = selectedVerseIndex === verseId && isActiveSection && isExpandedSection
+                                const verseTitle = verse?.nombre
+                                  ? String(verse.nombre)
+                                  : verse?.instrumental
+                                    ? `Instrumental ${verseId + 1}`
+                                    : `Verso ${verseId + 1}`
+                                if (isActiveVerse) {
+                                  return (
+                                    <div
+                                      key={`preview-verse-editor-${section.id}-${verseId}`}
+                                      className={`wpss-preview-verse-card is-active ${
+                                        verseDragOverIndex === verseId ? 'is-dragover' : ''
+                                      }`}
+                                      onDragOver={(event) => handleVerseCardDragOver(event, verseId)}
+                                      onDrop={(event) => handleVerseCardDrop(event, verseId)}
+                                    >
+                                      <div className="wpss-preview-verse-card__toolbar">
+                                        <span
+                                          className={`wpss-verse-card-mini__drag ${
+                                            verseDragIndex === verseId ? 'is-dragging' : ''
+                                          }`}
+                                          draggable
+                                          aria-label="Mover verso"
+                                          title="Arrastra para ordenar"
+                                          onClick={(event) => event.stopPropagation()}
+                                          onPointerDown={(event) => event.stopPropagation()}
+                                          onDragStart={(event) => beginVerseDrag(event, verseId)}
+                                          onDragEnd={handleVerseCardDragEnd}
+                                        >
+                                          ☰
+                                        </span>
+                                        <strong className="wpss-preview-verse-card__title">{verseTitle}</strong>
+                                      </div>
+                                      <div className="wpss-verse-inline-editor">
+                                        <VersesPanel
+                                          verses={editingSong.versos}
+                                          sections={editingSong.secciones}
+                                          selectedSectionId={activeSectionId}
+                                          songBpm={editingSong.bpm}
+                                          onSelectSection={selectSectionOnly}
+                                          onSectionsChange={handleSectionChange}
+                                          onAddSection={handleAddSection}
+                                          onDuplicateSection={handleDuplicateSection}
+                                          onChange={handleVerseChange}
+                                          onSplitSegment={splitSegment}
+                                          onSplitVerse={splitVerseFromCursor}
+                                          onSplitSection={splitSectionFromCursor}
+                                          onSelectionChange={updateSegmentSelection}
+                                          compactMidiRows={preferCompactMidiRows}
+                                          allowMidiRowToggle={preferCompactMidiRows}
+                                          midiRangePresets={midiRangePresets}
+                                          midiRangeDefault={midiRangeDefault}
+                                          lockMidiRange={lockMidiRange}
+                                          showHeader={false}
+                                          showPreview={false}
+                                          visibleVerseIndexes={new Set([verseId])}
+                                        />
+                                      </div>
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div
+                                    key={`preview-verse-${section.id}-${verseId}`}
+                                    className={`wpss-preview-verse-card ${
+                                      isActiveVerse ? 'is-active' : ''
+                                    } ${verseDragOverIndex === verseId ? 'is-dragover' : ''}`}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => handleSelectVerse(section.id, verseId)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        handleSelectVerse(section.id, verseId)
+                                      }
+                                    }}
+                                    onDragOver={(event) => handleVerseCardDragOver(event, verseId)}
+                                    onDrop={(event) => handleVerseCardDrop(event, verseId)}
+                                  >
+                                    <div className="wpss-preview-verse-card__toolbar">
+                                      <span
+                                        className={`wpss-verse-card-mini__drag ${
+                                          verseDragIndex === verseId ? 'is-dragging' : ''
+                                        }`}
+                                        draggable
+                                        aria-label="Mover verso"
+                                        title="Arrastra para ordenar"
+                                        onClick={(event) => event.stopPropagation()}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                        onDragStart={(event) => beginVerseDrag(event, verseId)}
+                                        onDragEnd={handleVerseCardDragEnd}
+                                      >
+                                        ☰
+                                      </span>
+                                      <strong className="wpss-preview-verse-card__title">{verseTitle}</strong>
+                                    </div>
+                                    <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
+                                  </div>
+                                )
+                              })}
+                              {isActiveSection ? (
+                                <button
+                                  type="button"
+                                  className="wpss-preview-verse-card wpss-preview-verse-card--ghost"
+                                  onClick={() => handleAddVerseToSection(section.id)}
+                                >
+                                  <strong>Nuevo verso</strong>
+                                  <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : isActiveSection ? (
+                            <button
+                              type="button"
+                              className="wpss-preview-verse-card wpss-preview-verse-card--ghost"
+                              onClick={() => handleAddVerseToSection(section.id)}
+                            >
+                              <strong>Nuevo verso</strong>
+                              <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                            </button>
+                          ) : (
+                            <p className="wpss-empty">Sin versos</p>
+                          )}
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="wpss-section-preview__empty">
+                      <p className="wpss-empty">Sin secciones.</p>
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={handleAddSection}
+                      >
+                        Añadir sección
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </aside>
           </div>
