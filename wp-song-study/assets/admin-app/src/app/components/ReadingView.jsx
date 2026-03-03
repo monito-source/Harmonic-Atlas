@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
   endsWithJoiner,
@@ -8,16 +8,51 @@ import {
   isHoldChordToken,
   getDefaultSectionName,
   getValidSegmentIndex,
+  transposeChordSymbol,
   stripHtml,
 } from '../utils.js'
 import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from './MidiSketch.jsx'
 import MidiClipList from './MidiClipList.jsx'
 
+const TRANSPOSE_TARGETS = [
+  { id: 'concert', label: 'Concierto', semitones: 0 },
+  { id: 'sax-alto-eb', label: 'Sax alto (Eb)', semitones: 9 },
+  { id: 'sax-tenor-bb', label: 'Sax tenor (Bb)', semitones: 2 },
+]
+const MOBILE_READING_QUERY = '(max-width: 860px)'
+const PRINT_BODY_CLASS = 'wpss-print-mode'
+const GLOBAL_READING_WIDTH_CLASS = 'wpss-reading-global-width'
+const MOBILE_DEFAULT_READING_ZOOM = 60
+const READING_ZOOM_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100, 126, 158, 180]
+
+const getNearestReadingZoomIndex = (value) => {
+  if (!Number.isFinite(value)) {
+    return READING_ZOOM_LEVELS.indexOf(100)
+  }
+  let nearestIndex = 0
+  let nearestDistance = Number.POSITIVE_INFINITY
+  READING_ZOOM_LEVELS.forEach((level, index) => {
+    const distance = Math.abs(level - value)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestIndex = index
+    }
+  })
+  return nearestIndex
+}
+
+const isCompactReadingViewport = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+  return window.matchMedia(MOBILE_READING_QUERY).matches
+}
+
 export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const { state, dispatch, wpData } = useAppState()
   const song = state.editingSong
   const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
-  const hasVerses = Array.isArray(song.versos) && song.versos.length
+  const hasVerses = Array.isArray(song?.versos) && song.versos.length > 0
   const chordsLibrary = Array.isArray(state.chords?.library) ? state.chords.library : []
   const chordLookup = useMemo(() => buildChordLookup(chordsLibrary), [chordsLibrary])
   const camposLibrary = Array.isArray(state.campos?.library) ? state.campos.library : []
@@ -33,12 +68,141 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     return map
   }, [camposLibrary])
   const readingInstrument = state.readingInstrument || 'guitar'
+  const isDoubleColumn = !!state.readingDoubleColumn
+  const transposeTargetId = state.readingTransposeTarget || 'concert'
+  const transposeTarget = TRANSPOSE_TARGETS.find((target) => target.id === transposeTargetId) || TRANSPOSE_TARGETS[0]
+  const transposeSemitones = transposeTarget.semitones
+  const tonicBase = song.tonica || ''
+  const tonicLabel = tonicBase ? transposeChordSymbol(tonicBase, transposeSemitones) : '—'
   const [repeatsEnabled, setRepeatsEnabled] = useState(true)
   const [linkedPlayback, setLinkedPlayback] = useState(true)
   const [showMidi, setShowMidi] = useState(true)
   const [showSectionTitles, setShowSectionTitles] = useState(true)
   const [activePlaybackKey, setActivePlaybackKey] = useState(null)
   const [activePlaybackMeta, setActivePlaybackMeta] = useState(null)
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0)
+  const [isCompactViewport, setIsCompactViewport] = useState(() => isCompactReadingViewport())
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(() => !isCompactReadingViewport())
+  const [readingZoom, setReadingZoom] = useState(() =>
+    isCompactReadingViewport() ? MOBILE_DEFAULT_READING_ZOOM : 100,
+  )
+  const sectionRefs = useRef(new Map())
+  const sectionsScrollRef = useRef(null)
+  const readingRootRef = useRef(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined
+    }
+
+    const mediaQuery = window.matchMedia(MOBILE_READING_QUERY)
+    const syncLayout = (isCompact) => {
+      setIsCompactViewport(isCompact)
+      setIsSettingsPanelOpen(!isCompact)
+    }
+
+    syncLayout(mediaQuery.matches)
+
+    const handleChange = (event) => {
+      syncLayout(!!event?.matches)
+    }
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    }
+
+    mediaQuery.addListener(handleChange)
+    return () => mediaQuery.removeListener(handleChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isCompactViewport) {
+      return
+    }
+    setReadingZoom((current) => (current === 100 ? MOBILE_DEFAULT_READING_ZOOM : current))
+  }, [isCompactViewport])
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return undefined
+    }
+
+    const html = document.documentElement
+    const body = document.body
+    const root = readingRootRef.current
+
+    const clearGlobalWidth = () => {
+      html.classList.remove(GLOBAL_READING_WIDTH_CLASS)
+      body.classList.remove(GLOBAL_READING_WIDTH_CLASS)
+      html.style.removeProperty('--wpss-reading-content-width')
+      body.style.removeProperty('--wpss-reading-content-width')
+      if (root) {
+        root.style.removeProperty('--wpss-reading-content-width')
+      }
+    }
+
+    const resetComputedWidth = (readingNode) => {
+      html.style.removeProperty('--wpss-reading-content-width')
+      body.style.removeProperty('--wpss-reading-content-width')
+      if (readingNode) {
+        readingNode.style.removeProperty('--wpss-reading-content-width')
+      }
+    }
+
+    if (!hasVerses) {
+      clearGlobalWidth()
+      return clearGlobalWidth
+    }
+
+    const computeTargetWidth = () => {
+      const readingNode = readingRootRef.current
+      if (!readingNode) {
+        return
+      }
+
+      resetComputedWidth(readingNode)
+      void readingNode.offsetWidth
+
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || readingNode.clientWidth || 0
+      const resolved = Math.ceil(viewportWidth)
+      const value = `${resolved}px`
+      html.style.setProperty('--wpss-reading-content-width', value)
+      body.style.setProperty('--wpss-reading-content-width', value)
+      readingNode.style.setProperty('--wpss-reading-content-width', value)
+    }
+
+    html.classList.add(GLOBAL_READING_WIDTH_CLASS)
+    body.classList.add(GLOBAL_READING_WIDTH_CLASS)
+
+    let rafId = window.requestAnimationFrame(computeTargetWidth)
+    const onResize = () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId)
+      }
+      rafId = window.requestAnimationFrame(computeTargetWidth)
+    }
+    window.addEventListener('resize', onResize)
+
+    let resizeObserver = null
+    if (typeof window.ResizeObserver === 'function' && root) {
+      resizeObserver = new window.ResizeObserver(() => {
+        onResize()
+      })
+      resizeObserver.observe(root)
+    }
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId)
+      }
+      window.removeEventListener('resize', onResize)
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
+      clearGlobalWidth()
+    }
+  }, [hasVerses, song, state.readingFollowStructure, state.readingMode, showMidi, state.readingShowNotes, isDoubleColumn])
 
   const groups = useMemo(() => {
     if (!hasVerses) {
@@ -54,6 +218,23 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
           section: group.section,
         }))
   }, [song, state.readingFollowStructure, hasVerses])
+
+  const sectionNavItems = useMemo(
+    () =>
+      groups.map((group, index) => {
+        const repeatRaw = parseInt(group?.repeat, 10)
+        const repeat = Number.isInteger(repeatRaw) && repeatRaw > 1 ? Math.min(repeatRaw, 16) : 1
+        return {
+          index,
+          label: getGroupHeading(group, index),
+          repeat,
+        }
+      }),
+    [groups],
+  )
+  const currentSectionIndex = sectionNavItems.length
+    ? Math.min(activeSectionIndex, sectionNavItems.length - 1)
+    : 0
 
   const buildClipSteps = (clips, meta) =>
     buildMidiClipGroups(clips, linkedPlayback).map((group) => ({ clips: group, meta }))
@@ -120,172 +301,399 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     handlePlaySteps('all', steps)
   }
 
+  const handlePrint = () => {
+    if (
+      typeof window === 'undefined'
+      || typeof document === 'undefined'
+      || typeof window.print !== 'function'
+    ) {
+      return
+    }
+
+    const previousFollowStructure = !!state.readingFollowStructure
+    const runPrint = () => {
+      document.body.classList.add(PRINT_BODY_CLASS)
+      window.print()
+    }
+
+    const cleanup = () => {
+      document.body.classList.remove(PRINT_BODY_CLASS)
+      if (!previousFollowStructure) {
+        dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: false } })
+      }
+    }
+
+    window.addEventListener('afterprint', cleanup, { once: true })
+
+    if (!previousFollowStructure) {
+      dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: true } })
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(runPrint)
+        })
+      } else {
+        window.setTimeout(runPrint, 60)
+      }
+      return
+    }
+
+    runPrint()
+  }
+
+  const handleSectionJump = (index) => {
+    const target = sectionRefs.current.get(index)
+    if (!target) {
+      return
+    }
+    target.open = true
+    const sectionsScrollNode = sectionsScrollRef.current
+    if (sectionsScrollNode && typeof sectionsScrollNode.scrollTo === 'function') {
+      const getClampedTop = (rawTop) => {
+        const maxTop = Math.max(sectionsScrollNode.scrollHeight - sectionsScrollNode.clientHeight, 0)
+        return Math.min(Math.max(rawTop, 0), maxTop)
+      }
+
+      const getDesiredTop = () => {
+        const sectionsRect = sectionsScrollNode.getBoundingClientRect()
+        const targetRect = target.getBoundingClientRect()
+        const visualDelta = targetRect.top - sectionsRect.top
+        return getClampedTop(sectionsScrollNode.scrollTop + visualDelta - 6)
+      }
+
+      const alignToTarget = (behavior = 'smooth') => {
+        sectionsScrollNode.scrollTo({ top: getDesiredTop(), behavior })
+      }
+
+      alignToTarget('smooth')
+      window.setTimeout(() => {
+        const desiredTop = getDesiredTop()
+        const delta = desiredTop - sectionsScrollNode.scrollTop
+        if (Math.abs(delta) > 1) {
+          sectionsScrollNode.scrollTop = desiredTop
+        }
+      }, 300)
+    } else if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    setActiveSectionIndex(index)
+  }
+
+  const zoomIndex = getNearestReadingZoomIndex(readingZoom)
+  const canZoomOut = zoomIndex > 0
+  const canZoomIn = zoomIndex < READING_ZOOM_LEVELS.length - 1
+  const zoomFactor = readingZoom / 100
+  const handleZoomChange = (nextZoom) => {
+    const parsed = Number.parseInt(nextZoom, 10)
+    if (!Number.isFinite(parsed)) {
+      return
+    }
+    const minZoom = READING_ZOOM_LEVELS[0]
+    const maxZoom = READING_ZOOM_LEVELS[READING_ZOOM_LEVELS.length - 1]
+    const bounded = Math.min(maxZoom, Math.max(minZoom, parsed))
+    setReadingZoom(READING_ZOOM_LEVELS[getNearestReadingZoomIndex(bounded)])
+  }
+
+  const handleZoomStep = (direction) => {
+    const nextIndex = Math.min(
+      READING_ZOOM_LEVELS.length - 1,
+      Math.max(0, zoomIndex + direction),
+    )
+    setReadingZoom(READING_ZOOM_LEVELS[nextIndex])
+  }
+
   return (
-    <div className="wpss-reading">
+    <div className={`wpss-reading ${isCompactViewport ? 'is-compact' : ''}`} ref={readingRootRef}>
       <div className="wpss-reading__header">
-        <div>
+        <div className="wpss-reading__meta-block">
           <h3>{song.titulo || wpData?.strings?.newSong || 'Nueva canción'}</h3>
           <p>
-            <strong>Tónica:</strong> {song.tonica || '—'}
+            <strong>Tónica:</strong> {tonicLabel}
+            {tonicBase && transposeSemitones ? (
+              <span className="wpss-reading__transpose-origin">{` (concierto: ${tonicBase})`}</span>
+            ) : null}
           </p>
           <p>
             <strong>Campo armónico:</strong> {song.campo_armonico || '—'}
           </p>
+          <button
+            type="button"
+            className="button button-secondary wpss-reading__settings-toggle"
+            onClick={() => setIsSettingsPanelOpen((prev) => !prev)}
+            aria-expanded={isSettingsPanelOpen}
+            aria-controls="wpss-reading-settings"
+          >
+            {isSettingsPanelOpen ? 'Ocultar configuración' : 'Mostrar configuración'}
+          </button>
         </div>
-        <div className="wpss-reading__actions">
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">Vista</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className={`button button-secondary ${state.readingMode === 'inline' ? 'is-active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'inline' } })}
-              >
-                {wpData?.strings?.readingModeInline || 'Acordes inline'}
-              </button>
-              <button
-                type="button"
-                className={`button button-secondary ${state.readingMode === 'stacked' ? 'is-active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'stacked' } })}
-              >
-                {wpData?.strings?.readingModeStacked || 'Acordes arriba'}
-              </button>
-            </div>
-          </div>
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">Orden</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className={`button button-secondary ${state.readingFollowStructure ? '' : 'is-active'}`}
-                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: false } })}
-              >
-                {wpData?.strings?.readingFollowSections || 'Ordenar por secciones'}
-              </button>
-              <button
-                type="button"
-                className={`button button-secondary ${state.readingFollowStructure ? 'is-active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: true } })}
-              >
-                {wpData?.strings?.readingFollowStructure || 'Seguir estructura'}
-              </button>
-            </div>
-          </div>
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">MIDI</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className={`button button-secondary ${showMidi ? 'is-active' : ''}`}
-                onClick={() => setShowMidi((prev) => !prev)}
-              >
-                {showMidi ? 'Omitir MIDI' : 'Mostrar MIDI'}
-              </button>
-              <button
-                type="button"
-                className={`button button-secondary ${repeatsEnabled ? 'is-active' : ''}`}
-                onClick={() => setRepeatsEnabled((prev) => !prev)}
-              >
-                {repeatsEnabled ? 'Repeticiones activas' : 'Repeticiones apagadas'}
-              </button>
-              <button
-                type="button"
-                className={`button button-secondary ${linkedPlayback ? 'is-active' : ''}`}
-                onClick={() => setLinkedPlayback((prev) => !prev)}
-              >
-                {linkedPlayback ? 'Vinculos activos' : 'Vinculos apagados'}
-              </button>
-            </div>
-          </div>
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">Notas</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className={`button button-secondary ${state.readingShowNotes ? 'is-active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_STATE', payload: { readingShowNotes: !state.readingShowNotes } })}
-              >
-                {state.readingShowNotes ? 'Ocultar notas' : 'Mostrar notas'}
-              </button>
-            </div>
-          </div>
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">Secciones</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className={`button button-secondary ${showSectionTitles ? 'is-active' : ''}`}
-                onClick={() => setShowSectionTitles((prev) => !prev)}
-              >
-                {showSectionTitles ? 'Omitir titulos de secciones' : 'Mostrar titulos de secciones'}
-              </button>
-            </div>
-          </div>
-          <div className="wpss-reading__group">
-            <span className="wpss-reading__group-label">Instrumento</span>
-            <div className="wpss-reading__group-controls">
-              <select
-                value={readingInstrument}
-                onChange={(event) =>
-                  dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
-                }
-              >
-                <option value="guitar">Guitarra</option>
-                <option value="piano">Piano</option>
-              </select>
-            </div>
-          </div>
-          <div className="wpss-reading__group wpss-reading__group--actions">
-            <span className="wpss-reading__group-label">Acciones</span>
-            <div className="wpss-reading__group-controls">
-              <button
-                type="button"
-                className="button button-secondary"
-                onClick={handlePlayAll}
-              >
-                {activePlaybackKey === 'all' ? 'Detener reproducción' : 'Reproducir todo'}
-              </button>
-              {onEdit ? (
-                <button type="button" className="button button-secondary" onClick={onEdit}>
-                  {wpData?.strings?.editorView || 'Editar'}
+        <div
+          id="wpss-reading-settings"
+          className="wpss-reading__actions-shell"
+          hidden={!isSettingsPanelOpen && isCompactViewport}
+        >
+          <div className="wpss-reading__actions">
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Vista</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${state.readingMode === 'inline' ? 'is-active' : ''}`}
+                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'inline' } })}
+                >
+                  {wpData?.strings?.readingModeInline || 'Acordes inline'}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                className="button"
-                onClick={() => {
-                  if (onExit) {
-                    onExit()
-                  } else {
-                    dispatch({ type: 'SET_STATE', payload: { activeTab: 'editor' } })
+                <button
+                  type="button"
+                  className={`button button-secondary ${state.readingMode === 'stacked' ? 'is-active' : ''}`}
+                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'stacked' } })}
+                >
+                  {wpData?.strings?.readingModeStacked || 'Acordes arriba'}
+                </button>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Orden</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${state.readingFollowStructure ? '' : 'is-active'}`}
+                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: false } })}
+                >
+                  {wpData?.strings?.readingFollowSections || 'Ordenar por secciones'}
+                </button>
+                <button
+                  type="button"
+                  className={`button button-secondary ${state.readingFollowStructure ? 'is-active' : ''}`}
+                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: true } })}
+                >
+                  {wpData?.strings?.readingFollowStructure || 'Seguir estructura'}
+                </button>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">MIDI</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${showMidi ? 'is-active' : ''}`}
+                  onClick={() => setShowMidi((prev) => !prev)}
+                >
+                  {showMidi ? 'Omitir MIDI' : 'Mostrar MIDI'}
+                </button>
+                <button
+                  type="button"
+                  className={`button button-secondary ${repeatsEnabled ? 'is-active' : ''}`}
+                  onClick={() => setRepeatsEnabled((prev) => !prev)}
+                >
+                  {repeatsEnabled ? 'Repeticiones activas' : 'Repeticiones apagadas'}
+                </button>
+                <button
+                  type="button"
+                  className={`button button-secondary ${linkedPlayback ? 'is-active' : ''}`}
+                  onClick={() => setLinkedPlayback((prev) => !prev)}
+                >
+                  {linkedPlayback ? 'Vinculos activos' : 'Vinculos apagados'}
+                </button>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Notas</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${state.readingShowNotes ? 'is-active' : ''}`}
+                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingShowNotes: !state.readingShowNotes } })}
+                >
+                  {state.readingShowNotes ? 'Ocultar notas' : 'Mostrar notas'}
+                </button>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Secciones</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${showSectionTitles ? 'is-active' : ''}`}
+                  onClick={() => setShowSectionTitles((prev) => !prev)}
+                >
+                  {showSectionTitles ? 'Omitir titulos de secciones' : 'Mostrar titulos de secciones'}
+                </button>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Trasponer a</span>
+              <div className="wpss-reading__group-controls">
+                <select
+                  value={transposeTarget.id}
+                  onChange={(event) =>
+                    dispatch({ type: 'SET_STATE', payload: { readingTransposeTarget: event.target.value } })
                   }
-                }}
-              >
-                {exitLabel || wpData?.strings?.readingExit || 'Salir'}
-              </button>
-              {onShowList ? (
-                <button type="button" className="button button-secondary" onClick={onShowList}>
-                  Ver canciones
+                >
+                  {TRANSPOSE_TARGETS.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="wpss-reading__group">
+              <span className="wpss-reading__group-label">Instrumento</span>
+              <div className="wpss-reading__group-controls">
+                <select
+                  value={readingInstrument}
+                  onChange={(event) =>
+                    dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
+                  }
+                >
+                  <option value="guitar">Guitarra</option>
+                  <option value="piano">Piano</option>
+                </select>
+              </div>
+            </div>
+            <div className="wpss-reading__group wpss-reading__group--actions">
+              <span className="wpss-reading__group-label">Acciones</span>
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={handlePlayAll}
+                >
+                  {activePlaybackKey === 'all' ? 'Detener reproducción' : 'Reproducir todo'}
                 </button>
-              ) : null}
+                {onEdit ? (
+                  <button type="button" className="button button-secondary" onClick={onEdit}>
+                    {wpData?.strings?.editorView || 'Editar'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    if (onExit) {
+                      onExit()
+                    } else {
+                      dispatch({ type: 'SET_STATE', payload: { activeTab: 'editor' } })
+                    }
+                  }}
+                >
+                  {exitLabel || wpData?.strings?.readingExit || 'Salir'}
+                </button>
+                {onShowList ? (
+                  <button type="button" className="button button-secondary" onClick={onShowList}>
+                    Ver canciones
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
       </div>
-      <div className="wpss-reading__sections">
-        {!hasVerses ? (
-          <p className="wpss-empty">{wpData?.strings?.readingEmpty || 'Sin contenido para mostrar.'}</p>
-        ) : (
-          groups.map((group, index) => {
-            const heading = group.variant ? `${group.title} (${group.variant})` : group.title
+      <div className="wpss-reading__content-actions">
+        {!isCompactViewport ? (
+          <button
+            type="button"
+            className={`button button-secondary ${isDoubleColumn ? 'is-active' : ''}`}
+            onClick={() =>
+              dispatch({ type: 'SET_STATE', payload: { readingDoubleColumn: !state.readingDoubleColumn } })
+            }
+          >
+            {isDoubleColumn ? 'Ver en 1 columna' : 'Ver en 2 columnas'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="button button-secondary wpss-reading__print-button"
+          onClick={handlePrint}
+        >
+          <PrintIcon />
+          <span>Imprimir lectura</span>
+        </button>
+        <div className="wpss-reading__zoom-controls" role="group" aria-label="Zoom de lectura">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => handleZoomStep(-1)}
+            disabled={!canZoomOut}
+            aria-label="Alejar vista"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            className="button button-secondary wpss-reading__zoom-reset"
+            onClick={() => handleZoomChange(100)}
+            disabled={readingZoom === 100}
+            aria-label="Restablecer zoom"
+          >
+            {`${readingZoom}%`}
+          </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => handleZoomStep(1)}
+            disabled={!canZoomIn}
+            aria-label="Acercar vista"
+          >
+            +
+          </button>
+        </div>
+      </div>
+      <div className="wpss-reading__sections-frame">
+        {sectionNavItems.length ? (
+          <div className="wpss-reading__section-strip-shell">
+            <nav
+              id="wpss-reading-section-strip"
+              className="wpss-reading__section-strip"
+              aria-label="Navegación de secciones"
+            >
+              {sectionNavItems.map((item) => (
+                <button
+                  key={`jump-section-${item.index}`}
+                  type="button"
+                  className={`button button-secondary wpss-reading__section-pill ${
+                    currentSectionIndex === item.index ? 'is-active' : ''
+                  }`}
+                  onClick={() => handleSectionJump(item.index)}
+                  aria-controls={`wpss-reading-section-${item.index}`}
+                >
+                  <span>{item.label}</span>
+                  {item.repeat > 1 ? (
+                    <span className="wpss-reading__section-pill-repeat">{`x${item.repeat}`}</span>
+                  ) : null}
+                </button>
+              ))}
+            </nav>
+          </div>
+        ) : null}
+        <div className="wpss-reading__sections-scroll" ref={sectionsScrollRef}>
+          <div
+            className={`wpss-reading__sections ${isDoubleColumn ? 'is-double-column' : ''} ${
+              isCompactViewport ? 'is-mobile-scale' : ''
+            }`}
+            style={{ '--wpss-reading-zoom': zoomFactor }}
+          >
+            {!hasVerses ? (
+              <p className="wpss-empty">{wpData?.strings?.readingEmpty || 'Sin contenido para mostrar.'}</p>
+            ) : (
+              groups.map((group, index) => {
+            const heading = getGroupHeading(group, index)
             const canPlaySection = showMidi && hasMidiInGroup(group)
             const sectionNotes = Array.isArray(group.section?.comentarios) ? group.section.comentarios : []
             return (
               <details
                 key={`reading-${index}`}
+                id={`wpss-reading-section-${index}`}
                 className={`wpss-reading__section ${
                   activePlaybackMeta?.sectionIndex === index ? 'is-playing' : ''
-                }`}
+                } ${currentSectionIndex === index ? 'is-current' : ''}`}
+                onClick={() => setActiveSectionIndex(index)}
+                ref={(node) => {
+                  if (node) {
+                    sectionRefs.current.set(index, node)
+                    return
+                  }
+                  sectionRefs.current.delete(index)
+                }}
                 open
               >
                 <summary className="wpss-reading__section-summary">
@@ -359,6 +767,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                                     chordLookup={chordLookup}
                                     chordInstrument={readingInstrument}
                                     camposLookup={camposLookup}
+                                    transposeSemitones={transposeSemitones}
                                   />
                                 ))
                               : null}
@@ -369,9 +778,11 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   </SectionNotes>
                 </div>
               </details>
-            )
-          })
-        )}
+              )
+            })
+          )}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -392,10 +803,11 @@ function ReadingVerse({
   chordLookup,
   chordInstrument,
   camposLookup,
+  transposeSemitones,
 }) {
   const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
   const instrumental = verse.instrumental ? <span className="wpss-reading__instrumental">Instrumental</span> : null
-  const evento = renderEventoChip(verse.evento_armonico, segmentos.length)
+  const evento = renderEventoChip(verse.evento_armonico, segmentos.length, transposeSemitones)
   const comentario = verse.comentario ? <span className="wpss-reading__comment">{verse.comentario}</span> : null
   const metaContent = [instrumental, evento, comentario].filter(Boolean)
   const meta = metaContent.length ? <div className="wpss-reading__meta">{metaContent}</div> : null
@@ -426,10 +838,12 @@ function ReadingVerse({
       const holdToken = String(chordToken || '').trim().toLowerCase()
       const isNullHold = holdToken === 'null'
       const isStillHold = holdToken === 'still'
-      const acordeValue = getChordDisplayValue(chordToken)
+      const acordeBase = getChordDisplayValue(chordToken)
+      const acordeValue = transposeChordSymbol(acordeBase, transposeSemitones)
       const isHoldChord = isHoldChordToken(chordToken)
       const chordLabel = isNullHold ? '[Silencio]' : isStillHold ? '' : acordeValue ? `[${acordeValue}]` : ''
       const chordLookupToken = acordeValue || ''
+      const chordSourceToken = acordeBase || ''
       const texto = segmento.texto || ''
       const textPlain = stripHtml(texto)
       const classes = ['wpss-reading__segment']
@@ -461,6 +875,7 @@ function ReadingVerse({
         classes: classes.join(' '),
         chordLabel,
         chordLookupToken,
+        chordSourceToken,
         isHoldChord,
         texto,
         textPlain,
@@ -478,33 +893,35 @@ function ReadingVerse({
           className={`wpss-reading__verse-body ${isVerseNoteActive ? 'is-note-active' : ''}`}
           style={isVerseNoteActive ? { '--note-color': verseNoteColor } : undefined}
         >
-          <pre className="wpss-reading__stack">
-            <span className="wpss-reading__stack-chords">
-              {cells.map((cell) => (
-                <span
-                  key={`chord-${cell.key}`}
-                  className={cell.classes}
-                  style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
-                >
-                  {renderChordLabel(cell, chordLookup, chordInstrument, camposLookup, true)}
-                  {cell.chordSpacer ? <span className="wpss-reading__stack-spacer">{cell.chordSpacer}</span> : null}
-                </span>
-              ))}
-            </span>
-            {'\n'}
-            <span className="wpss-reading__stack-lyrics">
-              {cells.map((cell) => (
-                <span
-                  key={`lyric-${cell.key}`}
-                  className={cell.classes}
-                  style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
-                >
-                  {cell.textPlain}
-                  {cell.textSpacer ? <span className="wpss-reading__stack-spacer">{cell.textSpacer}</span> : null}
-                </span>
-              ))}
-            </span>
-          </pre>
+          <div className="wpss-reading__stack-shell">
+            <pre className="wpss-reading__stack">
+              <span className="wpss-reading__stack-chords">
+                {cells.map((cell) => (
+                  <span
+                    key={`chord-${cell.key}`}
+                    className={cell.classes}
+                    style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
+                  >
+                    {renderChordLabel(cell, chordLookup, chordInstrument, camposLookup, true)}
+                    {cell.chordSpacer ? <span className="wpss-reading__stack-spacer">{cell.chordSpacer}</span> : null}
+                  </span>
+                ))}
+              </span>
+              {'\n'}
+              <span className="wpss-reading__stack-lyrics">
+                {cells.map((cell) => (
+                  <span
+                    key={`lyric-${cell.key}`}
+                    className={cell.classes}
+                    style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
+                  >
+                    {cell.textPlain}
+                    {cell.textSpacer ? <span className="wpss-reading__stack-spacer">{cell.textSpacer}</span> : null}
+                  </span>
+                ))}
+              </span>
+            </pre>
+          </div>
           {meta}
           {verseMidi}
           {segmentMidis}
@@ -540,6 +957,16 @@ function ReadingVerse({
   )
 }
 
+function resolveChordForTooltip(part, chordLookup) {
+  if (!part || !chordLookup) {
+    return null
+  }
+  return (
+    getChordFromLookup(part.chordLookupToken, chordLookup)
+    || getChordFromLookup(part.chordSourceToken, chordLookup)
+  )
+}
+
 function renderChordLabel(part, chordLookup, chordInstrument, camposLookup, isStacked) {
   if (!part?.chordLabel) {
     return null
@@ -554,8 +981,8 @@ function renderChordLabel(part, chordLookup, chordInstrument, camposLookup, isSt
   }
   return (
     <ChordHover
-      label={part.chordLabel}
-      chord={getChordFromLookup(part.chordLookupToken, chordLookup)}
+      label={part?.chordLabel}
+      chord={resolveChordForTooltip(part, chordLookup)}
       instrument={chordInstrument}
       camposLookup={camposLookup}
       className={className}
@@ -599,6 +1026,24 @@ function ChordHover({ label, chord, instrument, camposLookup, className = '' }) 
       {label}
       {tooltip}
     </span>
+  )
+}
+
+function PrintIcon() {
+  return (
+    <svg
+      className="wpss-reading__print-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M6 7V3h12v4h-2V5H8v2H6zm1 3h10a3 3 0 0 1 3 3v5h-3v3H7v-3H4v-5a3 3 0 0 1 3-3zm2 9h6v-4H9v4zm9-3v-3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v3h1v-3h10v3h1z"
+      />
+    </svg>
   )
 }
 
@@ -948,7 +1393,7 @@ function NoteCard({ note }) {
   )
 }
 
-function renderEventoChip(evento, segmentCount) {
+function renderEventoChip(evento, segmentCount, transposeSemitones = 0) {
   if (!evento || !evento.tipo) {
     return null
   }
@@ -962,7 +1407,12 @@ function renderEventoChip(evento, segmentCount) {
   }
 
   if (evento.tipo === 'modulacion') {
-    const destino = [evento.tonica_destino || '', evento.campo_armonico_destino || ''].filter(Boolean).join(' ')
+    const destino = [
+      evento.tonica_destino ? transposeChordSymbol(evento.tonica_destino, transposeSemitones) : '',
+      evento.campo_armonico_destino || '',
+    ]
+      .filter(Boolean)
+      .join(' ')
     return (
       <span className="wpss-event-chip">
         {`Modulación → ${destino || '—'}`} {segmentBadge}
@@ -971,7 +1421,12 @@ function renderEventoChip(evento, segmentCount) {
   }
 
   if (evento.tipo === 'prestamo') {
-    const origen = [evento.tonica_origen || '', evento.campo_armonico_origen || ''].filter(Boolean).join(' ')
+    const origen = [
+      evento.tonica_origen ? transposeChordSymbol(evento.tonica_origen, transposeSemitones) : '',
+      evento.campo_armonico_origen || '',
+    ]
+      .filter(Boolean)
+      .join(' ')
     return (
       <span className="wpss-event-chip">
         {`Préstamo ← ${origen || '—'}`} {segmentBadge}
@@ -980,6 +1435,14 @@ function renderEventoChip(evento, segmentCount) {
   }
 
   return null
+}
+
+function getGroupHeading(group, index) {
+  if (!group) {
+    return getDefaultSectionName(index)
+  }
+  const base = group.title || group.section?.nombre || getDefaultSectionName(index)
+  return group.variant ? `${base} (${group.variant})` : base
 }
 
 function groupVersesBySection(song) {

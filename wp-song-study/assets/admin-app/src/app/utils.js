@@ -146,6 +146,112 @@ export function endsWithJoiner(text) {
 
 const HOLD_CHORD_TOKENS = new Set(['null', 'still'])
 
+const NOTE_TO_SEMITONE = {
+  C: 0,
+  'B#': 0,
+  'C#': 1,
+  Db: 1,
+  D: 2,
+  'D#': 3,
+  Eb: 3,
+  E: 4,
+  Fb: 4,
+  F: 5,
+  'E#': 5,
+  'F#': 6,
+  Gb: 6,
+  G: 7,
+  'G#': 8,
+  Ab: 8,
+  A: 9,
+  'A#': 10,
+  Bb: 10,
+  B: 11,
+  Cb: 11,
+}
+
+const SEMITONE_TO_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+const SEMITONE_TO_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
+
+function normalizePitchToken(value) {
+  if (!value) {
+    return ''
+  }
+  const raw = String(value).trim()
+  const match = raw.match(/^([A-Ga-g])([#b♯♭]?)$/)
+  if (!match) {
+    return ''
+  }
+
+  const letter = match[1].toUpperCase()
+  const accidentalRaw = match[2]
+  let accidental = ''
+  if (accidentalRaw === '#' || accidentalRaw === '♯') {
+    accidental = '#'
+  } else if (accidentalRaw === 'b' || accidentalRaw === '♭') {
+    accidental = 'b'
+  }
+
+  return `${letter}${accidental}`
+}
+
+function normalizeSemitoneShift(value) {
+  if (Number.isInteger(value)) {
+    return value
+  }
+  const parsed = parseInt(value, 10)
+  return Number.isInteger(parsed) ? parsed : 0
+}
+
+function preferFlatsFromToken(value, fallback = false) {
+  const normalized = normalizePitchToken(value)
+  if (!normalized) {
+    return fallback
+  }
+  if (normalized.includes('b')) {
+    return true
+  }
+  if (normalized.includes('#')) {
+    return false
+  }
+  return fallback
+}
+
+function transposePitchTokenPreservingCase(value, semitoneShift = 0, preferFlats = false) {
+  const raw = String(value || '')
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return raw
+  }
+  const next = transposePitchToken(trimmed, semitoneShift, preferFlats)
+  if (!next) {
+    return raw
+  }
+  const preserveLowercase = /^[a-g]/.test(trimmed)
+  const display = preserveLowercase ? next.toLowerCase() : next
+  return raw.replace(trimmed, display)
+}
+
+function splitHyphenSequence(value) {
+  const parts = String(value).split(/(\s*-\s*)/)
+  if (parts.length < 3) {
+    return null
+  }
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]
+    if (index % 2 === 1) {
+      if (!part.includes('-')) {
+        return null
+      }
+      continue
+    }
+    if (!normalizePitchToken(part.trim())) {
+      return null
+    }
+  }
+  return parts
+}
+
 export function isHoldChordToken(value) {
   if (!value) {
     return false
@@ -159,6 +265,89 @@ export function getChordDisplayValue(value) {
     return ''
   }
   return isHoldChordToken(value) ? '' : String(value)
+}
+
+export function transposePitchToken(value, semitoneShift = 0, preferFlats = false) {
+  const normalized = normalizePitchToken(value)
+  if (!normalized) {
+    return ''
+  }
+
+  const semitone = NOTE_TO_SEMITONE[normalized]
+  if (!Number.isInteger(semitone)) {
+    return ''
+  }
+
+  const shift = normalizeSemitoneShift(semitoneShift)
+  if (!shift) {
+    return normalized
+  }
+
+  const target = ((semitone + shift) % 12 + 12) % 12
+  const notes = preferFlats ? SEMITONE_TO_FLAT : SEMITONE_TO_SHARP
+  return notes[target]
+}
+
+export function transposeChordSymbol(value, semitoneShift = 0) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  const source = String(value).trim()
+  if (!source) {
+    return ''
+  }
+
+  if (isHoldChordToken(source)) {
+    return source
+  }
+
+  const shift = normalizeSemitoneShift(semitoneShift)
+  if (!shift) {
+    return source
+  }
+
+  const polyChordParts = source.split(/(\s*\+\s*)/)
+  if (polyChordParts.length > 1) {
+    return polyChordParts
+      .map((part, index) => (index % 2 === 1 ? part : transposeChordSymbol(part, shift)))
+      .join('')
+  }
+
+  const hyphenSequenceParts = splitHyphenSequence(source)
+  if (hyphenSequenceParts) {
+    return hyphenSequenceParts
+      .map((part, index) => {
+        if (index % 2 === 1) {
+          return part
+        }
+        const token = part.trim()
+        const preferFlats = preferFlatsFromToken(token)
+        return transposePitchTokenPreservingCase(part, shift, preferFlats)
+      })
+      .join('')
+  }
+
+  const rootMatch = source.match(/^([A-Ga-g](?:[#b♯♭])?)/)
+  if (!rootMatch) {
+    return source
+  }
+
+  const rootToken = rootMatch[1]
+  const preferFlats = preferFlatsFromToken(rootToken)
+  const transposedRoot = transposePitchToken(rootToken, shift, preferFlats)
+  if (!transposedRoot) {
+    return source
+  }
+
+  let transposed = `${transposedRoot}${source.slice(rootToken.length)}`
+  transposed = transposed.replace(/\/([A-Ga-g](?:[#b♯♭])?)/g, (match, bassToken) => {
+    const bassFlats = preferFlatsFromToken(bassToken, preferFlats)
+    const transposedBass = transposePitchToken(bassToken, shift, bassFlats)
+    return transposedBass ? `/${transposedBass}` : match
+  })
+
+  return transposed
 }
 
 export function normalizeChordToken(value) {

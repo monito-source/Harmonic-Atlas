@@ -1,15 +1,20 @@
 <?php
 // Estilos del tema + fuentes
 function laboratorio_enqueue_styles() {
+    $theme = wp_get_theme();
+    $style_path = get_stylesheet_directory() . '/style.css';
+    $style_version = file_exists( $style_path ) ? (string) filemtime( $style_path ) : $theme->get( 'Version' );
+
     // Fuente: Libre Baskerville
     wp_enqueue_style(
         'laboratorio-fonts',
         'https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap',
-        false
+        [],
+        null
     );
 
     // Tu estilo principal
-    wp_enqueue_style('laboratorio-style', get_stylesheet_uri());
+    wp_enqueue_style( 'laboratorio-style', get_stylesheet_uri(), [ 'laboratorio-fonts' ], $style_version );
 }
 add_action('wp_enqueue_scripts', 'laboratorio_enqueue_styles');
 

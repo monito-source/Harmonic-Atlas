@@ -2,7 +2,7 @@
 <html <?php language_attributes(); ?>>
 <head>
   <meta charset="<?php bloginfo('charset'); ?>">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.5, maximum-scale=5, user-scalable=yes">
   <?php wp_head(); ?>
 </head>
 <body <?php body_class(); ?>>
@@ -21,12 +21,22 @@
 
       <!-- Menú de navegación -->
       <?php if ( has_nav_menu( 'menu_principal' ) ) : ?>
+        <button
+          class="menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="main-navigation"
+        >
+          <?php esc_html_e( 'Menú', 'laboratorio-digital' ); ?>
+        </button>
         <?php
           wp_nav_menu([
             'theme_location'  => 'menu_principal',
             'container'       => 'nav',
+            'container_id'    => 'main-navigation',
             'container_class' => 'main-navigation',
             'menu_class'      => 'menu',
+            'menu_id'         => 'primary-menu',
           ]);
         ?>
       <?php endif; ?>

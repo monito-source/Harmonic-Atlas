@@ -4,7 +4,7 @@
  */
 get_header(); ?>
 
-<main class="curso-editor" style="max-width: 90%; margin: auto; padding: 2rem;">
+<main class="curso-editor">
   <h1>Editor de sesiones del curso</h1>
 
   <?php
@@ -21,10 +21,10 @@ get_header(); ?>
       ?>
       <div class="bloque-sesion-editable" data-id="<?php echo $sesion->ID; ?>">
         <label><strong>Título:</strong></label><br>
-        <input type="text" class="titulo" value="<?php echo esc_attr($sesion->post_title); ?>" style="width:100%; margin-bottom:1rem;"><br>
+        <input type="text" class="titulo" value="<?php echo esc_attr($sesion->post_title); ?>"><br>
 
         <label><strong>Objetivo:</strong></label><br>
-        <textarea class="objetivo" style="width:100%; height:100px;"><?php echo esc_textarea($objetivo); ?></textarea><br>
+        <textarea class="objetivo"><?php echo esc_textarea($objetivo); ?></textarea><br>
 
         <button class="guardar-btn">💾 Guardar cambios</button>
         <hr>
@@ -34,8 +34,8 @@ get_header(); ?>
 
   <h2>➕ Agregar nueva sesión</h2>
   <div id="nueva-sesion-form" data-curso-id="<?php echo $curso_id; ?>">
-    <input type="text" id="nuevo-titulo" placeholder="Título" style="width:100%;"><br>
-    <textarea id="nuevo-objetivo" placeholder="Objetivo" style="width:100%; height:100px;"></textarea><br>
+    <input type="text" id="nuevo-titulo" placeholder="Título"><br>
+    <textarea id="nuevo-objetivo" placeholder="Objetivo"></textarea><br>
     <button id="crear-sesion">Crear nueva sesión</button>
   </div>
 </main>

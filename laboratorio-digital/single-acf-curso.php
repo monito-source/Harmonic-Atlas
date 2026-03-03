@@ -1,10 +1,10 @@
 <?php get_header(); ?>
 
-<main class="curso-container" style="max-width: 90%; margin: auto; padding: 2rem;">
+<main class="curso-container">
   <?php if ( have_posts() ) : the_post(); ?>
     <h1><?php the_title(); ?></h1>
 
-    <div class="curso-descripcion" style="margin-bottom: 2rem;">
+    <div class="curso-descripcion">
       <?php the_field('detalles_del_curso_descripcion_del_curso_'); ?>
     </div>
 

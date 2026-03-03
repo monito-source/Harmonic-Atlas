@@ -143,7 +143,9 @@ export function buildInitialState(wpData, view = 'dashboard') {
     readingMode: 'stacked',
     readingFollowStructure: false,
     readingShowNotes: true,
+    readingDoubleColumn: false,
     readingInstrument: 'guitar',
+    readingTransposeTarget: 'concert',
     readingQueue: {
       ids: [],
       index: 0,

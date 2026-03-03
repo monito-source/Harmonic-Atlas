@@ -42,6 +42,39 @@
     // Estado inicial (por si recargas a media página)
     update();
   })();
+
+  (function () {
+    const toggle = document.querySelector('.menu-toggle');
+    const nav = document.querySelector('.main-navigation');
+    const MOBILE_MENU_QUERY = '(max-width: 1024px), (hover: none) and (pointer: coarse)';
+    const isMobileMenuViewport = () => window.matchMedia(MOBILE_MENU_QUERY).matches;
+
+    if (!toggle || !nav) return;
+
+    const setOpen = (open) => {
+      nav.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', function () {
+      const isOpen = nav.classList.contains('is-open');
+      setOpen(!isOpen);
+    });
+
+    nav.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', function () {
+        if (isMobileMenuViewport()) {
+          setOpen(false);
+        }
+      });
+    });
+
+    window.addEventListener('resize', function () {
+      if (!isMobileMenuViewport()) {
+        setOpen(false);
+      }
+    });
+  })();
 </script>
 
 </body>
