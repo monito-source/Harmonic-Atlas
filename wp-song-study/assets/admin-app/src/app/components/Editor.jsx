@@ -21,6 +21,42 @@ import CommentEditor from './CommentEditor.jsx'
 import MidiClipList from './MidiClipList.jsx'
 
 const AUTOSAVE_DELAY = 800
+const MOBILE_EDITOR_PREVIEW_QUERY = '(max-width: 840px)'
+const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
+
+const getNearestPreviewScaleIndex = (value) => {
+  if (!Number.isFinite(value)) {
+    return PREVIEW_SCALE_LEVELS.length - 1
+  }
+  let nearestIndex = 0
+  let nearestDistance = Number.POSITIVE_INFINITY
+  PREVIEW_SCALE_LEVELS.forEach((level, index) => {
+    const distance = Math.abs(level - value)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestIndex = index
+    }
+  })
+  return nearestIndex
+}
+
+const isCompactEditorPreviewViewport = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false
+  }
+  return window.matchMedia(MOBILE_EDITOR_PREVIEW_QUERY).matches
+}
+
+const getTouchDistance = (touches) => {
+  if (!touches || touches.length < 2) {
+    return 0
+  }
+  const first = touches[0]
+  const second = touches[1]
+  const deltaX = second.clientX - first.clientX
+  const deltaY = second.clientY - first.clientY
+  return Math.hypot(deltaX, deltaY)
+}
 
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
@@ -28,6 +64,7 @@ export default function Editor({ onShowList }) {
   const [selectedSectionId, setSelectedSectionId] = useState(() => state.ui?.selectedSectionId ?? null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [previewScale, setPreviewScale] = useState(100)
+  const [isCompactPreviewViewport, setIsCompactPreviewViewport] = useState(() => isCompactEditorPreviewViewport())
   const [previewRatio, setPreviewRatio] = useState(35)
   const [isResizingPreview, setIsResizingPreview] = useState(false)
   const [selectedVerseIndexes, setSelectedVerseIndexes] = useState(() => new Set())
@@ -42,9 +79,13 @@ export default function Editor({ onShowList }) {
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
+  const previewScrollRef = useRef(null)
+  const previewSectionRefs = useRef(new Map())
   const autosaveRef = useRef(null)
   const selectionRef = useRef({ verse: null, segment: null, start: null, end: null, element: null })
   const lastSilentErrorRef = useRef(null)
+  const previewScaleRef = useRef(previewScale)
+  const previewPinchRef = useRef({ active: false, startDistance: 0, startScale: 100 })
   const isAdmin = !!wpData?.isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const preferCompactMidiRows = !!wpData?.isPublicReader
@@ -82,6 +123,31 @@ export default function Editor({ onShowList }) {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined
+    }
+    const mediaQuery = window.matchMedia(MOBILE_EDITOR_PREVIEW_QUERY)
+    const syncViewport = (isCompact) => {
+      setIsCompactPreviewViewport(isCompact)
+      if (!isCompact) {
+        setPreviewScale(100)
+      }
+    }
+    syncViewport(mediaQuery.matches)
+    const onChange = (event) => syncViewport(!!event?.matches)
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', onChange)
+      return () => mediaQuery.removeEventListener('change', onChange)
+    }
+    mediaQuery.addListener(onChange)
+    return () => mediaQuery.removeListener(onChange)
+  }, [])
+
+  useEffect(() => {
+    previewScaleRef.current = previewScale
+  }, [previewScale])
 
   useEffect(() => {
     const secciones = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
@@ -657,6 +723,7 @@ export default function Editor({ onShowList }) {
       )
       return next
     })
+    scrollPreviewToSection(id)
   }
 
   const getActiveSectionId = () => {
@@ -797,6 +864,58 @@ export default function Editor({ onShowList }) {
 
   const clampPreviewRatio = (value) => Math.min(Math.max(value, 20), 50)
   const clampSidebarWidth = (value) => Math.min(Math.max(value, 120), 320)
+  const clampPreviewScale = (value) =>
+    Math.min(Math.max(value, PREVIEW_SCALE_LEVELS[0]), PREVIEW_SCALE_LEVELS[PREVIEW_SCALE_LEVELS.length - 1])
+  const previewScaleIndex = getNearestPreviewScaleIndex(previewScale)
+  const canPreviewZoomOut = previewScaleIndex > 0
+  const canPreviewZoomIn = previewScaleIndex < PREVIEW_SCALE_LEVELS.length - 1
+  const handlePreviewScaleStep = (direction) => {
+    const nextIndex = Math.min(
+      PREVIEW_SCALE_LEVELS.length - 1,
+      Math.max(0, previewScaleIndex + direction),
+    )
+    setPreviewScale(PREVIEW_SCALE_LEVELS[nextIndex])
+  }
+  const scrollPreviewToSection = useCallback((sectionId, behavior = 'smooth') => {
+    if (!sectionId) {
+      return
+    }
+
+    const shell = previewScrollRef.current
+    const target = previewSectionRefs.current.get(sectionId)
+    if (!shell || !target || typeof shell.scrollTo !== 'function') {
+      return
+    }
+
+    const alignToTarget = (scrollBehavior = behavior) => {
+      const shellRect = shell.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const maxTop = Math.max(shell.scrollHeight - shell.clientHeight, 0)
+      const maxLeft = Math.max(shell.scrollWidth - shell.clientWidth, 0)
+      const nextTop = Math.min(Math.max(shell.scrollTop + (targetRect.top - shellRect.top) - 8, 0), maxTop)
+      const nextLeft = Math.min(Math.max(shell.scrollLeft + (targetRect.left - shellRect.left) - 8, 0), maxLeft)
+      shell.scrollTo({ top: nextTop, left: nextLeft, behavior: scrollBehavior })
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => alignToTarget(behavior))
+      window.setTimeout(() => alignToTarget('auto'), 260)
+      return
+    }
+
+    alignToTarget(behavior)
+  }, [])
+  const editorGridTemplateColumns = isCompactPreviewViewport
+    ? 'minmax(0, 1fr)'
+    : isFocusWork && !useMasterPreview
+      ? `minmax(520px, ${100 - previewRatio}fr) 8px minmax(320px, ${previewRatio}fr)`
+      : `${
+          isSidebarCollapsed
+            ? '32px'
+            : sidebarWidth
+              ? `${sidebarWidth}px`
+              : 'max-content'
+        } 8px minmax(360px, 1fr)`
 
   useEffect(() => {
     if (!isResizingPreview) {
@@ -832,6 +951,65 @@ export default function Editor({ onShowList }) {
       window.removeEventListener('pointerup', handleUp)
     }
   }, [isResizingPreview])
+
+  useEffect(() => {
+    if (!isCompactPreviewViewport) {
+      return undefined
+    }
+    const node = previewScrollRef.current
+    if (!node || typeof node.addEventListener !== 'function') {
+      return undefined
+    }
+
+    const pinch = previewPinchRef.current
+    const finishPinch = () => {
+      if (!pinch.active) {
+        return
+      }
+      pinch.active = false
+      pinch.startDistance = 0
+      pinch.startScale = previewScaleRef.current
+      setPreviewScale((current) => PREVIEW_SCALE_LEVELS[getNearestPreviewScaleIndex(current)])
+    }
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length !== 2) {
+        return
+      }
+      const distance = getTouchDistance(event.touches)
+      if (!distance) {
+        return
+      }
+      pinch.active = true
+      pinch.startDistance = distance
+      pinch.startScale = previewScaleRef.current
+    }
+
+    const handleTouchMove = (event) => {
+      if (!pinch.active || event.touches.length !== 2) {
+        return
+      }
+      const distance = getTouchDistance(event.touches)
+      if (!distance || !pinch.startDistance) {
+        return
+      }
+      const scaled = pinch.startScale * (distance / pinch.startDistance)
+      setPreviewScale(clampPreviewScale(Math.round(scaled)))
+      event.preventDefault()
+    }
+
+    node.addEventListener('touchstart', handleTouchStart, { passive: false })
+    node.addEventListener('touchmove', handleTouchMove, { passive: false })
+    node.addEventListener('touchend', finishPinch)
+    node.addEventListener('touchcancel', finishPinch)
+
+    return () => {
+      node.removeEventListener('touchstart', handleTouchStart)
+      node.removeEventListener('touchmove', handleTouchMove)
+      node.removeEventListener('touchend', finishPinch)
+      node.removeEventListener('touchcancel', finishPinch)
+    }
+  }, [isCompactPreviewViewport])
 
   useEffect(() => {
     if (!isResizingSidebar) {
@@ -1445,15 +1623,7 @@ export default function Editor({ onShowList }) {
             ref={layoutRef}
             className={`wpss-editor-layout ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}
             style={{
-              gridTemplateColumns: isFocusWork && !useMasterPreview
-                ? `minmax(520px, ${100 - previewRatio}fr) 8px minmax(320px, ${previewRatio}fr)`
-                : `${
-                    isSidebarCollapsed
-                      ? '32px'
-                      : sidebarWidth
-                        ? `${sidebarWidth}px`
-                        : 'max-content'
-                    } 8px minmax(360px, 1fr)`,
+              gridTemplateColumns: editorGridTemplateColumns,
             }}
           >
             {!isFocusWork || useMasterPreview ? (
@@ -1978,6 +2148,34 @@ export default function Editor({ onShowList }) {
                     <span>
                       {useMasterPreview ? 'Todas las secciones' : isFocusWork ? activeSection?.nombre || getDefaultSectionName(0) : 'Todas las secciones'}
                     </span>
+                    {isCompactPreviewViewport ? (
+                      <div className="wpss-preview-zoom-controls" role="group" aria-label="Zoom de vista previa">
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onClick={() => handlePreviewScaleStep(-1)}
+                          disabled={!canPreviewZoomOut}
+                        >
+                          -
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small wpss-preview-zoom-reset"
+                          onClick={() => setPreviewScale(100)}
+                          disabled={previewScale === 100}
+                        >
+                          {`${previewScale}%`}
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onClick={() => handlePreviewScaleStep(1)}
+                          disabled={!canPreviewZoomIn}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : null}
                     {useMasterPreview ? (
                       <button type="button" className="button button-small" onClick={clearVerseSelection}>
                         Plegar todo
@@ -1985,9 +2183,13 @@ export default function Editor({ onShowList }) {
                     ) : null}
                   </div>
                 </div>
-                <div className="wpss-section-preview__all wpss-section-preview__all--interactive">
-                  {sectionsList.length ? (
-                    sectionsList.map((section, index) => {
+                <div ref={previewScrollRef} className="wpss-section-preview__scroll-shell">
+                  <div
+                    className="wpss-section-preview__all wpss-section-preview__all--interactive"
+                    style={{ '--wpss-preview-scale': previewScale / 100 }}
+                  >
+                    {sectionsList.length ? (
+                      sectionsList.map((section, index) => {
                       const verses = versesBySection.get(section.id) || []
                       const isActiveSection = section.id === activeSectionId
                       const isExpandedSection = expandedSectionId === section.id
@@ -1995,6 +2197,13 @@ export default function Editor({ onShowList }) {
                         <div
                           key={`preview-section-${section.id}`}
                           className={`wpss-section-preview__group ${isActiveSection ? 'is-active' : ''}`}
+                          ref={(node) => {
+                            if (node) {
+                              previewSectionRefs.current.set(section.id, node)
+                            } else {
+                              previewSectionRefs.current.delete(section.id)
+                            }
+                          }}
                         >
                           <button
                             type="button"
@@ -2162,19 +2371,20 @@ export default function Editor({ onShowList }) {
                           )}
                         </div>
                       )
-                    })
-                  ) : (
-                    <div className="wpss-section-preview__empty">
-                      <p className="wpss-empty">Sin secciones.</p>
-                      <button
-                        type="button"
-                        className="button button-secondary"
-                        onClick={handleAddSection}
-                      >
-                        Añadir sección
-                      </button>
-                    </div>
-                  )}
+                      })
+                    ) : (
+                      <div className="wpss-section-preview__empty">
+                        <p className="wpss-empty">Sin secciones.</p>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          onClick={handleAddSection}
+                        >
+                          Añadir sección
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </aside>

@@ -384,6 +384,21 @@ export default function VersesPanel({
     })
   }
 
+  const handleSegmentChordBlur = (verseIndex, segmentIndex, value) => {
+    const normalized = value ? String(value).trim() : ''
+    handleSegmentChange(verseIndex, segmentIndex, 'acorde', normalized || '?')
+  }
+
+  const handleSegmentTextBlur = (verseIndex, segmentIndex, html, element) => {
+    const normalizedHtml = normalizeSegmentHtml(html)
+    const normalizedText = stripHtml(normalizedHtml).trim()
+    const nextValue = normalizedText ? normalizedHtml : '...'
+    if (element && element.innerHTML !== nextValue) {
+      element.innerHTML = nextValue
+    }
+    handleSegmentChange(verseIndex, segmentIndex, 'texto', nextValue)
+  }
+
   const handleSegmentMidiChange = (verseIndex, segmentIndex, clips) => {
     updateVerse(verseIndex, (verse) => {
       const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
@@ -630,11 +645,11 @@ export default function VersesPanel({
     return segmentos
       .map((segment) => {
         const texto = segment.texto ? stripHtml(String(segment.texto)).trim() : ''
-        const acorde = getChordDisplayValue(segment.acorde ? String(segment.acorde).trim() : '')
-        if (texto && acorde) {
-          return `${texto} ${acorde}`
-        }
-        return texto || acorde || ''
+        const acordeValue = getChordDisplayValue(segment.acorde ? String(segment.acorde) : '')
+        const acorde = acordeValue ? String(acordeValue).trim() : ''
+        const textoLabel = texto || '...'
+        const acordeLabel = acorde || '?'
+        return `${textoLabel} ${acordeLabel}`
       })
       .filter(Boolean)
       .join(' ')
@@ -965,6 +980,8 @@ export default function VersesPanel({
                         const isEventTarget = segmentTarget !== null && segmentTarget === segmentIndex
                         const isEditingSegment =
                           selection.verseIndex === verseIndex && selection.segmentIndex === segmentIndex
+                        const chordValue = getChordDisplayValue(segment?.acorde ? String(segment.acorde) : '')
+                        const segmentChordLabel = (chordValue ? String(chordValue).trim() : '') || '?'
                         const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
@@ -1039,7 +1056,7 @@ export default function VersesPanel({
                                 }
                               }}
                             >
-                              <strong>{segment.acorde || '—'}</strong>
+                              <strong>{segmentChordLabel}</strong>
                               <span>{segmentPreviewText}</span>
                             </button>
                             <div className="wpss-segment__fields">
@@ -1050,6 +1067,9 @@ export default function VersesPanel({
                                   value={segment.acorde || ''}
                                   onChange={(event) =>
                                     handleSegmentChange(verseIndex, segmentIndex, 'acorde', event.target.value)
+                                  }
+                                  onBlur={(event) =>
+                                    handleSegmentChordBlur(verseIndex, segmentIndex, event.target.value)
                                   }
                                 />
                               </label>
@@ -1082,6 +1102,14 @@ export default function VersesPanel({
                                       segmentIndex,
                                       'texto',
                                       normalizeSegmentHtml(event.currentTarget.innerHTML),
+                                    )
+                                  }
+                                  onBlur={(event) =>
+                                    handleSegmentTextBlur(
+                                      verseIndex,
+                                      segmentIndex,
+                                      event.currentTarget.innerHTML,
+                                      event.currentTarget,
                                     )
                                   }
                                   onKeyDown={(event) => {

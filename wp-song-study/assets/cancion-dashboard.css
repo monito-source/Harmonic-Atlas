@@ -609,10 +609,15 @@
     max-height: calc(100vh - 260px);
 }
 
-.wpss-section-preview__all {
+.wpss-section-preview__scroll-shell {
     max-height: calc(100vh - 360px);
+    min-height: 0;
+    min-width: 0;
     overflow-y: auto;
+    overflow-x: auto;
     padding-right: 4px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .wpss-section-pill {
@@ -1042,6 +1047,28 @@
 .wpss-section-preview__all {
     display: grid;
     gap: 12px;
+    min-width: 100%;
+}
+
+.wpss-section-preview__all--interactive {
+    --wpss-preview-scale: 1;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    justify-self: start;
+    touch-action: pan-y;
+}
+
+.wpss-section-preview__all--interactive {
+    zoom: var(--wpss-preview-scale);
+}
+
+@supports not (zoom: 1) {
+    .wpss-section-preview__all--interactive {
+        transform: scale(var(--wpss-preview-scale));
+        transform-origin: top left;
+        width: calc(100% / var(--wpss-preview-scale));
+    }
 }
 
 .wpss-section-preview__group {
@@ -1120,6 +1147,14 @@
     gap: 8px;
 }
 
+.wpss-section-preview__all--interactive .wpss-preview-verse-list {
+    display: grid;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    justify-items: start;
+}
+
 .wpss-preview-verse-card {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
@@ -1131,6 +1166,11 @@
     transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, background 140ms ease;
     text-align: left;
     align-items: start;
+}
+
+.wpss-section-preview__all--interactive .wpss-preview-verse-card {
+    width: max-content;
+    max-width: none;
 }
 
 .wpss-preview-verse-card:hover {
@@ -1179,9 +1219,13 @@
 
 .wpss-preview-verse-card .wpss-verse-card-mini__stack {
     grid-column: auto;
-    width: 100%;
-    justify-self: stretch;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
+    justify-self: start;
     text-align: left;
+    white-space: pre;
+    overflow-wrap: normal;
 }
 
 .wpss-preview-segment-list {
@@ -1359,7 +1403,42 @@
 
 @media (max-width: 840px) {
     .wpss-editor-layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) !important;
+        width: 100% !important;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .wpss-editor-preview {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .wpss-editor-preview.is-sections .wpss-section-preview {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        justify-self: stretch;
+        box-sizing: border-box;
+        min-height: min(72vh, 680px);
+        padding: 10px;
+    }
+
+    .wpss-editor-preview.is-sections .wpss-section-preview__scroll-shell {
+        max-height: min(62vh, 580px);
+        min-height: 0;
+        padding-right: 0;
+    }
+
+    .wpss-section-preview__header {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .wpss-section-preview__header-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
     }
 }
 
@@ -1554,9 +1633,11 @@
     background: #f8fafc;
     padding: 14px;
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
     width: 100%;
     max-width: 100%;
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -1575,6 +1656,23 @@
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.wpss-preview-zoom-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.wpss-preview-zoom-controls .button {
+    min-width: 28px;
+    padding: 2px 6px;
+    line-height: 1.15;
+}
+
+.wpss-preview-zoom-reset {
+    min-width: 56px !important;
+    font-variant-numeric: tabular-nums;
 }
 
 .wpss-section-preview__body {
@@ -2203,7 +2301,17 @@
     margin-top: 6px;
 }
 
+.wpss-reading__header-controls {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+}
+
 .wpss-reading__actions-shell {
+    min-width: 0;
+}
+
+.wpss-reading__actions-persistent {
     min-width: 0;
 }
 
@@ -2313,10 +2421,12 @@
     position: relative;
     min-height: 0;
     overflow-y: auto;
-    overflow-x: visible;
+    overflow-x: hidden;
     padding-right: 4px;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-x: contain;
 }
 
 .wpss-reading__section-strip {
@@ -2744,6 +2854,10 @@
         background: #f8fafc;
     }
 
+    .wpss-reading__header-controls {
+        gap: 8px;
+    }
+
     .wpss-reading__actions {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
@@ -3034,6 +3148,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 
     body.wpss-print-mode .wpss-reading__settings-toggle,
     body.wpss-print-mode .wpss-reading__actions-shell,
+    body.wpss-print-mode .wpss-reading__actions-persistent,
     body.wpss-print-mode .wpss-reading__content-actions,
     body.wpss-print-mode .wpss-reading__section-strip-shell,
     body.wpss-print-mode .wpss-reading__section-strip,

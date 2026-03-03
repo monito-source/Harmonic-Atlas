@@ -48,6 +48,17 @@ const isCompactReadingViewport = () => {
   return window.matchMedia(MOBILE_READING_QUERY).matches
 }
 
+const getTouchDistance = (touches) => {
+  if (!touches || touches.length < 2) {
+    return 0
+  }
+  const first = touches[0]
+  const second = touches[1]
+  const deltaX = second.clientX - first.clientX
+  const deltaY = second.clientY - first.clientY
+  return Math.hypot(deltaX, deltaY)
+}
+
 export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const { state, dispatch, wpData } = useAppState()
   const song = state.editingSong
@@ -89,6 +100,8 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const sectionRefs = useRef(new Map())
   const sectionsScrollRef = useRef(null)
   const readingRootRef = useRef(null)
+  const pinchStateRef = useRef({ active: false, startDistance: 0, startZoom: 100 })
+  const readingZoomRef = useRef(readingZoom)
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -122,6 +135,74 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     }
     setReadingZoom((current) => (current === 100 ? MOBILE_DEFAULT_READING_ZOOM : current))
   }, [isCompactViewport])
+
+  useEffect(() => {
+    readingZoomRef.current = readingZoom
+  }, [readingZoom])
+
+  useEffect(() => {
+    if (!isCompactViewport || !hasVerses) {
+      return undefined
+    }
+
+    const node = sectionsScrollRef.current
+    if (!node || typeof node.addEventListener !== 'function') {
+      return undefined
+    }
+
+    const pinch = pinchStateRef.current
+    const minZoom = READING_ZOOM_LEVELS[0]
+    const maxZoom = READING_ZOOM_LEVELS[READING_ZOOM_LEVELS.length - 1]
+
+    const finishPinch = () => {
+      if (!pinch.active) {
+        return
+      }
+      pinch.active = false
+      pinch.startDistance = 0
+      pinch.startZoom = readingZoomRef.current
+      setReadingZoom((current) => READING_ZOOM_LEVELS[getNearestReadingZoomIndex(current)])
+    }
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length !== 2) {
+        return
+      }
+      const distance = getTouchDistance(event.touches)
+      if (!distance) {
+        return
+      }
+      pinch.active = true
+      pinch.startDistance = distance
+      pinch.startZoom = readingZoomRef.current
+    }
+
+    const handleTouchMove = (event) => {
+      if (!pinch.active || event.touches.length !== 2) {
+        return
+      }
+      const distance = getTouchDistance(event.touches)
+      if (!distance || !pinch.startDistance) {
+        return
+      }
+      const scaledZoom = pinch.startZoom * (distance / pinch.startDistance)
+      const bounded = Math.min(maxZoom, Math.max(minZoom, Math.round(scaledZoom)))
+      setReadingZoom(bounded)
+      event.preventDefault()
+    }
+
+    node.addEventListener('touchstart', handleTouchStart, { passive: false })
+    node.addEventListener('touchmove', handleTouchMove, { passive: false })
+    node.addEventListener('touchend', finishPinch)
+    node.addEventListener('touchcancel', finishPinch)
+
+    return () => {
+      node.removeEventListener('touchstart', handleTouchStart)
+      node.removeEventListener('touchmove', handleTouchMove)
+      node.removeEventListener('touchend', finishPinch)
+      node.removeEventListener('touchcancel', finishPinch)
+    }
+  }, [isCompactViewport, hasVerses])
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof window === 'undefined') {
@@ -425,131 +506,148 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             {isSettingsPanelOpen ? 'Ocultar configuración' : 'Mostrar configuración'}
           </button>
         </div>
-        <div
-          id="wpss-reading-settings"
-          className="wpss-reading__actions-shell"
-          hidden={!isSettingsPanelOpen && isCompactViewport}
-        >
-          <div className="wpss-reading__actions">
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Vista</span>
-              <div className="wpss-reading__group-controls">
-                <button
-                  type="button"
-                  className={`button button-secondary ${state.readingMode === 'inline' ? 'is-active' : ''}`}
-                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'inline' } })}
-                >
-                  {wpData?.strings?.readingModeInline || 'Acordes inline'}
-                </button>
-                <button
-                  type="button"
-                  className={`button button-secondary ${state.readingMode === 'stacked' ? 'is-active' : ''}`}
-                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'stacked' } })}
-                >
-                  {wpData?.strings?.readingModeStacked || 'Acordes arriba'}
-                </button>
+        <div className="wpss-reading__header-controls">
+          <div
+            id="wpss-reading-settings"
+            className="wpss-reading__actions-shell"
+            hidden={!isSettingsPanelOpen && isCompactViewport}
+          >
+            <div className="wpss-reading__actions">
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Vista</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className={`button button-secondary ${state.readingMode === 'inline' ? 'is-active' : ''}`}
+                    onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'inline' } })}
+                  >
+                    {wpData?.strings?.readingModeInline || 'Acordes inline'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`button button-secondary ${state.readingMode === 'stacked' ? 'is-active' : ''}`}
+                    onClick={() => dispatch({ type: 'SET_STATE', payload: { readingMode: 'stacked' } })}
+                  >
+                    {wpData?.strings?.readingModeStacked || 'Acordes arriba'}
+                  </button>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Orden</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className={`button button-secondary ${state.readingFollowStructure ? '' : 'is-active'}`}
+                    onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: false } })}
+                  >
+                    {wpData?.strings?.readingFollowSections || 'Ordenar por secciones'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`button button-secondary ${state.readingFollowStructure ? 'is-active' : ''}`}
+                    onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: true } })}
+                  >
+                    {wpData?.strings?.readingFollowStructure || 'Seguir estructura'}
+                  </button>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">MIDI</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className={`button button-secondary ${showMidi ? 'is-active' : ''}`}
+                    onClick={() => setShowMidi((prev) => !prev)}
+                  >
+                    {showMidi ? 'Omitir MIDI' : 'Mostrar MIDI'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`button button-secondary ${repeatsEnabled ? 'is-active' : ''}`}
+                    onClick={() => setRepeatsEnabled((prev) => !prev)}
+                  >
+                    {repeatsEnabled ? 'Repeticiones activas' : 'Repeticiones apagadas'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`button button-secondary ${linkedPlayback ? 'is-active' : ''}`}
+                    onClick={() => setLinkedPlayback((prev) => !prev)}
+                  >
+                    {linkedPlayback ? 'Vinculos activos' : 'Vinculos apagados'}
+                  </button>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Notas</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className={`button button-secondary ${state.readingShowNotes ? 'is-active' : ''}`}
+                    onClick={() => dispatch({ type: 'SET_STATE', payload: { readingShowNotes: !state.readingShowNotes } })}
+                  >
+                    {state.readingShowNotes ? 'Ocultar notas' : 'Mostrar notas'}
+                  </button>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Secciones</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className={`button button-secondary ${showSectionTitles ? 'is-active' : ''}`}
+                    onClick={() => setShowSectionTitles((prev) => !prev)}
+                  >
+                    {showSectionTitles ? 'Omitir titulos de secciones' : 'Mostrar titulos de secciones'}
+                  </button>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Trasponer a</span>
+                <div className="wpss-reading__group-controls">
+                  <select
+                    value={transposeTarget.id}
+                    onChange={(event) =>
+                      dispatch({ type: 'SET_STATE', payload: { readingTransposeTarget: event.target.value } })
+                    }
+                  >
+                    {TRANSPOSE_TARGETS.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        {target.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Instrumento</span>
+                <div className="wpss-reading__group-controls">
+                  <select
+                    value={readingInstrument}
+                    onChange={(event) =>
+                      dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
+                    }
+                  >
+                    <option value="guitar">Guitarra</option>
+                    <option value="piano">Piano</option>
+                  </select>
+                </div>
+              </div>
+              <div className="wpss-reading__group">
+                <span className="wpss-reading__group-label">Documento</span>
+                <div className="wpss-reading__group-controls">
+                  <button
+                    type="button"
+                    className="button button-secondary wpss-reading__print-button"
+                    onClick={handlePrint}
+                  >
+                    <PrintIcon />
+                    <span>Imprimir lectura</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Orden</span>
-              <div className="wpss-reading__group-controls">
-                <button
-                  type="button"
-                  className={`button button-secondary ${state.readingFollowStructure ? '' : 'is-active'}`}
-                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: false } })}
-                >
-                  {wpData?.strings?.readingFollowSections || 'Ordenar por secciones'}
-                </button>
-                <button
-                  type="button"
-                  className={`button button-secondary ${state.readingFollowStructure ? 'is-active' : ''}`}
-                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingFollowStructure: true } })}
-                >
-                  {wpData?.strings?.readingFollowStructure || 'Seguir estructura'}
-                </button>
-              </div>
-            </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">MIDI</span>
-              <div className="wpss-reading__group-controls">
-                <button
-                  type="button"
-                  className={`button button-secondary ${showMidi ? 'is-active' : ''}`}
-                  onClick={() => setShowMidi((prev) => !prev)}
-                >
-                  {showMidi ? 'Omitir MIDI' : 'Mostrar MIDI'}
-                </button>
-                <button
-                  type="button"
-                  className={`button button-secondary ${repeatsEnabled ? 'is-active' : ''}`}
-                  onClick={() => setRepeatsEnabled((prev) => !prev)}
-                >
-                  {repeatsEnabled ? 'Repeticiones activas' : 'Repeticiones apagadas'}
-                </button>
-                <button
-                  type="button"
-                  className={`button button-secondary ${linkedPlayback ? 'is-active' : ''}`}
-                  onClick={() => setLinkedPlayback((prev) => !prev)}
-                >
-                  {linkedPlayback ? 'Vinculos activos' : 'Vinculos apagados'}
-                </button>
-              </div>
-            </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Notas</span>
-              <div className="wpss-reading__group-controls">
-                <button
-                  type="button"
-                  className={`button button-secondary ${state.readingShowNotes ? 'is-active' : ''}`}
-                  onClick={() => dispatch({ type: 'SET_STATE', payload: { readingShowNotes: !state.readingShowNotes } })}
-                >
-                  {state.readingShowNotes ? 'Ocultar notas' : 'Mostrar notas'}
-                </button>
-              </div>
-            </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Secciones</span>
-              <div className="wpss-reading__group-controls">
-                <button
-                  type="button"
-                  className={`button button-secondary ${showSectionTitles ? 'is-active' : ''}`}
-                  onClick={() => setShowSectionTitles((prev) => !prev)}
-                >
-                  {showSectionTitles ? 'Omitir titulos de secciones' : 'Mostrar titulos de secciones'}
-                </button>
-              </div>
-            </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Trasponer a</span>
-              <div className="wpss-reading__group-controls">
-                <select
-                  value={transposeTarget.id}
-                  onChange={(event) =>
-                    dispatch({ type: 'SET_STATE', payload: { readingTransposeTarget: event.target.value } })
-                  }
-                >
-                  {TRANSPOSE_TARGETS.map((target) => (
-                    <option key={target.id} value={target.id}>
-                      {target.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="wpss-reading__group">
-              <span className="wpss-reading__group-label">Instrumento</span>
-              <div className="wpss-reading__group-controls">
-                <select
-                  value={readingInstrument}
-                  onChange={(event) =>
-                    dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
-                  }
-                >
-                  <option value="guitar">Guitarra</option>
-                  <option value="piano">Piano</option>
-                </select>
-              </div>
-            </div>
+          </div>
+          <div className="wpss-reading__actions-persistent">
             <div className="wpss-reading__group wpss-reading__group--actions">
               <span className="wpss-reading__group-label">Acciones</span>
               <div className="wpss-reading__group-controls">
@@ -600,14 +698,6 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             {isDoubleColumn ? 'Ver en 1 columna' : 'Ver en 2 columnas'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className="button button-secondary wpss-reading__print-button"
-          onClick={handlePrint}
-        >
-          <PrintIcon />
-          <span>Imprimir lectura</span>
-        </button>
         <div className="wpss-reading__zoom-controls" role="group" aria-label="Zoom de lectura">
           <button
             type="button"

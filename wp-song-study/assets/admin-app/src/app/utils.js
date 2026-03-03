@@ -414,13 +414,16 @@ export function formatSegmentsForStackedMode(segmentos) {
   const lyricsParts = []
 
   segmentos.forEach((segmento, index) => {
-    const texto = stripHtml(segmento?.texto || '')
-    const acorde = getChordDisplayValue(segmento?.acorde || '')
+    const textoRaw = stripHtml(segmento?.texto || '').trim()
+    const acordeRaw = getChordDisplayValue(segmento?.acorde || '')
+    const acordeSanitized = acordeRaw ? String(acordeRaw).trim() : ''
+    const texto = textoRaw || '...'
+    const acorde = acordeSanitized || '?'
     const width = Math.max(texto.length, acorde.length)
     const joinNext = index < segmentos.length - 1 && endsWithJoiner(segmento?.texto || '')
     const padding = index === segmentos.length - 1 || joinNext ? width : width + 2
 
-    chordsParts.push(acorde ? padEndSafe(acorde, padding) : padEndSafe('', padding))
+    chordsParts.push(padEndSafe(acorde, padding))
     lyricsParts.push(padEndSafe(texto, padding))
   })
 
@@ -439,8 +442,11 @@ export function formatSegmentsForStackedCells(segmentos) {
   const lyricsParts = []
 
   segmentos.forEach((segmento, index) => {
-    const texto = stripHtml(segmento?.texto || '')
-    const acorde = getChordDisplayValue(segmento?.acorde || '')
+    const textoRaw = stripHtml(segmento?.texto || '').trim()
+    const acordeRaw = getChordDisplayValue(segmento?.acorde || '')
+    const acordeSanitized = acordeRaw ? String(acordeRaw).trim() : ''
+    const texto = textoRaw || '...'
+    const acorde = acordeSanitized || '?'
     const chordLabel = acorde ? `[${acorde}]` : ''
     const width = Math.max(texto.length, chordLabel.length)
     const joinNext = index < segmentos.length - 1 && endsWithJoiner(segmento?.texto || '')
@@ -708,8 +714,13 @@ export function validateSegments(versos, strings) {
 
     let previousTextless = false
     for (const segmento of verso.segmentos) {
-      const textoVacio = !segmento.texto || !stripHtml(segmento.texto).trim()
-      const acordeVacio = !segmento.acorde || !segmento.acorde.trim()
+      const textoRaw = stripHtml(segmento?.texto || '').trim()
+      const acordeRaw = getChordDisplayValue(segmento?.acorde || '')
+      const acordeSanitized = acordeRaw ? String(acordeRaw).trim() : ''
+      const textoEfectivo = textoRaw || '...'
+      const acordeEfectivo = acordeSanitized || '?'
+      const textoVacio = !textoEfectivo
+      const acordeVacio = !acordeEfectivo
       const midiActivo = Array.isArray(segmento?.midi_clips)
         && segmento.midi_clips.some((clip) => Array.isArray(clip?.midi?.notes) && clip.midi.notes.length)
       const midiPresente = midiActivo || verseMidiActive
