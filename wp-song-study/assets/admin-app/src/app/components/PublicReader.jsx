@@ -15,17 +15,15 @@ export default function PublicReader() {
   })
   const [collections, setCollections] = useState([])
   const canManage = !!wpData?.canManage
-  const isAdmin = !!wpData?.isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const [showDebugIds, setShowDebugIds] = useState(false)
+  const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const selectedSong = state.selectedSongId
     ? state.songs.find((song) => Number(song.id) === Number(state.selectedSongId))
     : null
-  const canEditSelected =
-    canManage && Number(selectedSong?.autor_id) === Number(currentUserId) && !!state.selectedSongId
+  const canEditSelected = canManage && isOwnSong(selectedSong) && !!state.selectedSongId
 
-  const canDeleteSong = (song) =>
-    canManage && (isAdmin || Number(song?.autor_id) === Number(currentUserId))
+  const canDeleteSong = (song) => canManage && isOwnSong(song)
 
   const tonicas = useMemo(() => wpData?.tonicas || [], [wpData])
 
@@ -115,6 +113,14 @@ export default function PublicReader() {
               ...createEmptySong(),
               id: song.id,
               autor_id: song.autor_id || null,
+              autor_nombre: song.autor_nombre || '',
+              es_reversion: !!song.es_reversion,
+              reversion_origen_id: song.reversion_origen_id || null,
+              reversion_origen_titulo: song.reversion_origen_titulo || '',
+              reversion_raiz_id: song.reversion_raiz_id || null,
+              reversion_raiz_titulo: song.reversion_raiz_titulo || '',
+              reversion_autor_origen_id: song.reversion_autor_origen_id || null,
+              reversion_autor_origen_nombre: song.reversion_autor_origen_nombre || '',
               titulo: song.titulo || '',
               tonica: song.tonica || song.tonalidad || '',
               campo_armonico: song.campo_armonico || '',
@@ -185,6 +191,46 @@ export default function PublicReader() {
       })
   }
 
+  const handleReversionSong = (song) => {
+    if (!song?.id) return
+
+    api
+      .reversionSong(song.id)
+      .then((response) => {
+        const body = response?.data || {}
+        const clonedSong = body.song && typeof body.song === 'object' ? body.song : null
+        const clonedId = Number(body.id || clonedSong?.id || 0)
+        if (!clonedId) {
+          dispatch({
+            type: 'SET_STATE',
+            payload: { error: body?.message || 'No fue posible crear la reversión.' },
+          })
+          return
+        }
+
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            songs: clonedSong
+              ? [clonedSong].concat(state.songs.filter((item) => Number(item.id) !== clonedId))
+              : state.songs,
+            selectedSongId: clonedId,
+            feedback: { message: body?.message || 'Reversión creada correctamente.', type: 'success' },
+            error: null,
+          },
+        })
+
+        handleEditSong(clonedId)
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible crear la reversión.'
+        dispatch({
+          type: 'SET_STATE',
+          payload: { error: message },
+        })
+      })
+  }
+
   const handleSelectSong = (id) => {
     if (!id) return
     dispatch({ type: 'SET_STATE', payload: { songLoading: true, selectedSongId: id, error: null } })
@@ -203,6 +249,15 @@ export default function PublicReader() {
             editingSong: {
               ...createEmptySong(),
               id: song.id,
+              autor_id: song.autor_id || null,
+              autor_nombre: song.autor_nombre || '',
+              es_reversion: !!song.es_reversion,
+              reversion_origen_id: song.reversion_origen_id || null,
+              reversion_origen_titulo: song.reversion_origen_titulo || '',
+              reversion_raiz_id: song.reversion_raiz_id || null,
+              reversion_raiz_titulo: song.reversion_raiz_titulo || '',
+              reversion_autor_origen_id: song.reversion_autor_origen_id || null,
+              reversion_autor_origen_nombre: song.reversion_autor_origen_nombre || '',
               titulo: song.titulo || '',
               tonica: song.tonica || song.tonalidad || '',
               campo_armonico: song.campo_armonico || '',
@@ -376,19 +431,39 @@ export default function PublicReader() {
                         {song.tonica || song.tonalidad || '—'}
                         {song.campo_armonico ? ` · ${song.campo_armonico}` : ''}
                       </span>
+                      <span className="wpss-public-reader__song-meta">
+                        Autor: {song.autor_nombre || (song.autor_id ? `Usuario ${song.autor_id}` : '—')}
+                      </span>
+                      {song.es_reversion ? (
+                        <span className="wpss-public-reader__song-meta">
+                          Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}
+                          {song.reversion_autor_origen_nombre
+                            ? ` · Original: ${song.reversion_autor_origen_nombre}`
+                            : ''}
+                        </span>
+                      ) : null}
                       {showDebugIds ? (
                         <span className="wpss-public-reader__song-meta">
                           ID canción {song.id} · Autor {song.autor_id || '—'} · Yo {currentUserId || '—'}
                         </span>
                       ) : null}
                     </button>
-                    {canManage && Number(song.autor_id) === Number(currentUserId) ? (
+                    {canManage && isOwnSong(song) ? (
                       <button
                         type="button"
                         className="button button-small"
                         onClick={() => handleEditSong(song.id)}
                       >
                         {wpData?.strings?.editorView || 'Editar'}
+                      </button>
+                    ) : null}
+                    {canManage && !isOwnSong(song) ? (
+                      <button
+                        type="button"
+                        className="button button-small button-secondary"
+                        onClick={() => handleReversionSong(song)}
+                      >
+                        Reversionar
                       </button>
                     ) : null}
                     {canDeleteSong(song) ? (

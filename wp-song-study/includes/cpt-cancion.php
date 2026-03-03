@@ -147,6 +147,46 @@ function wpss_register_cpt_cancion() {
     register_post_meta( 'cancion', '_prestamos_tonales_json', $meta_json );
     register_post_meta( 'cancion', '_modulaciones_json', $meta_json );
 
+    register_post_meta(
+        'cancion',
+        '_reversion_origen_id',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'integer',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'absint',
+            'default'           => 0,
+        ]
+    );
+    register_post_meta(
+        'cancion',
+        '_reversion_raiz_id',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'integer',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'absint',
+            'default'           => 0,
+        ]
+    );
+    register_post_meta(
+        'cancion',
+        '_reversion_autor_origen_id',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'integer',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'absint',
+            'default'           => 0,
+        ]
+    );
+    register_post_meta( 'cancion', '_reversion_origen_titulo', $meta_single_text );
+    register_post_meta( 'cancion', '_reversion_raiz_titulo', $meta_single_text );
+    register_post_meta( 'cancion', '_reversion_autor_origen_nombre', $meta_single_text );
+
     $meta_bool = [
         'show_in_rest'      => true,
         'single'            => true,

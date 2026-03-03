@@ -154,6 +154,24 @@ function wpss_register_rest_routes() {
             ],
         ]
     );
+    register_rest_route(
+        'wpss/v1',
+        '/cancion/(?P<id>\d+)/reversion',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_reversionar_cancion',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID de la canción origen.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
 
     register_rest_route(
         'wpss/v1',
@@ -618,6 +636,84 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
 }
 
 /**
+ * Obtiene el nombre visible de un usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return string
+ */
+function wpss_get_user_display_name( $user_id ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return '';
+    }
+
+    $user = get_userdata( $user_id );
+    if ( ! $user || ! $user instanceof WP_User ) {
+        return '';
+    }
+
+    return sanitize_text_field( $user->display_name );
+}
+
+/**
+ * Obtiene metadatos de reversionado para una canción.
+ *
+ * @param int $post_id ID de la canción.
+ * @return array
+ */
+function wpss_get_song_reversion_data( $post_id ) {
+    $post_id = (int) $post_id;
+
+    $origen_id    = absint( get_post_meta( $post_id, '_reversion_origen_id', true ) );
+    $raiz_id      = absint( get_post_meta( $post_id, '_reversion_raiz_id', true ) );
+    $origen_titulo = sanitize_text_field( get_post_meta( $post_id, '_reversion_origen_titulo', true ) );
+    $raiz_titulo   = sanitize_text_field( get_post_meta( $post_id, '_reversion_raiz_titulo', true ) );
+
+    $autor_origen_id = absint( get_post_meta( $post_id, '_reversion_autor_origen_id', true ) );
+    $autor_origen_nombre = sanitize_text_field( get_post_meta( $post_id, '_reversion_autor_origen_nombre', true ) );
+
+    if ( $origen_id > 0 && '' === $origen_titulo ) {
+        $origen_post = get_post( $origen_id );
+        if ( $origen_post && 'cancion' === $origen_post->post_type ) {
+            $origen_titulo = sanitize_text_field( get_the_title( $origen_id ) );
+            if ( $autor_origen_id <= 0 ) {
+                $autor_origen_id = (int) $origen_post->post_author;
+            }
+        } else {
+            $origen_id = 0;
+        }
+    }
+
+    if ( $origen_id > 0 && $raiz_id <= 0 ) {
+        $origen_raiz = absint( get_post_meta( $origen_id, '_reversion_raiz_id', true ) );
+        $raiz_id     = $origen_raiz > 0 ? $origen_raiz : $origen_id;
+    }
+
+    if ( $raiz_id > 0 && '' === $raiz_titulo ) {
+        $raiz_post = get_post( $raiz_id );
+        if ( $raiz_post && 'cancion' === $raiz_post->post_type ) {
+            $raiz_titulo = sanitize_text_field( get_the_title( $raiz_id ) );
+        } else {
+            $raiz_id = 0;
+        }
+    }
+
+    if ( $origen_id > 0 && '' === $autor_origen_nombre ) {
+        $autor_origen_nombre = wpss_get_user_display_name( $autor_origen_id );
+    }
+
+    return [
+        'es_reversion'                => $origen_id > 0,
+        'reversion_origen_id'         => $origen_id,
+        'reversion_origen_titulo'     => $origen_titulo,
+        'reversion_raiz_id'           => $raiz_id,
+        'reversion_raiz_titulo'       => $raiz_titulo,
+        'reversion_autor_origen_id'   => $autor_origen_id,
+        'reversion_autor_origen_nombre' => $autor_origen_nombre,
+    ];
+}
+
+/**
  * Prepara la información base de una canción para listados REST.
  *
  * @param int $post_id ID de la canción.
@@ -628,23 +724,29 @@ function wpss_prepare_cancion_list_item( $post_id ) {
 
     $tonica_value         = sanitize_text_field( get_post_meta( $post_id, '_tonica', true ) );
     $campo_armonico_value = sanitize_text_field( get_post_meta( $post_id, '_campo_armonico', true ) );
+    $autor_id             = (int) get_post_field( 'post_author', $post_id );
+    $reversion_data       = wpss_get_song_reversion_data( $post_id );
 
-    return [
-        'id'                 => $post_id,
-        'titulo'             => get_the_title( $post_id ),
-        'autor_id'           => (int) get_post_field( 'post_author', $post_id ),
-        'tonica'             => $tonica_value,
-        'tonalidad'          => $tonica_value,
-        'campo_armonico'     => $campo_armonico_value,
-        'tiene_prestamos'    => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
-        'tiene_modulaciones' => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
-        'conteo_versos'      => (int) get_post_meta( $post_id, '_conteo_versos', true ),
-        'conteo_secciones'   => (int) get_post_meta( $post_id, '_conteo_secciones', true ),
-        'conteo_midi'        => (int) get_post_meta( $post_id, '_conteo_midi', true ),
-        'conteo_versos_normales' => (int) get_post_meta( $post_id, '_conteo_versos_normales', true ),
-        'conteo_versos_instrumentales' => (int) get_post_meta( $post_id, '_conteo_versos_instrumentales', true ),
-        'colecciones'        => wpss_get_song_colecciones( $post_id ),
-    ];
+    return array_merge(
+        [
+            'id'                 => $post_id,
+            'titulo'             => get_the_title( $post_id ),
+            'autor_id'           => $autor_id,
+            'autor_nombre'       => wpss_get_user_display_name( $autor_id ),
+            'tonica'             => $tonica_value,
+            'tonalidad'          => $tonica_value,
+            'campo_armonico'     => $campo_armonico_value,
+            'tiene_prestamos'    => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
+            'tiene_modulaciones' => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
+            'conteo_versos'      => (int) get_post_meta( $post_id, '_conteo_versos', true ),
+            'conteo_secciones'   => (int) get_post_meta( $post_id, '_conteo_secciones', true ),
+            'conteo_midi'        => (int) get_post_meta( $post_id, '_conteo_midi', true ),
+            'conteo_versos_normales' => (int) get_post_meta( $post_id, '_conteo_versos_normales', true ),
+            'conteo_versos_instrumentales' => (int) get_post_meta( $post_id, '_conteo_versos_instrumentales', true ),
+            'colecciones'        => wpss_get_song_colecciones( $post_id ),
+        ],
+        $reversion_data
+    );
 }
 
 /**
@@ -743,35 +845,42 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
         }
     }
 
-    $data = [
-        'id'                         => (int) $post_id,
-        'titulo'                     => get_the_title( $post_id ),
-        'autor_id'                   => (int) get_post_field( 'post_author', $post_id ),
-        'tonica'                     => $tonica,
-        'tonalidad'                  => $tonica,
-        'campo_armonico'             => $campo_armonico,
-        'campo_armonico_predominante'=> $campo_predominante,
-        'ficha_autores'              => $ficha_autores,
-        'ficha_anio'                 => $ficha_anio,
-        'ficha_pais'                 => $ficha_pais,
-        'ficha_estado_legal'         => $ficha_estado_legal,
-        'ficha_licencia'             => $ficha_licencia,
-        'ficha_fuente_verificacion'  => $ficha_fuente,
-        'ficha_incompleta'           => $ficha_incompleta,
-        'ficha_incompleta_motivo'    => $ficha_incompleta_motivo,
-        'bpm'                        => $bpm,
-        'prestamos_cancion'          => $prestamos_cancion,
-        'modulaciones_cancion'       => $modulaciones_cancion,
-        'prestamos'                  => $prestamos_cancion,
-        'modulaciones'               => $modulaciones_cancion,
-        'secciones'                  => $secciones,
-        'versos'                     => $versos,
-        'tiene_prestamos'            => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
-        'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
-        'colecciones'                => wpss_get_song_colecciones( $post_id ),
-        'estructura'                 => $estructura,
-        'estructura_personalizada'   => $estructura_personalizada,
-    ];
+    $autor_id        = (int) get_post_field( 'post_author', $post_id );
+    $reversion_data  = wpss_get_song_reversion_data( $post_id );
+
+    $data = array_merge(
+        [
+            'id'                         => (int) $post_id,
+            'titulo'                     => get_the_title( $post_id ),
+            'autor_id'                   => $autor_id,
+            'autor_nombre'               => wpss_get_user_display_name( $autor_id ),
+            'tonica'                     => $tonica,
+            'tonalidad'                  => $tonica,
+            'campo_armonico'             => $campo_armonico,
+            'campo_armonico_predominante'=> $campo_predominante,
+            'ficha_autores'              => $ficha_autores,
+            'ficha_anio'                 => $ficha_anio,
+            'ficha_pais'                 => $ficha_pais,
+            'ficha_estado_legal'         => $ficha_estado_legal,
+            'ficha_licencia'             => $ficha_licencia,
+            'ficha_fuente_verificacion'  => $ficha_fuente,
+            'ficha_incompleta'           => $ficha_incompleta,
+            'ficha_incompleta_motivo'    => $ficha_incompleta_motivo,
+            'bpm'                        => $bpm,
+            'prestamos_cancion'          => $prestamos_cancion,
+            'modulaciones_cancion'       => $modulaciones_cancion,
+            'prestamos'                  => $prestamos_cancion,
+            'modulaciones'               => $modulaciones_cancion,
+            'secciones'                  => $secciones,
+            'versos'                     => $versos,
+            'tiene_prestamos'            => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
+            'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
+            'colecciones'                => wpss_get_song_colecciones( $post_id ),
+            'estructura'                 => $estructura,
+            'estructura_personalizada'   => $estructura_personalizada,
+        ],
+        $reversion_data
+    );
 
     return rest_ensure_response( $data );
 }
@@ -819,6 +928,12 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     $id     = isset( $params['id'] ) ? absint( $params['id'] ) : 0;
     $titulo = isset( $params['titulo'] ) ? sanitize_text_field( $params['titulo'] ) : '';
+    $reversion_origen_id = 0;
+    if ( isset( $params['reversion_origen_id'] ) ) {
+        $reversion_origen_id = absint( $params['reversion_origen_id'] );
+    } elseif ( isset( $params['reversion_de_id'] ) ) {
+        $reversion_origen_id = absint( $params['reversion_de_id'] );
+    }
 
     $tonica = '';
     if ( isset( $params['tonica'] ) ) {
@@ -983,8 +1098,16 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             return new WP_REST_Response( [ 'message' => __( 'Canción no encontrada.', 'wp-song-study' ) ], 404 );
         }
 
-        if ( wpss_user_is_colega_musical() && (int) $existing_post->post_author !== get_current_user_id() ) {
-            return new WP_REST_Response( [ 'message' => __( 'No puedes editar canciones de otros usuarios.', 'wp-song-study' ) ], 403 );
+        if ( (int) $existing_post->post_author !== get_current_user_id() ) {
+            return new WP_REST_Response(
+                [ 'message' => __( 'No puedes editar directamente canciones de otros usuarios. Usa Reversionar.', 'wp-song-study' ) ],
+                403
+            );
+        }
+    } elseif ( $reversion_origen_id > 0 ) {
+        $reversion_origen_post = get_post( $reversion_origen_id );
+        if ( ! $reversion_origen_post || 'cancion' !== $reversion_origen_post->post_type ) {
+            return new WP_REST_Response( [ 'message' => __( 'La canción origen para reversionar no existe.', 'wp-song-study' ) ], 400 );
         }
     }
 
@@ -1033,6 +1156,28 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_bpm', $bpm );
     update_post_meta( $post_id, '_prestamos_tonales_json', wp_json_encode( $prestamos ) );
     update_post_meta( $post_id, '_modulaciones_json', wp_json_encode( $modulaciones ) );
+
+    if ( ! $id && $reversion_origen_id > 0 ) {
+        $reversion_origen_post = get_post( $reversion_origen_id );
+        if ( $reversion_origen_post && 'cancion' === $reversion_origen_post->post_type ) {
+            $reversion_raiz_id = absint( get_post_meta( $reversion_origen_id, '_reversion_raiz_id', true ) );
+            if ( $reversion_raiz_id <= 0 ) {
+                $reversion_raiz_id = $reversion_origen_id;
+            }
+
+            $reversion_autor_origen_id = (int) $reversion_origen_post->post_author;
+            $reversion_autor_origen_nombre = wpss_get_user_display_name( $reversion_autor_origen_id );
+            $reversion_origen_titulo = sanitize_text_field( get_the_title( $reversion_origen_id ) );
+            $reversion_raiz_titulo = sanitize_text_field( get_the_title( $reversion_raiz_id ) );
+
+            update_post_meta( $post_id, '_reversion_origen_id', $reversion_origen_id );
+            update_post_meta( $post_id, '_reversion_origen_titulo', $reversion_origen_titulo );
+            update_post_meta( $post_id, '_reversion_raiz_id', $reversion_raiz_id );
+            update_post_meta( $post_id, '_reversion_raiz_titulo', $reversion_raiz_titulo );
+            update_post_meta( $post_id, '_reversion_autor_origen_id', $reversion_autor_origen_id );
+            update_post_meta( $post_id, '_reversion_autor_origen_nombre', $reversion_autor_origen_nombre );
+        }
+    }
 
     $versos_result = wpss_replace_cancion_versos( $post_id, $versos );
     if ( is_wp_error( $versos_result ) ) {
@@ -1091,19 +1236,123 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
         }
     }
 
-    $response = [
-        'ok'                 => true,
-        'id'                 => (int) $post_id,
-        'bpm'                => $bpm,
-        'tiene_prestamos'    => $tiene_prestamos,
-        'tiene_modulaciones' => $tiene_modulaciones,
-        'secciones'          => $secciones,
-        'estructura'         => $estructura_sanitizada,
-        'estructura_personalizada' => (bool) $estructura_personalizada_flag,
-        'colecciones'        => wpss_get_song_colecciones( $post_id ),
-    ];
+    $autor_id = (int) get_post_field( 'post_author', $post_id );
+    $response = array_merge(
+        [
+            'ok'                 => true,
+            'id'                 => (int) $post_id,
+            'autor_id'           => $autor_id,
+            'autor_nombre'       => wpss_get_user_display_name( $autor_id ),
+            'bpm'                => $bpm,
+            'tiene_prestamos'    => $tiene_prestamos,
+            'tiene_modulaciones' => $tiene_modulaciones,
+            'secciones'          => $secciones,
+            'estructura'         => $estructura_sanitizada,
+            'estructura_personalizada' => (bool) $estructura_personalizada_flag,
+            'colecciones'        => wpss_get_song_colecciones( $post_id ),
+            'item'               => wpss_prepare_cancion_list_item( $post_id ),
+        ],
+        wpss_get_song_reversion_data( $post_id )
+    );
 
     return rest_ensure_response( $response );
+}
+
+/**
+ * Crea una reversión de una canción existente para el usuario actual.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_reversionar_cancion( WP_REST_Request $request ) {
+    $source_id = (int) $request->get_param( 'id' );
+    $source    = get_post( $source_id );
+
+    if ( ! $source || 'cancion' !== $source->post_type ) {
+        return new WP_Error(
+            'wpss_not_found',
+            __( 'Canción no encontrada.', 'wp-song-study' ),
+            [ 'status' => 404 ]
+        );
+    }
+
+    if ( (int) $source->post_author === get_current_user_id() ) {
+        return new WP_REST_Response(
+            [ 'message' => __( 'La canción ya es tuya. Puedes editarla directamente.', 'wp-song-study' ) ],
+            400
+        );
+    }
+
+    $source_request = new WP_REST_Request( WP_REST_Server::READABLE, '/wpss/v1/cancion/' . $source_id );
+    $source_request->set_param( 'id', $source_id );
+    $source_response = wpss_rest_get_cancion( $source_request );
+    if ( is_wp_error( $source_response ) ) {
+        return $source_response;
+    }
+
+    $source_data = rest_ensure_response( $source_response )->get_data();
+    if ( ! is_array( $source_data ) || empty( $source_data['titulo'] ) ) {
+        return new WP_REST_Response(
+            [ 'message' => __( 'No fue posible obtener la canción origen para reversionar.', 'wp-song-study' ) ],
+            500
+        );
+    }
+
+    $base_title = sanitize_text_field( $source_data['titulo'] );
+    $clone_title = sprintf( __( '%s (reversión)', 'wp-song-study' ), $base_title );
+
+    $payload = [
+        'id'                          => 0,
+        'titulo'                      => $clone_title,
+        'bpm'                         => isset( $source_data['bpm'] ) ? absint( $source_data['bpm'] ) : 120,
+        'tonica'                      => isset( $source_data['tonica'] ) ? sanitize_text_field( $source_data['tonica'] ) : '',
+        'campo_armonico'              => isset( $source_data['campo_armonico'] ) ? sanitize_text_field( $source_data['campo_armonico'] ) : '',
+        'campo_armonico_predominante' => isset( $source_data['campo_armonico_predominante'] ) ? sanitize_textarea_field( $source_data['campo_armonico_predominante'] ) : '',
+        'ficha_autores'               => isset( $source_data['ficha_autores'] ) ? sanitize_text_field( $source_data['ficha_autores'] ) : '',
+        'ficha_anio'                  => isset( $source_data['ficha_anio'] ) ? sanitize_text_field( $source_data['ficha_anio'] ) : '',
+        'ficha_pais'                  => isset( $source_data['ficha_pais'] ) ? sanitize_text_field( $source_data['ficha_pais'] ) : '',
+        'ficha_estado_legal'          => isset( $source_data['ficha_estado_legal'] ) ? sanitize_key( $source_data['ficha_estado_legal'] ) : '',
+        'ficha_licencia'              => isset( $source_data['ficha_licencia'] ) ? sanitize_text_field( $source_data['ficha_licencia'] ) : '',
+        'ficha_fuente_verificacion'   => isset( $source_data['ficha_fuente_verificacion'] ) ? sanitize_text_field( $source_data['ficha_fuente_verificacion'] ) : '',
+        'ficha_incompleta'            => ! empty( $source_data['ficha_incompleta'] ),
+        'ficha_incompleta_motivo'     => isset( $source_data['ficha_incompleta_motivo'] ) ? sanitize_textarea_field( $source_data['ficha_incompleta_motivo'] ) : '',
+        'prestamos_cancion'           => isset( $source_data['prestamos'] ) && is_array( $source_data['prestamos'] ) ? $source_data['prestamos'] : [],
+        'modulaciones_cancion'        => isset( $source_data['modulaciones'] ) && is_array( $source_data['modulaciones'] ) ? $source_data['modulaciones'] : [],
+        'secciones'                   => isset( $source_data['secciones'] ) && is_array( $source_data['secciones'] ) ? $source_data['secciones'] : [],
+        'versos'                      => isset( $source_data['versos'] ) && is_array( $source_data['versos'] ) ? $source_data['versos'] : [],
+        'estructura'                  => isset( $source_data['estructura'] ) && is_array( $source_data['estructura'] ) ? $source_data['estructura'] : [],
+        'estructura_personalizada'    => ! empty( $source_data['estructura_personalizada'] ),
+        'colecciones'                 => isset( $source_data['colecciones'] ) && is_array( $source_data['colecciones'] )
+            ? wp_list_pluck( $source_data['colecciones'], 'id' )
+            : [],
+        'reversion_origen_id'         => $source_id,
+    ];
+
+    $save_request = new WP_REST_Request( WP_REST_Server::CREATABLE, '/wpss/v1/cancion' );
+    $save_request->set_body_params( $payload );
+    $save_response = wpss_rest_save_cancion( $save_request );
+    if ( is_wp_error( $save_response ) ) {
+        return $save_response;
+    }
+
+    $saved_data = rest_ensure_response( $save_response )->get_data();
+    $new_id     = isset( $saved_data['id'] ) ? absint( $saved_data['id'] ) : 0;
+    if ( $new_id <= 0 ) {
+        return new WP_REST_Response(
+            [ 'message' => __( 'No fue posible crear la reversión.', 'wp-song-study' ) ],
+            500
+        );
+    }
+
+    return rest_ensure_response(
+        [
+            'ok'        => true,
+            'id'        => $new_id,
+            'source_id' => $source_id,
+            'song'      => wpss_prepare_cancion_list_item( $new_id ),
+            'message'   => __( 'Reversión creada correctamente.', 'wp-song-study' ),
+        ]
+    );
 }
 
 /**
@@ -1124,7 +1373,7 @@ function wpss_rest_delete_cancion( WP_REST_Request $request ) {
         );
     }
 
-    if ( wpss_user_is_colega_musical() && (int) $post->post_author !== get_current_user_id() ) {
+    if ( (int) $post->post_author !== get_current_user_id() ) {
         return new WP_Error(
             'wpss_forbidden',
             __( 'No puedes eliminar canciones de otros usuarios.', 'wp-song-study' ),

@@ -3,15 +3,60 @@ import { useAppState } from '../StateProvider.jsx'
 
 export default function SongList({ onSelectSong, onNewSong }) {
   const { state, dispatch, api, wpData } = useAppState()
-  const isAdmin = !!wpData?.isAdmin
   const currentUserId = wpData?.currentUserId || 0
-  const canDeleteSong = (song) =>
-    isAdmin || Number(song?.autor_id) === Number(currentUserId)
+  const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
+  const canDeleteSong = (song) => isOwnSong(song)
   const handleOpen = (songId, targetTab) => {
     onSelectSong(songId)
     if (targetTab) {
       dispatch({ type: 'SET_STATE', payload: { activeTab: targetTab } })
     }
+  }
+  const handleReversionSong = (song, event) => {
+    event.stopPropagation()
+    if (!song?.id) return
+
+    api
+      .reversionSong(song.id)
+      .then((response) => {
+        const body = response?.data || {}
+        const clonedSong = body.song && typeof body.song === 'object' ? body.song : null
+        const clonedId = Number(body.id || clonedSong?.id || 0)
+        if (!clonedId) {
+          dispatch({
+            type: 'SET_STATE',
+            payload: { error: body?.message || 'No fue posible crear la reversión.' },
+          })
+          return
+        }
+
+        const nextSongs = clonedSong
+          ? [clonedSong].concat(state.songs.filter((item) => Number(item.id) !== clonedId))
+          : state.songs
+
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            songs: nextSongs,
+            selectedSongId: clonedId,
+            feedback: {
+              message: body?.message || 'Reversión creada correctamente.',
+              type: 'success',
+            },
+            error: null,
+            pagination: {
+              ...state.pagination,
+              totalItems: clonedSong ? state.pagination.totalItems + 1 : state.pagination.totalItems,
+            },
+          },
+        })
+
+        handleOpen(clonedId, 'editor')
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible crear la reversión.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
   }
 
   useEffect(() => {
@@ -87,7 +132,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
                 <tr
                   key={song.id}
                   className={song.id === state.selectedSongId ? 'is-active' : ''}
-                  onClick={() => handleOpen(song.id, 'editor')}
+                  onClick={() => handleOpen(song.id, isOwnSong(song) ? 'editor' : 'reading')}
                 >
                   <td className="wpss-col-title">
                     <strong>{song.titulo}</strong>
@@ -95,6 +140,17 @@ export default function SongList({ onSelectSong, onNewSong }) {
                       {song.tonica || song.tonalidad || '—'}
                       {song.campo_armonico ? ` · ${song.campo_armonico}` : ''}
                     </span>
+                    <span className="wpss-sub">
+                      Autor: {song.autor_nombre || (song.autor_id ? `Usuario ${song.autor_id}` : '—')}
+                    </span>
+                    {song.es_reversion ? (
+                      <span className="wpss-sub">
+                        Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}
+                        {song.reversion_autor_origen_nombre
+                          ? ` · Transcripción original: ${song.reversion_autor_origen_nombre}`
+                          : ''}
+                      </span>
+                    ) : null}
                   </td>
                   <td>{song.conteo_secciones || 0}</td>
                   <td>{song.conteo_midi || 0}</td>
@@ -104,16 +160,26 @@ export default function SongList({ onSelectSong, onNewSong }) {
                   <td>{song.tiene_modulaciones ? 'Sí' : 'No'}</td>
                   <td>
                     <div className="wpss-table-actions">
-                      <button
-                        type="button"
-                        className="button button-small"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleOpen(song.id, 'editor')
-                        }}
-                      >
-                        Editar
-                      </button>
+                      {isOwnSong(song) ? (
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleOpen(song.id, 'editor')
+                          }}
+                        >
+                          Editar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onClick={(event) => handleReversionSong(song, event)}
+                        >
+                          Reversionar
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="button button-small button-secondary"

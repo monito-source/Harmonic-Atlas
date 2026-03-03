@@ -86,7 +86,6 @@ export default function Editor({ onShowList }) {
   const lastSilentErrorRef = useRef(null)
   const previewScaleRef = useRef(previewScale)
   const previewPinchRef = useRef({ active: false, startDistance: 0, startScale: 100 })
-  const isAdmin = !!wpData?.isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const preferCompactMidiRows = !!wpData?.isPublicReader
   const midiRangePresets = Array.isArray(wpData?.midiRanges) ? wpData.midiRanges : []
@@ -94,7 +93,7 @@ export default function Editor({ onShowList }) {
   const lockMidiRange = !!wpData?.isPublicReader
   const canDeleteSong =
     !!editingSong?.id &&
-    (isAdmin || Number(editingSong?.autor_id) === Number(currentUserId))
+    Number(editingSong?.autor_id) === Number(currentUserId)
 
   const persistSelectedSection = useCallback(
     (nextId) => {
@@ -450,6 +449,18 @@ export default function Editor({ onShowList }) {
         const normalizedSong = {
           ...editingSong,
           id: body.id,
+          autor_id: body.autor_id || editingSong.autor_id || null,
+          autor_nombre: body.autor_nombre || editingSong.autor_nombre || '',
+          es_reversion: !!body.es_reversion || !!editingSong.es_reversion,
+          reversion_origen_id: body.reversion_origen_id || editingSong.reversion_origen_id || null,
+          reversion_origen_titulo:
+            body.reversion_origen_titulo || editingSong.reversion_origen_titulo || '',
+          reversion_raiz_id: body.reversion_raiz_id || editingSong.reversion_raiz_id || null,
+          reversion_raiz_titulo: body.reversion_raiz_titulo || editingSong.reversion_raiz_titulo || '',
+          reversion_autor_origen_id:
+            body.reversion_autor_origen_id || editingSong.reversion_autor_origen_id || null,
+          reversion_autor_origen_nombre:
+            body.reversion_autor_origen_nombre || editingSong.reversion_autor_origen_nombre || '',
           bpm: bpmDefault,
           secciones,
           estructura,
@@ -1396,7 +1407,15 @@ export default function Editor({ onShowList }) {
       <header className="wpss-panel__header">
         <div>
           <h2>{editingSong.id ? editingSong.titulo || 'Canción' : wpData?.strings?.newSong || 'Nueva canción'}</h2>
-          <p className="wpss-panel__meta">{editingSong.id ? `ID ${editingSong.id}` : '—'}</p>
+          <p className="wpss-panel__meta">
+            {editingSong.id ? `ID ${editingSong.id}` : '—'}
+            {editingSong.es_reversion
+              ? ` · Reversión de ${editingSong.reversion_origen_titulo || `#${editingSong.reversion_origen_id || '—'}`}`
+              : ''}
+            {editingSong.es_reversion && editingSong.reversion_autor_origen_nombre
+              ? ` · Autor origen: ${editingSong.reversion_autor_origen_nombre}`
+              : ''}
+          </p>
         </div>
           <div className="wpss-panel__actions">
             {onShowList ? (

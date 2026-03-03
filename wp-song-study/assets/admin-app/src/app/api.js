@@ -130,6 +130,9 @@ export function createApi(wpData) {
     deleteSong(id) {
       return request(`cancion/${id}`, { method: 'DELETE' })
     },
+    reversionSong(id) {
+      return request(`cancion/${id}/reversion`, { method: 'POST' })
+    },
     getPublicSong(id) {
       return requestPublic(`public/cancion/${id}`)
     },
