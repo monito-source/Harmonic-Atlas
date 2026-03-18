@@ -1,9 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySong } from '../state.js'
 import { normalizeSectionsFromApi, normalizeStructureFromApi, normalizeVersesFromApi } from '../utils.js'
+import {
+  REHEARSAL_STATUS_OPTIONS,
+  TRANSCRIPTION_STATUS_OPTIONS,
+  REHEARSAL_STATUS_LABELS,
+  TRANSCRIPTION_STATUS_LABELS,
+  getStatusLabel,
+} from '../songStatus.js'
 import ReadingView from './ReadingView.jsx'
 import Editor from './Editor.jsx'
+import CollectionsManager from './CollectionsManager.jsx'
+
+function createAssignRow(defaultAuthorId = 0) {
+  return {
+    id: `assign-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    titulo: '',
+    artista: '',
+    autor_id: defaultAuthorId ? String(defaultAuthorId) : '',
+  }
+}
 
 export default function PublicReader() {
   const { state, dispatch, api, wpData } = useAppState()
@@ -14,6 +31,12 @@ export default function PublicReader() {
     coleccion: '',
   })
   const [collections, setCollections] = useState([])
+  const [listTab, setListTab] = useState('songs')
+  const [colleagues, setColleagues] = useState([])
+  const [colleaguesLoading, setColleaguesLoading] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [assignRows, setAssignRows] = useState(() => [createAssignRow(wpData?.currentUserId || 0)])
+  const [statusSavingMap, setStatusSavingMap] = useState({})
   const canManage = !!wpData?.canManage
   const currentUserId = wpData?.currentUserId || 0
   const [showDebugIds, setShowDebugIds] = useState(false)
@@ -25,7 +48,111 @@ export default function PublicReader() {
 
   const canDeleteSong = (song) => canManage && isOwnSong(song)
 
+  const markStatusSaving = (songId, type, saving) => {
+    const key = `${songId}:${type}`
+    setStatusSavingMap((prev) => {
+      if (saving) {
+        return { ...prev, [key]: true }
+      }
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  const isStatusSaving = (songId, type) => !!statusSavingMap[`${songId}:${type}`]
+
+  const patchSongState = (songId, patch) => {
+    dispatch({
+      type: 'SET_STATE',
+      payload: {
+        songs: state.songs.map((song) =>
+          Number(song.id) === Number(songId) ? { ...song, ...patch } : song,
+        ),
+        editingSong:
+          Number(state.editingSong?.id) === Number(songId)
+            ? { ...state.editingSong, ...patch }
+            : state.editingSong,
+      },
+    })
+  }
+
+  const handleTranscriptionStatusChange = (song, nextStatus, event) => {
+    if (event?.stopPropagation) event.stopPropagation()
+    if (!song?.id || !isOwnSong(song)) return
+    markStatusSaving(song.id, 'transcription', true)
+    api
+      .setSongTranscriptionStatus(song.id, nextStatus)
+      .then((response) => {
+        const body = response?.data || {}
+        const nextSong = body.song && typeof body.song === 'object' ? body.song : null
+        patchSongState(
+          song.id,
+          nextSong || {
+            estado_transcripcion: body.estado_transcripcion || nextStatus,
+            estado_transcripcion_label:
+              body.estado_transcripcion_label
+              || getStatusLabel(TRANSCRIPTION_STATUS_LABELS, body.estado_transcripcion || nextStatus),
+          },
+        )
+      })
+      .catch((error) => {
+        const message =
+          error?.payload?.message || 'No fue posible actualizar el estado de transcripción.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        markStatusSaving(song.id, 'transcription', false)
+      })
+  }
+
+  const handleRehearsalStatusChange = (song, nextStatus, event) => {
+    if (event?.stopPropagation) event.stopPropagation()
+    if (!song?.id) return
+    markStatusSaving(song.id, 'rehearsal', true)
+    api
+      .setSongRehearsalStatus(song.id, nextStatus)
+      .then((response) => {
+        const body = response?.data || {}
+        const nextSong = body.song && typeof body.song === 'object' ? body.song : null
+        patchSongState(
+          song.id,
+          nextSong || {
+            estado_ensayo: body.estado_ensayo || nextStatus,
+            estado_ensayo_label:
+              body.estado_ensayo_label
+              || getStatusLabel(REHEARSAL_STATUS_LABELS, body.estado_ensayo || nextStatus),
+          },
+        )
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible actualizar tu estado de ensayo.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        markStatusSaving(song.id, 'rehearsal', false)
+      })
+  }
+
   const tonicas = useMemo(() => wpData?.tonicas || [], [wpData])
+  const handleCollectionsChanged = useCallback((items) => {
+    const normalized = Array.isArray(items) ? items : []
+    setCollections(normalized)
+    setFilters((prev) => {
+      if (!prev.coleccion) return prev
+      const exists = normalized.some((collection) => String(collection.id) === String(prev.coleccion))
+      return exists ? prev : { ...prev, coleccion: '' }
+    })
+  }, [])
+  const loadCollections = useCallback(() => {
+    api
+      .listPublicCollections()
+      .then((response) => {
+        const items = Array.isArray(response.data) ? response.data : []
+        handleCollectionsChanged(items)
+      })
+      .catch(() => {})
+  }, [api, handleCollectionsChanged])
 
   useEffect(() => {
     let mounted = true
@@ -60,20 +187,40 @@ export default function PublicReader() {
   }, [api, dispatch, filters, wpData])
 
   useEffect(() => {
+    loadCollections()
+  }, [loadCollections])
+
+  useEffect(() => {
+    if (!canManage) return undefined
     let mounted = true
+    setColleaguesLoading(true)
     api
-      .listPublicCollections()
+      .listColleagues()
       .then((response) => {
         if (!mounted) return
         const items = Array.isArray(response.data) ? response.data : []
-        setCollections(items)
+        setColleagues(items)
+        setAssignRows((prev) =>
+          prev.map((row) => {
+            if (row.autor_id) return row
+            const fallbackId = items[0]?.id || currentUserId || ''
+            return { ...row, autor_id: fallbackId ? String(fallbackId) : '' }
+          }),
+        )
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!mounted) return
+        setColleagues([])
+      })
+      .finally(() => {
+        if (!mounted) return
+        setColleaguesLoading(false)
+      })
 
     return () => {
       mounted = false
     }
-  }, [api])
+  }, [api, canManage, currentUserId])
 
   useEffect(() => {
     if (wpData?.initialSongId && !state.selectedSongId && !state.songLoading) {
@@ -121,6 +268,10 @@ export default function PublicReader() {
               reversion_raiz_titulo: song.reversion_raiz_titulo || '',
               reversion_autor_origen_id: song.reversion_autor_origen_id || null,
               reversion_autor_origen_nombre: song.reversion_autor_origen_nombre || '',
+              estado_transcripcion: song.estado_transcripcion || 'sin_iniciar',
+              estado_transcripcion_label: song.estado_transcripcion_label || 'Sin iniciar',
+              estado_ensayo: song.estado_ensayo || 'sin_ensayar',
+              estado_ensayo_label: song.estado_ensayo_label || 'No ensayada',
               titulo: song.titulo || '',
               tonica: song.tonica || song.tonalidad || '',
               campo_armonico: song.campo_armonico || '',
@@ -258,6 +409,10 @@ export default function PublicReader() {
               reversion_raiz_titulo: song.reversion_raiz_titulo || '',
               reversion_autor_origen_id: song.reversion_autor_origen_id || null,
               reversion_autor_origen_nombre: song.reversion_autor_origen_nombre || '',
+              estado_transcripcion: song.estado_transcripcion || 'sin_iniciar',
+              estado_transcripcion_label: song.estado_transcripcion_label || 'Sin iniciar',
+              estado_ensayo: song.estado_ensayo || 'sin_ensayar',
+              estado_ensayo_label: song.estado_ensayo_label || 'No ensayada',
               titulo: song.titulo || '',
               tonica: song.tonica || song.tonalidad || '',
               campo_armonico: song.campo_armonico || '',
@@ -284,6 +439,77 @@ export default function PublicReader() {
             error: message,
           },
         })
+      })
+  }
+
+  const addAssignRow = () => {
+    const fallbackId = colleagues[0]?.id || currentUserId || 0
+    setAssignRows((prev) => prev.concat(createAssignRow(fallbackId)))
+  }
+
+  const removeAssignRow = (rowId) => {
+    setAssignRows((prev) => {
+      const next = prev.filter((row) => row.id !== rowId)
+      if (next.length) return next
+      const fallbackId = colleagues[0]?.id || currentUserId || 0
+      return [createAssignRow(fallbackId)]
+    })
+  }
+
+  const updateAssignRow = (rowId, field, value) => {
+    setAssignRows((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
+    )
+  }
+
+  const handleAssignRepertoire = () => {
+    const payloadItems = assignRows
+      .map((row) => ({
+        titulo: (row.titulo || '').trim(),
+        artista: (row.artista || '').trim(),
+        autor_id: Number(row.autor_id) || 0,
+      }))
+      .filter((row) => row.titulo)
+
+    if (!payloadItems.length) {
+      dispatch({
+        type: 'SET_STATE',
+        payload: { error: 'Agrega al menos una canción con título para asignar.' },
+      })
+      return
+    }
+
+    setAssigning(true)
+    api
+      .assignRepertoire(payloadItems)
+      .then((response) => {
+        const body = response?.data || {}
+        const created = Array.isArray(body.created) ? body.created : []
+        const message = body?.message || 'Repertorio asignado correctamente.'
+        const createdIds = new Set(created.map((song) => Number(song.id)))
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            songs: created.concat(state.songs.filter((song) => !createdIds.has(Number(song.id)))),
+            feedback: {
+              message,
+              type: body?.errors?.length ? 'warning' : 'success',
+            },
+            error:
+              Array.isArray(body?.errors) && body.errors.length
+                ? body.errors.map((error) => error?.message).filter(Boolean).join(' | ')
+                : null,
+          },
+        })
+        setAssignRows([createAssignRow(colleagues[0]?.id || currentUserId || 0)])
+        setListTab('songs')
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible asignar el repertorio.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        setAssigning(false)
       })
   }
 
@@ -346,139 +572,304 @@ export default function PublicReader() {
               </div>
             ) : null}
           </header>
-          <div className="wpss-filters">
-            <label>
-              <span>{wpData?.strings?.filtersTonica || 'Tónica'}</span>
-              <select
-                value={filters.tonica}
-                onChange={(event) => setFilters((prev) => ({ ...prev, tonica: event.target.value }))}
-              >
-                <option value="">{'—'}</option>
-                {tonicas.map((tonica) => (
-                  <option key={tonica} value={tonica}>
-                    {tonica}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>{wpData?.strings?.filtersLoans || 'Préstamos'}</span>
-              <select
-                value={filters.con_prestamos}
-                onChange={(event) => setFilters((prev) => ({ ...prev, con_prestamos: event.target.value }))}
-              >
-                <option value="">{'—'}</option>
-                <option value="1">Con préstamos</option>
-                <option value="0">Sin préstamos</option>
-              </select>
-            </label>
-            <label>
-              <span>{wpData?.strings?.filtersMods || 'Modulaciones'}</span>
-              <select
-                value={filters.con_modulaciones}
-                onChange={(event) => setFilters((prev) => ({ ...prev, con_modulaciones: event.target.value }))}
-              >
-                <option value="">{'—'}</option>
-                <option value="1">Con modulaciones</option>
-                <option value="0">Sin modulaciones</option>
-              </select>
-            </label>
-            <label className="wpss-filter--collection">
-              <span>{wpData?.strings?.filtersCollection || 'Colección'}</span>
-              <select
-                value={filters.coleccion}
-                onChange={(event) => setFilters((prev) => ({ ...prev, coleccion: event.target.value }))}
-              >
-                <option value="">{'Todas'}</option>
-                {collections.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="wpss-filters__actions">
+          {canManage ? (
+            <div className="wpss-tab-nav wpss-public-reader__tabs">
               <button
                 type="button"
-                className="button button-secondary"
-                onClick={() =>
-                  setFilters({
-                    tonica: '',
-                    con_prestamos: '',
-                    con_modulaciones: '',
-                    coleccion: '',
-                  })
-                }
+                className={`button ${listTab === 'songs' ? 'is-active' : ''}`}
+                onClick={() => setListTab('songs')}
               >
-                {wpData?.strings?.filtersClear || 'Limpiar filtros'}
+                Ver canciones
+              </button>
+              <button
+                type="button"
+                className={`button ${listTab === 'assign' ? 'is-active' : ''}`}
+                onClick={() => setListTab('assign')}
+              >
+                Incrustar y asignar repertorio
+              </button>
+              <button
+                type="button"
+                className={`button ${listTab === 'collections' ? 'is-active' : ''}`}
+                onClick={() => setListTab('collections')}
+              >
+                Colecciones
               </button>
             </div>
-          </div>
-          {state.listLoading ? (
-            <p className="wpss-loading">Cargando canciones…</p>
-          ) : (
-            <ul className="wpss-public-reader__songs">
-              {state.songs.map((song) => (
-                <li key={song.id}>
-                  <div className="wpss-public-reader__song-row">
+          ) : null}
+          {listTab === 'assign' && canManage ? (
+            <section className="wpss-public-reader__assign">
+              <p className="wpss-panel__meta">
+                Escribe el repertorio pendiente y asigna cada canción al colega que la transcribirá.
+              </p>
+              {colleaguesLoading ? <p className="wpss-loading">Cargando colegas musicales…</p> : null}
+              <div className="wpss-public-reader__assign-list">
+                {assignRows.map((row, index) => (
+                  <div className="wpss-public-reader__assign-row" key={row.id}>
+                    <label>
+                      <span>Título</span>
+                      <input
+                        type="text"
+                        value={row.titulo}
+                        onChange={(event) => updateAssignRow(row.id, 'titulo', event.target.value)}
+                        placeholder={`Canción ${index + 1}`}
+                      />
+                    </label>
+                    <label>
+                      <span>Artista</span>
+                      <input
+                        type="text"
+                        value={row.artista}
+                        onChange={(event) => updateAssignRow(row.id, 'artista', event.target.value)}
+                        placeholder="Artista / referencia"
+                      />
+                    </label>
+                    <label>
+                      <span>Colega asignado</span>
+                      <select
+                        value={row.autor_id}
+                        onChange={(event) => updateAssignRow(row.id, 'autor_id', event.target.value)}
+                      >
+                        <option value="">Seleccionar</option>
+                        {colleagues.map((colleague) => (
+                          <option key={colleague.id} value={colleague.id}>
+                            {colleague.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
                       type="button"
-                      className={`wpss-public-reader__song ${song.id === state.selectedSongId ? 'is-active' : ''}`}
-                      onClick={() => handleSelectSong(song.id)}
+                      className="button button-small button-danger"
+                      onClick={() => removeAssignRow(row.id)}
                     >
-                      <strong>{song.titulo}</strong>
-                      <span>
-                        {song.tonica || song.tonalidad || '—'}
-                        {song.campo_armonico ? ` · ${song.campo_armonico}` : ''}
-                      </span>
-                      <span className="wpss-public-reader__song-meta">
-                        Autor: {song.autor_nombre || (song.autor_id ? `Usuario ${song.autor_id}` : '—')}
-                      </span>
-                      {song.es_reversion ? (
-                        <span className="wpss-public-reader__song-meta">
-                          Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}
-                          {song.reversion_autor_origen_nombre
-                            ? ` · Original: ${song.reversion_autor_origen_nombre}`
-                            : ''}
-                        </span>
-                      ) : null}
-                      {showDebugIds ? (
-                        <span className="wpss-public-reader__song-meta">
-                          ID canción {song.id} · Autor {song.autor_id || '—'} · Yo {currentUserId || '—'}
-                        </span>
-                      ) : null}
+                      Quitar
                     </button>
-                    {canManage && isOwnSong(song) ? (
-                      <button
-                        type="button"
-                        className="button button-small"
-                        onClick={() => handleEditSong(song.id)}
-                      >
-                        {wpData?.strings?.editorView || 'Editar'}
-                      </button>
-                    ) : null}
-                    {canManage && !isOwnSong(song) ? (
-                      <button
-                        type="button"
-                        className="button button-small button-secondary"
-                        onClick={() => handleReversionSong(song)}
-                      >
-                        Reversionar
-                      </button>
-                    ) : null}
-                    {canDeleteSong(song) ? (
-                      <button
-                        type="button"
-                        className="button button-small button-danger"
-                        onClick={() => handleDeleteSong(song)}
-                      >
-                        Eliminar
-                      </button>
-                    ) : null}
                   </div>
-                </li>
-              ))}
-            </ul>
+                ))}
+              </div>
+              <div className="wpss-public-reader__assign-actions">
+                <button type="button" className="button button-secondary" onClick={addAssignRow}>
+                  + Añadir canción
+                </button>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  onClick={handleAssignRepertoire}
+                  disabled={assigning || colleaguesLoading}
+                >
+                  {assigning ? 'Asignando…' : 'Crear y asignar repertorio'}
+                </button>
+              </div>
+            </section>
+          ) : listTab === 'collections' && canManage ? (
+            <CollectionsManager
+              colleagues={colleagues}
+              colleaguesLoading={colleaguesLoading}
+              onCollectionsChanged={handleCollectionsChanged}
+            />
+          ) : (
+            <>
+              <div className="wpss-filters">
+                <label>
+                  <span>{wpData?.strings?.filtersTonica || 'Tónica'}</span>
+                  <select
+                    value={filters.tonica}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, tonica: event.target.value }))}
+                  >
+                    <option value="">{'—'}</option>
+                    {tonicas.map((tonica) => (
+                      <option key={tonica} value={tonica}>
+                        {tonica}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>{wpData?.strings?.filtersLoans || 'Préstamos'}</span>
+                  <select
+                    value={filters.con_prestamos}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, con_prestamos: event.target.value }))}
+                  >
+                    <option value="">{'—'}</option>
+                    <option value="1">Con préstamos</option>
+                    <option value="0">Sin préstamos</option>
+                  </select>
+                </label>
+                <label>
+                  <span>{wpData?.strings?.filtersMods || 'Modulaciones'}</span>
+                  <select
+                    value={filters.con_modulaciones}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, con_modulaciones: event.target.value }))}
+                  >
+                    <option value="">{'—'}</option>
+                    <option value="1">Con modulaciones</option>
+                    <option value="0">Sin modulaciones</option>
+                  </select>
+                </label>
+                <label className="wpss-filter--collection">
+                  <span>{wpData?.strings?.filtersCollection || 'Colección'}</span>
+                  <select
+                    value={filters.coleccion}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, coleccion: event.target.value }))}
+                  >
+                    <option value="">{'Todas'}</option>
+                    {collections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="wpss-filters__actions">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() =>
+                      setFilters({
+                        tonica: '',
+                        con_prestamos: '',
+                        con_modulaciones: '',
+                        coleccion: '',
+                      })
+                    }
+                  >
+                    {wpData?.strings?.filtersClear || 'Limpiar filtros'}
+                  </button>
+                </div>
+              </div>
+              {state.listLoading ? (
+                <p className="wpss-loading">Cargando canciones…</p>
+              ) : (
+                <ul className="wpss-public-reader__songs">
+                  {state.songs.map((song) => {
+                    const transcriptionStatus = song.estado_transcripcion || 'sin_iniciar'
+                    const transcriptionLabel = getStatusLabel(
+                      TRANSCRIPTION_STATUS_LABELS,
+                      transcriptionStatus,
+                    )
+                    const rehearsalLabel = getStatusLabel(REHEARSAL_STATUS_LABELS, song.estado_ensayo)
+                    const transcriptionBadge =
+                      transcriptionStatus === 'verificada'
+                        ? `★ ${transcriptionLabel}`
+                        : transcriptionLabel
+
+                    return (
+                      <li key={song.id}>
+                        <div
+                          className={`wpss-public-reader__song-row is-status-${transcriptionStatus} ${
+                            song.id === state.selectedSongId ? 'is-active' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="wpss-public-reader__song"
+                            onClick={() => handleSelectSong(song.id)}
+                          >
+                            <strong>{song.titulo}</strong>
+                            <span>
+                              {song.tonica || song.tonalidad || '—'}
+                              {song.campo_armonico ? ` · ${song.campo_armonico}` : ''}
+                            </span>
+                            <span className="wpss-public-reader__song-meta">
+                              Autor: {song.autor_nombre || (song.autor_id ? `Usuario ${song.autor_id}` : '—')}
+                            </span>
+                            <span className={`wpss-public-reader__status-pill is-${transcriptionStatus}`}>
+                              {transcriptionBadge}
+                            </span>
+                            <span className="wpss-public-reader__song-meta">
+                              Ensayo (yo): {rehearsalLabel}
+                            </span>
+                            {song.es_reversion ? (
+                              <span className="wpss-public-reader__song-meta">
+                                Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}
+                                {song.reversion_autor_origen_nombre
+                                  ? ` · Original: ${song.reversion_autor_origen_nombre}`
+                                  : ''}
+                              </span>
+                            ) : null}
+                            {showDebugIds ? (
+                              <span className="wpss-public-reader__song-meta">
+                                ID canción {song.id} · Autor {song.autor_id || '—'} · Yo {currentUserId || '—'}
+                              </span>
+                            ) : null}
+                          </button>
+                          <div className="wpss-public-reader__song-actions">
+                            {canManage && isOwnSong(song) ? (
+                              <button
+                                type="button"
+                                className="button button-small"
+                                onClick={() => handleEditSong(song.id)}
+                              >
+                                {wpData?.strings?.editorView || 'Editar'}
+                              </button>
+                            ) : null}
+                            {canManage && !isOwnSong(song) ? (
+                              <button
+                                type="button"
+                                className="button button-small button-secondary"
+                                onClick={() => handleReversionSong(song)}
+                              >
+                                Reversionar
+                              </button>
+                            ) : null}
+                            {canDeleteSong(song) ? (
+                              <button
+                                type="button"
+                                className="button button-small button-danger"
+                                onClick={() => handleDeleteSong(song)}
+                              >
+                                Eliminar
+                              </button>
+                            ) : null}
+                          </div>
+                          {canManage ? (
+                            <div className="wpss-public-reader__song-status-controls">
+                              {isOwnSong(song) ? (
+                                <label>
+                                  <span>Transcripción</span>
+                                  <select
+                                    value={song.estado_transcripcion || 'sin_iniciar'}
+                                    disabled={isStatusSaving(song.id, 'transcription')}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) =>
+                                      handleTranscriptionStatusChange(song, event.target.value, event)
+                                    }
+                                  >
+                                    {TRANSCRIPTION_STATUS_OPTIONS.map((option) => (
+                                      <option key={option.id} value={option.id}>
+                                        {option.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : null}
+                              <label>
+                                <span>Ensayo (yo)</span>
+                                <select
+                                  value={song.estado_ensayo || 'sin_ensayar'}
+                                  disabled={isStatusSaving(song.id, 'rehearsal')}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) =>
+                                    handleRehearsalStatusChange(song, event.target.value, event)
+                                  }
+                                >
+                                  {REHEARSAL_STATUS_OPTIONS.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                          ) : null}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </>
           )}
         </section>
       )}

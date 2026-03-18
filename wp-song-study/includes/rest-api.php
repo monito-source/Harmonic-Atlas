@@ -172,6 +172,42 @@ function wpss_register_rest_routes() {
             ],
         ]
     );
+    register_rest_route(
+        'wpss/v1',
+        '/cancion/(?P<id>\d+)/estado-transcripcion',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_set_estado_transcripcion',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID de la canción.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
+    register_rest_route(
+        'wpss/v1',
+        '/cancion/(?P<id>\d+)/estado-ensayo',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_set_estado_ensayo',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID de la canción.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
 
     register_rest_route(
         'wpss/v1',
@@ -218,6 +254,26 @@ function wpss_register_rest_routes() {
         [
             'methods'             => WP_REST_Server::CREATABLE,
             'callback'            => 'wpss_rest_save_cancion',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/colegas-musicales',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_colegas_musicales',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/repertorio-asignaciones',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_save_repertorio_asignaciones',
             'permission_callback' => 'wpss_rest_verify_permissions',
         ]
     );
@@ -435,6 +491,572 @@ function wpss_validate_coleccion_exists( $value, WP_REST_Request $request, $para
 }
 
 /**
+ * Determina si el usuario actual puede omitir controles de propiedad en colecciones.
+ *
+ * @return bool
+ */
+function wpss_user_can_bypass_coleccion_acl() {
+    if ( function_exists( 'is_super_admin' ) && is_super_admin() ) {
+        return true;
+    }
+
+    return current_user_can( 'manage_options' );
+}
+
+/**
+ * Determina si el usuario actual tiene acceso a una colección.
+ *
+ * @param int         $term_id ID de la colección.
+ * @param string      $mode    Modo de acceso: read|write.
+ * @param int|null    $user_id ID del usuario (opcional).
+ * @return bool
+ */
+function wpss_user_can_access_coleccion( $term_id, $mode = 'read', $user_id = null ) {
+    $term_id = absint( $term_id );
+    if ( $term_id <= 0 ) {
+        return false;
+    }
+
+    $term = get_term( $term_id, 'coleccion' );
+    if ( ! $term || is_wp_error( $term ) ) {
+        return false;
+    }
+
+    if ( wpss_user_can_bypass_coleccion_acl() ) {
+        return true;
+    }
+
+    if ( null === $user_id ) {
+        $user_id = get_current_user_id();
+    }
+
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return false;
+    }
+
+    $mode = 'write' === $mode ? 'write' : 'read';
+
+    $owner_id = wpss_get_coleccion_owner_id( $term_id );
+
+    // Compatibilidad: colecciones antiguas sin propietario quedan disponibles para usuarios autorizados.
+    if ( $owner_id <= 0 ) {
+        return wpss_user_has_allowed_role();
+    }
+
+    if ( $owner_id === $user_id ) {
+        return true;
+    }
+
+    if ( 'write' === $mode ) {
+        return false;
+    }
+
+    $shared_user_ids = wpss_get_coleccion_shared_user_ids( $term_id );
+    return in_array( $user_id, $shared_user_ids, true );
+}
+
+/**
+ * Opciones válidas para estado de transcripción.
+ *
+ * @return array
+ */
+function wpss_get_estado_transcripcion_options() {
+    return [
+        'sin_iniciar'      => __( 'Sin iniciar', 'wp-song-study' ),
+        'incompleta'       => __( 'Incompleta', 'wp-song-study' ),
+        'completada'       => __( 'Completada', 'wp-song-study' ),
+        'verificada'       => __( 'Verificada', 'wp-song-study' ),
+        'necesita_cambios' => __( 'Necesita cambios', 'wp-song-study' ),
+    ];
+}
+
+/**
+ * Opciones válidas para estado de ensayo personal.
+ *
+ * @return array
+ */
+function wpss_get_estado_ensayo_options() {
+    return [
+        'sin_ensayar' => __( 'No ensayada', 'wp-song-study' ),
+        'leida'       => __( 'Ya la leí', 'wp-song-study' ),
+        'ensayando'   => __( 'Ensayando', 'wp-song-study' ),
+        'ensayada'    => __( 'Ensayada', 'wp-song-study' ),
+        'dominada'    => __( 'Dominada', 'wp-song-study' ),
+        'aprendida'   => __( 'Aprendida', 'wp-song-study' ),
+    ];
+}
+
+/**
+ * Normaliza un estado de transcripción.
+ *
+ * @param string $value Estado recibido.
+ * @return string
+ */
+function wpss_normalize_estado_transcripcion( $value ) {
+    $options = wpss_get_estado_transcripcion_options();
+    $key = sanitize_key( $value );
+    return isset( $options[ $key ] ) ? $key : 'sin_iniciar';
+}
+
+/**
+ * Normaliza un estado de ensayo.
+ *
+ * @param string $value Estado recibido.
+ * @return string
+ */
+function wpss_normalize_estado_ensayo( $value ) {
+    $options = wpss_get_estado_ensayo_options();
+    $key = sanitize_key( $value );
+    return isset( $options[ $key ] ) ? $key : 'sin_ensayar';
+}
+
+/**
+ * Obtiene la etiqueta de un estado según catálogo.
+ *
+ * @param array  $options Catálogo.
+ * @param string $value   Clave estado.
+ * @return string
+ */
+function wpss_get_estado_label( array $options, $value ) {
+    $key = sanitize_key( $value );
+    if ( isset( $options[ $key ] ) ) {
+        return sanitize_text_field( $options[ $key ] );
+    }
+
+    return sanitize_text_field( reset( $options ) );
+}
+
+/**
+ * Obtiene el estado de transcripción de una canción.
+ *
+ * @param int $post_id ID canción.
+ * @return string
+ */
+function wpss_get_song_estado_transcripcion( $post_id ) {
+    $raw = sanitize_key( get_post_meta( (int) $post_id, '_estado_transcripcion', true ) );
+    return wpss_normalize_estado_transcripcion( $raw );
+}
+
+/**
+ * Devuelve el mapa de estados de ensayo para un usuario.
+ *
+ * @param int $user_id ID de usuario.
+ * @return array
+ */
+function wpss_get_user_estado_ensayo_map( $user_id = 0 ) {
+    $user_id = absint( $user_id ? $user_id : get_current_user_id() );
+    if ( $user_id <= 0 ) {
+        return [];
+    }
+
+    $raw = get_user_meta( $user_id, '_wpss_estado_ensayo_map', true );
+    if ( ! is_array( $raw ) ) {
+        $raw = [];
+    }
+
+    $normalized = [];
+    foreach ( $raw as $song_id => $estado ) {
+        $id = absint( $song_id );
+        if ( $id <= 0 ) {
+            continue;
+        }
+
+        $estado_key = wpss_normalize_estado_ensayo( $estado );
+        if ( 'sin_ensayar' === $estado_key ) {
+            continue;
+        }
+
+        $normalized[ $id ] = $estado_key;
+    }
+
+    return $normalized;
+}
+
+/**
+ * Persiste mapa de estados de ensayo.
+ *
+ * @param int   $user_id ID de usuario.
+ * @param array $map     Mapa normalizado.
+ * @return void
+ */
+function wpss_save_user_estado_ensayo_map( $user_id, array $map ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    $normalized = [];
+    foreach ( $map as $song_id => $estado ) {
+        $id = absint( $song_id );
+        if ( $id <= 0 ) {
+            continue;
+        }
+        $estado_key = wpss_normalize_estado_ensayo( $estado );
+        if ( 'sin_ensayar' === $estado_key ) {
+            continue;
+        }
+        $normalized[ $id ] = $estado_key;
+    }
+
+    update_user_meta( $user_id, '_wpss_estado_ensayo_map', $normalized );
+}
+
+/**
+ * Estado de ensayo del usuario actual para una canción.
+ *
+ * @param int $post_id ID canción.
+ * @return string
+ */
+function wpss_get_song_estado_ensayo_for_current_user( $post_id ) {
+    $post_id = absint( $post_id );
+    if ( $post_id <= 0 ) {
+        return 'sin_ensayar';
+    }
+
+    $map = wpss_get_user_estado_ensayo_map( get_current_user_id() );
+    if ( isset( $map[ $post_id ] ) ) {
+        return wpss_normalize_estado_ensayo( $map[ $post_id ] );
+    }
+
+    return 'sin_ensayar';
+}
+
+/**
+ * Devuelve la lista de usuarios disponibles para asignaciones de repertorio.
+ *
+ * @return array
+ */
+function wpss_get_assignable_song_users() {
+    $users = get_users(
+        [
+            'number' => -1,
+            'fields' => 'all_with_meta',
+            'orderby' => 'display_name',
+            'order'   => 'ASC',
+        ]
+    );
+
+    if ( ! is_array( $users ) || empty( $users ) ) {
+        return [];
+    }
+
+    $result = [];
+    foreach ( $users as $user ) {
+        if ( ! $user instanceof WP_User ) {
+            continue;
+        }
+
+        $can_manage = user_can( $user, defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
+        if ( ! $can_manage ) {
+            continue;
+        }
+
+        $result[] = [
+            'id'     => (int) $user->ID,
+            'nombre' => sanitize_text_field( $user->display_name ),
+            'roles'  => array_values(
+                array_map(
+                    'sanitize_key',
+                    is_array( $user->roles ) ? $user->roles : []
+                )
+            ),
+        ];
+    }
+
+    return $result;
+}
+
+/**
+ * Devuelve el catálogo de colegas musicales para asignar repertorio.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_colegas_musicales( WP_REST_Request $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+    return rest_ensure_response( wpss_get_assignable_song_users() );
+}
+
+/**
+ * Crea una canción base para asignación de repertorio.
+ *
+ * @param string $titulo    Título de la canción.
+ * @param string $artista   Artista referencial de la canción.
+ * @param int    $author_id Usuario asignado.
+ * @return int|WP_Error
+ */
+function wpss_create_assigned_song_stub( $titulo, $artista, $author_id ) {
+    $post_id = wp_insert_post(
+        wp_slash(
+            [
+                'post_type'   => 'cancion',
+                'post_status' => 'publish',
+                'post_title'  => $titulo,
+                'post_author' => (int) $author_id,
+            ]
+        ),
+        true
+    );
+
+    if ( is_wp_error( $post_id ) ) {
+        return $post_id;
+    }
+
+    update_post_meta( $post_id, '_tonica', '' );
+    update_post_meta( $post_id, '_campo_armonico', '' );
+    update_post_meta( $post_id, '_campo_armonico_predominante', '' );
+    update_post_meta( $post_id, '_estado_transcripcion', 'sin_iniciar' );
+    update_post_meta( $post_id, '_ficha_autores', $artista );
+    update_post_meta( $post_id, '_bpm', 120 );
+    update_post_meta( $post_id, '_prestamos_tonales_json', wp_json_encode( [] ) );
+    update_post_meta( $post_id, '_modulaciones_json', wp_json_encode( [] ) );
+    update_post_meta( $post_id, '_tiene_prestamos', 0 );
+    update_post_meta( $post_id, '_tiene_modulaciones', 0 );
+    update_post_meta( $post_id, '_conteo_versos', 0 );
+    update_post_meta( $post_id, '_conteo_secciones', 1 );
+    update_post_meta( $post_id, '_conteo_midi', 0 );
+    update_post_meta( $post_id, '_conteo_versos_normales', 0 );
+    update_post_meta( $post_id, '_conteo_versos_instrumentales', 0 );
+
+    $seccion_default = [
+        [
+            'id'         => 'sec-1',
+            'nombre'     => __( 'Sección 1', 'wp-song-study' ),
+            'midi_clips' => [],
+            'comentarios'=> [],
+        ],
+    ];
+    update_post_meta(
+        $post_id,
+        '_secciones_json',
+        wp_json_encode( $seccion_default, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_QUOT )
+    );
+
+    return (int) $post_id;
+}
+
+/**
+ * Crea y asigna repertorio en lote.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_save_repertorio_asignaciones( WP_REST_Request $request ) {
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    $rows = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : [];
+    if ( empty( $rows ) ) {
+        return new WP_REST_Response(
+            [ 'message' => __( 'Agrega al menos una canción para asignar.', 'wp-song-study' ) ],
+            400
+        );
+    }
+
+    $assignable_users = wpss_get_assignable_song_users();
+    $assignable_ids   = array_map( 'intval', wp_list_pluck( $assignable_users, 'id' ) );
+    $current_user_id  = get_current_user_id();
+
+    $created = [];
+    $errors  = [];
+
+    foreach ( $rows as $index => $row ) {
+        if ( $row instanceof Traversable ) {
+            $row = iterator_to_array( $row );
+        } elseif ( is_object( $row ) ) {
+            $row = get_object_vars( $row );
+        }
+
+        if ( ! is_array( $row ) ) {
+            $errors[] = [
+                'index'   => $index,
+                'message' => __( 'Formato de fila inválido.', 'wp-song-study' ),
+            ];
+            continue;
+        }
+
+        $titulo   = isset( $row['titulo'] ) ? trim( sanitize_text_field( $row['titulo'] ) ) : '';
+        $artista  = isset( $row['artista'] ) ? trim( sanitize_text_field( $row['artista'] ) ) : '';
+        $autor_id = isset( $row['autor_id'] ) ? absint( $row['autor_id'] ) : 0;
+        if ( $autor_id <= 0 ) {
+            $autor_id = $current_user_id;
+        }
+
+        if ( '' === $titulo ) {
+            $errors[] = [
+                'index'   => $index,
+                'message' => __( 'El título es obligatorio en cada fila.', 'wp-song-study' ),
+            ];
+            continue;
+        }
+
+        if ( ! in_array( $autor_id, $assignable_ids, true ) ) {
+            $errors[] = [
+                'index'   => $index,
+                'message' => __( 'Selecciona un colega musical válido.', 'wp-song-study' ),
+            ];
+            continue;
+        }
+
+        $post_id = wpss_create_assigned_song_stub( $titulo, $artista, $autor_id );
+        if ( is_wp_error( $post_id ) ) {
+            $errors[] = [
+                'index'   => $index,
+                'message' => __( 'No fue posible crear una de las canciones.', 'wp-song-study' ),
+            ];
+            continue;
+        }
+
+        $created[] = wpss_prepare_cancion_list_item( $post_id );
+    }
+
+    if ( empty( $created ) ) {
+        return new WP_REST_Response(
+            [
+                'ok'      => false,
+                'created' => [],
+                'errors'  => $errors,
+                'message' => __( 'No fue posible crear canciones con los datos enviados.', 'wp-song-study' ),
+            ],
+            400
+        );
+    }
+
+    return rest_ensure_response(
+        [
+            'ok'            => empty( $errors ),
+            'created'       => $created,
+            'errors'        => $errors,
+            'created_count' => count( $created ),
+            'message'       => empty( $errors )
+                ? __( 'Repertorio asignado correctamente.', 'wp-song-study' )
+                : __( 'Se asignaron canciones con algunas filas omitidas.', 'wp-song-study' ),
+        ]
+    );
+}
+
+/**
+ * Actualiza estado de transcripción de una canción.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_set_estado_transcripcion( WP_REST_Request $request ) {
+    $post_id = (int) $request->get_param( 'id' );
+    $post = get_post( $post_id );
+    if ( ! $post || 'cancion' !== $post->post_type ) {
+        return new WP_Error(
+            'wpss_not_found',
+            __( 'Canción no encontrada.', 'wp-song-study' ),
+            [ 'status' => 404 ]
+        );
+    }
+
+    if ( (int) $post->post_author !== get_current_user_id() ) {
+        return new WP_Error(
+            'wpss_forbidden',
+            __( 'Solo el transcriptor puede cambiar el estado de transcripción.', 'wp-song-study' ),
+            [ 'status' => 403 ]
+        );
+    }
+
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    $estado = '';
+    if ( isset( $params['estado'] ) ) {
+        $estado = wpss_normalize_estado_transcripcion( $params['estado'] );
+    } elseif ( isset( $params['estado_transcripcion'] ) ) {
+        $estado = wpss_normalize_estado_transcripcion( $params['estado_transcripcion'] );
+    } else {
+        return new WP_REST_Response(
+            [ 'message' => __( 'Debes enviar un estado de transcripción válido.', 'wp-song-study' ) ],
+            400
+        );
+    }
+
+    update_post_meta( $post_id, '_estado_transcripcion', $estado );
+    $options = wpss_get_estado_transcripcion_options();
+
+    return rest_ensure_response(
+        [
+            'ok'                          => true,
+            'id'                          => $post_id,
+            'estado_transcripcion'        => $estado,
+            'estado_transcripcion_label'  => wpss_get_estado_label( $options, $estado ),
+            'song'                        => wpss_prepare_cancion_list_item( $post_id ),
+        ]
+    );
+}
+
+/**
+ * Actualiza estado personal de ensayo para la canción.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_set_estado_ensayo( WP_REST_Request $request ) {
+    $post_id = (int) $request->get_param( 'id' );
+    $post = get_post( $post_id );
+    if ( ! $post || 'cancion' !== $post->post_type ) {
+        return new WP_Error(
+            'wpss_not_found',
+            __( 'Canción no encontrada.', 'wp-song-study' ),
+            [ 'status' => 404 ]
+        );
+    }
+
+    $params = $request->get_json_params();
+    if ( empty( $params ) ) {
+        $params = $request->get_body_params();
+    }
+
+    $estado = '';
+    if ( isset( $params['estado'] ) ) {
+        $estado = wpss_normalize_estado_ensayo( $params['estado'] );
+    } elseif ( isset( $params['estado_ensayo'] ) ) {
+        $estado = wpss_normalize_estado_ensayo( $params['estado_ensayo'] );
+    } else {
+        return new WP_REST_Response(
+            [ 'message' => __( 'Debes enviar un estado de ensayo válido.', 'wp-song-study' ) ],
+            400
+        );
+    }
+
+    $user_id = get_current_user_id();
+    if ( $user_id <= 0 ) {
+        return new WP_Error(
+            'wpss_forbidden',
+            __( 'No tienes permisos para actualizar tu estado de ensayo.', 'wp-song-study' ),
+            [ 'status' => 403 ]
+        );
+    }
+
+    $map = wpss_get_user_estado_ensayo_map( $user_id );
+    if ( 'sin_ensayar' === $estado ) {
+        unset( $map[ $post_id ] );
+    } else {
+        $map[ $post_id ] = $estado;
+    }
+    wpss_save_user_estado_ensayo_map( $user_id, $map );
+
+    $options = wpss_get_estado_ensayo_options();
+    return rest_ensure_response(
+        [
+            'ok'                    => true,
+            'id'                    => $post_id,
+            'estado_ensayo'         => $estado,
+            'estado_ensayo_label'   => wpss_get_estado_label( $options, $estado ),
+            'song'                  => wpss_prepare_cancion_list_item( $post_id ),
+        ]
+    );
+}
+
+/**
  * Sanitiza parámetros booleanos recibidos en la consulta.
  *
  * @param mixed $value Valor entrante.
@@ -527,6 +1149,13 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
     }
 
     $coleccion_id = absint( $request->get_param( 'coleccion' ) );
+
+    if ( $coleccion_id > 0 && ! wpss_user_can_access_coleccion( $coleccion_id, 'read' ) ) {
+        $response = rest_ensure_response( [] );
+        $response->header( 'X-WP-Total', 0 );
+        $response->header( 'X-WP-TotalPages', 0 );
+        return $response;
+    }
 
     $items       = [];
     $total_items = 0;
@@ -726,6 +1355,10 @@ function wpss_prepare_cancion_list_item( $post_id ) {
     $campo_armonico_value = sanitize_text_field( get_post_meta( $post_id, '_campo_armonico', true ) );
     $autor_id             = (int) get_post_field( 'post_author', $post_id );
     $reversion_data       = wpss_get_song_reversion_data( $post_id );
+    $estado_transcripcion = wpss_get_song_estado_transcripcion( $post_id );
+    $estado_ensayo        = wpss_get_song_estado_ensayo_for_current_user( $post_id );
+    $estado_transcripcion_options = wpss_get_estado_transcripcion_options();
+    $estado_ensayo_options = wpss_get_estado_ensayo_options();
 
     return array_merge(
         [
@@ -744,6 +1377,10 @@ function wpss_prepare_cancion_list_item( $post_id ) {
             'conteo_versos_normales' => (int) get_post_meta( $post_id, '_conteo_versos_normales', true ),
             'conteo_versos_instrumentales' => (int) get_post_meta( $post_id, '_conteo_versos_instrumentales', true ),
             'colecciones'        => wpss_get_song_colecciones( $post_id ),
+            'estado_transcripcion' => $estado_transcripcion,
+            'estado_transcripcion_label' => wpss_get_estado_label( $estado_transcripcion_options, $estado_transcripcion ),
+            'estado_ensayo'      => $estado_ensayo,
+            'estado_ensayo_label' => wpss_get_estado_label( $estado_ensayo_options, $estado_ensayo ),
         ],
         $reversion_data
     );
@@ -766,6 +1403,10 @@ function wpss_get_song_colecciones( $post_id ) {
 
     foreach ( $terms as $term ) {
         if ( ! $term instanceof WP_Term ) {
+            continue;
+        }
+
+        if ( ! wpss_user_can_access_coleccion( $term->term_id, 'read' ) ) {
             continue;
         }
 
@@ -847,6 +1488,10 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
 
     $autor_id        = (int) get_post_field( 'post_author', $post_id );
     $reversion_data  = wpss_get_song_reversion_data( $post_id );
+    $estado_transcripcion = wpss_get_song_estado_transcripcion( $post_id );
+    $estado_ensayo        = wpss_get_song_estado_ensayo_for_current_user( $post_id );
+    $estado_transcripcion_options = wpss_get_estado_transcripcion_options();
+    $estado_ensayo_options = wpss_get_estado_ensayo_options();
 
     $data = array_merge(
         [
@@ -878,6 +1523,10 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
             'colecciones'                => wpss_get_song_colecciones( $post_id ),
             'estructura'                 => $estructura,
             'estructura_personalizada'   => $estructura_personalizada,
+            'estado_transcripcion'       => $estado_transcripcion,
+            'estado_transcripcion_label' => wpss_get_estado_label( $estado_transcripcion_options, $estado_transcripcion ),
+            'estado_ensayo'              => $estado_ensayo,
+            'estado_ensayo_label'        => wpss_get_estado_label( $estado_ensayo_options, $estado_ensayo ),
         ],
         $reversion_data
     );
@@ -963,10 +1612,6 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     if ( '' === $titulo ) {
         return new WP_REST_Response( [ 'message' => __( 'El título es obligatorio.', 'wp-song-study' ) ], 400 );
-    }
-
-    if ( '' === $tonica ) {
-        return new WP_REST_Response( [ 'message' => __( 'La tónica es obligatoria.', 'wp-song-study' ) ], 400 );
     }
 
     $prestamos_raw = [];
@@ -1156,6 +1801,12 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_bpm', $bpm );
     update_post_meta( $post_id, '_prestamos_tonales_json', wp_json_encode( $prestamos ) );
     update_post_meta( $post_id, '_modulaciones_json', wp_json_encode( $modulaciones ) );
+    if ( ! metadata_exists( 'post', $post_id, '_estado_transcripcion' ) ) {
+        update_post_meta( $post_id, '_estado_transcripcion', 'sin_iniciar' );
+    } else {
+        $estado_actual = wpss_get_song_estado_transcripcion( $post_id );
+        update_post_meta( $post_id, '_estado_transcripcion', $estado_actual );
+    }
 
     if ( ! $id && $reversion_origen_id > 0 ) {
         $reversion_origen_post = get_post( $reversion_origen_id );
@@ -1237,12 +1888,20 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     }
 
     $autor_id = (int) get_post_field( 'post_author', $post_id );
+    $estado_transcripcion = wpss_get_song_estado_transcripcion( $post_id );
+    $estado_ensayo = wpss_get_song_estado_ensayo_for_current_user( $post_id );
+    $estado_transcripcion_options = wpss_get_estado_transcripcion_options();
+    $estado_ensayo_options = wpss_get_estado_ensayo_options();
     $response = array_merge(
         [
             'ok'                 => true,
             'id'                 => (int) $post_id,
             'autor_id'           => $autor_id,
             'autor_nombre'       => wpss_get_user_display_name( $autor_id ),
+            'estado_transcripcion' => $estado_transcripcion,
+            'estado_transcripcion_label' => wpss_get_estado_label( $estado_transcripcion_options, $estado_transcripcion ),
+            'estado_ensayo'      => $estado_ensayo,
+            'estado_ensayo_label' => wpss_get_estado_label( $estado_ensayo_options, $estado_ensayo ),
             'bpm'                => $bpm,
             'tiene_prestamos'    => $tiene_prestamos,
             'tiene_modulaciones' => $tiene_modulaciones,
@@ -2540,10 +3199,11 @@ function wpss_apply_legacy_stanza_markers( array $versos, array $secciones ) {
 /**
  * Sanitiza un arreglo de colecciones recibido vía REST.
  *
- * @param mixed $colecciones Datos recibidos.
+ * @param mixed  $colecciones Datos recibidos.
+ * @param string $mode        Modo de acceso requerido: read|write.
  * @return int[]
  */
-function wpss_sanitize_coleccion_ids( $colecciones ) {
+function wpss_sanitize_coleccion_ids( $colecciones, $mode = 'write' ) {
     if ( ! is_array( $colecciones ) ) {
         return [];
     }
@@ -2562,12 +3222,109 @@ function wpss_sanitize_coleccion_ids( $colecciones ) {
         }
 
         $term = get_term( $term_id, 'coleccion' );
-        if ( $term && ! is_wp_error( $term ) && ! in_array( $term_id, $ids, true ) ) {
+        if ( ! $term || is_wp_error( $term ) ) {
+            continue;
+        }
+
+        if ( ! wpss_user_can_access_coleccion( $term_id, $mode ) ) {
+            continue;
+        }
+
+        if ( ! in_array( $term_id, $ids, true ) ) {
             $ids[] = $term_id;
         }
     }
 
     return $ids;
+}
+
+/**
+ * Sanitiza IDs de usuarios para compartir una colección.
+ *
+ * @param mixed $shared_ids IDs recibidos.
+ * @param int   $owner_id   Usuario propietario.
+ * @return int[]
+ */
+function wpss_sanitize_coleccion_shared_user_ids( $shared_ids, $owner_id = 0 ) {
+    if ( ! is_array( $shared_ids ) ) {
+        return [];
+    }
+
+    $owner_id       = absint( $owner_id );
+    $assignable     = wpss_get_assignable_song_users();
+    $assignable_ids = array_map( 'intval', wp_list_pluck( $assignable, 'id' ) );
+    $valid_map      = array_fill_keys( $assignable_ids, true );
+    $result         = [];
+
+    foreach ( $shared_ids as $value ) {
+        if ( is_array( $value ) && isset( $value['id'] ) ) {
+            $value = $value['id'];
+        }
+
+        $user_id = absint( $value );
+        if ( $user_id <= 0 ) {
+            continue;
+        }
+
+        if ( $owner_id > 0 && $user_id === $owner_id ) {
+            continue;
+        }
+
+        if ( ! isset( $valid_map[ $user_id ] ) ) {
+            continue;
+        }
+
+        if ( ! in_array( $user_id, $result, true ) ) {
+            $result[] = $user_id;
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Prepara los usuarios compartidos para respuesta REST.
+ *
+ * @param int[] $shared_ids IDs de usuarios compartidos.
+ * @return array
+ */
+function wpss_prepare_coleccion_shared_users_for_response( $shared_ids ) {
+    $shared_ids = wpss_normalize_coleccion_user_ids( $shared_ids );
+    if ( empty( $shared_ids ) ) {
+        return [];
+    }
+
+    $users = get_users(
+        [
+            'include' => $shared_ids,
+            'fields'  => [ 'ID', 'display_name' ],
+        ]
+    );
+
+    if ( ! is_array( $users ) || empty( $users ) ) {
+        return [];
+    }
+
+    $user_map = [];
+    foreach ( $users as $user ) {
+        if ( ! $user instanceof WP_User ) {
+            continue;
+        }
+
+        $user_map[ (int) $user->ID ] = [
+            'id'     => (int) $user->ID,
+            'nombre' => sanitize_text_field( $user->display_name ),
+        ];
+    }
+
+    $result = [];
+    foreach ( $shared_ids as $shared_id ) {
+        if ( isset( $user_map[ $shared_id ] ) ) {
+            $result[] = $user_map[ $shared_id ];
+        }
+    }
+
+    return $result;
 }
 
 /**
@@ -2591,7 +3348,7 @@ function wpss_rest_get_colecciones( WP_REST_Request $request ) {
     $items = [];
 
     foreach ( $terms as $term ) {
-        if ( $term instanceof WP_Term ) {
+        if ( $term instanceof WP_Term && wpss_user_can_access_coleccion( $term->term_id, 'read' ) ) {
             $items[] = wpss_prepare_coleccion_for_response( $term );
         }
     }
@@ -2613,6 +3370,10 @@ function wpss_rest_get_coleccion( WP_REST_Request $request ) {
         return new WP_REST_Response( [ 'message' => __( 'Colección no encontrada.', 'wp-song-study' ) ], 404 );
     }
 
+    if ( ! wpss_user_can_access_coleccion( $term_id, 'read' ) ) {
+        return new WP_REST_Response( [ 'message' => __( 'No tienes acceso a esta colección.', 'wp-song-study' ) ], 403 );
+    }
+
     return rest_ensure_response( wpss_prepare_coleccion_for_response( $term, true ) );
 }
 
@@ -2628,10 +3389,27 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
         $params = $request->get_body_params();
     }
 
-    $term_id     = isset( $params['id'] ) ? absint( $params['id'] ) : 0;
-    $nombre      = isset( $params['nombre'] ) ? sanitize_text_field( $params['nombre'] ) : '';
-    $descripcion = isset( $params['descripcion'] ) ? sanitize_textarea_field( $params['descripcion'] ) : '';
-    $orden_raw   = isset( $params['orden'] ) ? (array) $params['orden'] : [];
+    $current_user_id = get_current_user_id();
+    if ( $current_user_id <= 0 ) {
+        return new WP_REST_Response( [ 'message' => __( 'Debes iniciar sesión para gestionar colecciones.', 'wp-song-study' ) ], 403 );
+    }
+
+    $term_id       = isset( $params['id'] ) ? absint( $params['id'] ) : 0;
+    $nombre        = isset( $params['nombre'] ) ? sanitize_text_field( $params['nombre'] ) : '';
+    $descripcion   = isset( $params['descripcion'] ) ? sanitize_textarea_field( $params['descripcion'] ) : '';
+    $orden_raw     = isset( $params['orden'] ) ? (array) $params['orden'] : [];
+    $shared_ids_in = [];
+    $has_shared_ids_input = false;
+    if ( isset( $params['compartida_con'] ) && is_array( $params['compartida_con'] ) ) {
+        $has_shared_ids_input = true;
+        $shared_ids_in = $params['compartida_con'];
+    } elseif ( isset( $params['usuarios_compartidos'] ) && is_array( $params['usuarios_compartidos'] ) ) {
+        $has_shared_ids_input = true;
+        $shared_ids_in = $params['usuarios_compartidos'];
+    } elseif ( isset( $params['shared_with'] ) && is_array( $params['shared_with'] ) ) {
+        $has_shared_ids_input = true;
+        $shared_ids_in = $params['shared_with'];
+    }
 
     if ( '' === $nombre ) {
         return new WP_REST_Response( [ 'message' => __( 'El nombre de la colección es obligatorio.', 'wp-song-study' ) ], 400 );
@@ -2643,11 +3421,16 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
     }
 
     $orden = wpss_normalize_coleccion_order_ids( $orden_raw );
+    $owner_id = 0;
 
     if ( $term_id ) {
         $existing = get_term( $term_id, 'coleccion' );
         if ( ! $existing || is_wp_error( $existing ) ) {
             return new WP_REST_Response( [ 'message' => __( 'Colección no encontrada.', 'wp-song-study' ) ], 404 );
+        }
+
+        if ( ! wpss_user_can_access_coleccion( $term_id, 'write' ) ) {
+            return new WP_REST_Response( [ 'message' => __( 'Solo el propietario puede modificar esta colección.', 'wp-song-study' ) ], 403 );
         }
 
         $update_args = [
@@ -2661,6 +3444,10 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
         }
 
         $term_id = (int) $result['term_id'];
+        $owner_id = wpss_get_coleccion_owner_id( $term_id );
+        if ( $owner_id <= 0 ) {
+            $owner_id = $current_user_id;
+        }
     } else {
         $insert_args = [
             'description' => $descripcion,
@@ -2672,7 +3459,17 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
         }
 
         $term_id = (int) $result['term_id'];
+        $owner_id = $current_user_id;
     }
+
+    if ( $has_shared_ids_input ) {
+        $shared_ids = wpss_sanitize_coleccion_shared_user_ids( $shared_ids_in, $owner_id );
+    } else {
+        $shared_ids = wpss_get_coleccion_shared_user_ids( $term_id );
+    }
+
+    wpss_update_coleccion_owner_id( $term_id, $owner_id );
+    wpss_update_coleccion_shared_user_ids( $term_id, $shared_ids );
 
     wpss_update_coleccion_order( $term_id, $orden );
 
@@ -2707,7 +3504,13 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
 function wpss_rest_delete_coleccion( WP_REST_Request $request ) {
     $term_id = absint( $request->get_param( 'id' ) );
 
+    if ( ! wpss_user_can_access_coleccion( $term_id, 'write' ) ) {
+        return new WP_REST_Response( [ 'message' => __( 'Solo el propietario puede eliminar esta colección.', 'wp-song-study' ) ], 403 );
+    }
+
     delete_term_meta( $term_id, '_orden_ids' );
+    delete_term_meta( $term_id, '_owner_user_id' );
+    delete_term_meta( $term_id, '_shared_user_ids' );
 
     $result = wp_delete_term( $term_id, 'coleccion' );
 
@@ -2733,13 +3536,27 @@ function wpss_rest_delete_coleccion( WP_REST_Request $request ) {
 function wpss_prepare_coleccion_for_response( WP_Term $term, $include_items = false ) {
     $term_id = (int) $term->term_id;
 
-    $orden = wpss_get_coleccion_sorted_song_ids( $term_id );
+    $orden           = wpss_get_coleccion_sorted_song_ids( $term_id );
+    $owner_id        = wpss_get_coleccion_owner_id( $term_id );
+    $shared_user_ids = wpss_get_coleccion_shared_user_ids( $term_id );
+    $current_user_id = get_current_user_id();
+    $is_owner        = $owner_id > 0 && $current_user_id > 0 && $owner_id === $current_user_id;
+    $can_edit        = wpss_user_can_access_coleccion( $term_id, 'write' );
 
     $data = [
-        'id'           => $term_id,
-        'nombre'       => $term->name,
-        'descripcion'  => $term->description,
-        'items_count'  => count( $orden ),
+        'id'                    => $term_id,
+        'nombre'                => $term->name,
+        'descripcion'           => $term->description,
+        'items_count'           => count( $orden ),
+        'owner_id'              => $owner_id,
+        'owner_nombre'          => wpss_get_user_display_name( $owner_id ),
+        'compartida_con'        => $shared_user_ids,
+        'compartida_con_detalle' => wpss_prepare_coleccion_shared_users_for_response( $shared_user_ids ),
+        'is_owner'              => $is_owner,
+        'can_edit'              => $can_edit,
+        'can_delete'            => $can_edit,
+        'can_share'             => $can_edit,
+        'legacy_sin_propietario' => $owner_id <= 0,
     ];
 
     if ( $include_items ) {

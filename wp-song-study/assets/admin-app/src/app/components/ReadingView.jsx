@@ -11,6 +11,13 @@ import {
   transposeChordSymbol,
   stripHtml,
 } from '../utils.js'
+import {
+  REHEARSAL_STATUS_OPTIONS,
+  REHEARSAL_STATUS_LABELS,
+  TRANSCRIPTION_STATUS_OPTIONS,
+  TRANSCRIPTION_STATUS_LABELS,
+  getStatusLabel,
+} from '../songStatus.js'
 import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from './MidiSketch.jsx'
 import MidiClipList from './MidiClipList.jsx'
 
@@ -60,8 +67,11 @@ const getTouchDistance = (touches) => {
 }
 
 export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
-  const { state, dispatch, wpData } = useAppState()
+  const { state, dispatch, api, wpData } = useAppState()
   const song = state.editingSong
+  const currentUserId = wpData?.currentUserId || 0
+  const isOwnSong = Number(song?.autor_id) === Number(currentUserId)
+  const canManageStatuses = wpData?.canManage !== undefined ? !!wpData?.canManage : true
   const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
   const hasVerses = Array.isArray(song?.versos) && song.versos.length > 0
   const chordsLibrary = Array.isArray(state.chords?.library) ? state.chords.library : []
@@ -89,6 +99,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const [linkedPlayback, setLinkedPlayback] = useState(true)
   const [showMidi, setShowMidi] = useState(true)
   const [showSectionTitles, setShowSectionTitles] = useState(true)
+  const [statusSaving, setStatusSaving] = useState({ transcription: false, rehearsal: false })
   const [activePlaybackKey, setActivePlaybackKey] = useState(null)
   const [activePlaybackMeta, setActivePlaybackMeta] = useState(null)
   const [activeSectionIndex, setActiveSectionIndex] = useState(0)
@@ -482,6 +493,73 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     setReadingZoom(READING_ZOOM_LEVELS[nextIndex])
   }
 
+  const patchSongState = (patch) => {
+    const songId = song?.id
+    if (!songId) return
+    dispatch({
+      type: 'SET_STATE',
+      payload: {
+        editingSong: { ...state.editingSong, ...patch },
+        songs: state.songs.map((item) =>
+          Number(item.id) === Number(songId) ? { ...item, ...patch } : item,
+        ),
+      },
+    })
+  }
+
+  const handleTranscriptionStatusChange = (nextStatus) => {
+    if (!song?.id || !isOwnSong || !canManageStatuses) return
+    setStatusSaving((prev) => ({ ...prev, transcription: true }))
+    api
+      .setSongTranscriptionStatus(song.id, nextStatus)
+      .then((response) => {
+        const body = response?.data || {}
+        const nextSong = body.song && typeof body.song === 'object' ? body.song : null
+        patchSongState(
+          nextSong || {
+            estado_transcripcion: body.estado_transcripcion || nextStatus,
+            estado_transcripcion_label:
+              body.estado_transcripcion_label
+              || getStatusLabel(TRANSCRIPTION_STATUS_LABELS, body.estado_transcripcion || nextStatus),
+          },
+        )
+      })
+      .catch((error) => {
+        const message =
+          error?.payload?.message || 'No fue posible actualizar el estado de transcripción.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        setStatusSaving((prev) => ({ ...prev, transcription: false }))
+      })
+  }
+
+  const handleRehearsalStatusChange = (nextStatus) => {
+    if (!song?.id || !canManageStatuses) return
+    setStatusSaving((prev) => ({ ...prev, rehearsal: true }))
+    api
+      .setSongRehearsalStatus(song.id, nextStatus)
+      .then((response) => {
+        const body = response?.data || {}
+        const nextSong = body.song && typeof body.song === 'object' ? body.song : null
+        patchSongState(
+          nextSong || {
+            estado_ensayo: body.estado_ensayo || nextStatus,
+            estado_ensayo_label:
+              body.estado_ensayo_label
+              || getStatusLabel(REHEARSAL_STATUS_LABELS, body.estado_ensayo || nextStatus),
+          },
+        )
+      })
+      .catch((error) => {
+        const message = error?.payload?.message || 'No fue posible actualizar tu estado de ensayo.'
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        setStatusSaving((prev) => ({ ...prev, rehearsal: false }))
+      })
+  }
+
   return (
     <div className={`wpss-reading ${isCompactViewport ? 'is-compact' : ''}`} ref={readingRootRef}>
       <div className="wpss-reading__header">
@@ -645,6 +723,47 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   </button>
                 </div>
               </div>
+              {canManageStatuses ? (
+                <div className="wpss-reading__group">
+                  <span className="wpss-reading__group-label">Estados</span>
+                  <div className="wpss-reading__group-controls">
+                    {isOwnSong ? (
+                      <label className="wpss-reading__status-field">
+                        <span>Transcripción</span>
+                        <select
+                          value={song?.estado_transcripcion || 'sin_iniciar'}
+                          disabled={statusSaving.transcription || !song?.id}
+                          onChange={(event) => handleTranscriptionStatusChange(event.target.value)}
+                        >
+                          {TRANSCRIPTION_STATUS_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="wpss-reading__status-label">
+                        Transcripción: {song?.estado_transcripcion_label || 'Sin iniciar'}
+                      </span>
+                    )}
+                    <label className="wpss-reading__status-field">
+                      <span>Ensayo (yo)</span>
+                      <select
+                        value={song?.estado_ensayo || 'sin_ensayar'}
+                        disabled={statusSaving.rehearsal || !song?.id}
+                        onChange={(event) => handleRehearsalStatusChange(event.target.value)}
+                      >
+                        {REHEARSAL_STATUS_OPTIONS.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="wpss-reading__actions-persistent">

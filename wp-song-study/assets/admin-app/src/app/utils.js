@@ -267,6 +267,25 @@ export function getChordDisplayValue(value) {
   return isHoldChordToken(value) ? '' : String(value)
 }
 
+export function getChordPreviewValue(value) {
+  if (value === null || value === undefined) {
+    return ''
+  }
+
+  const raw = String(value).trim()
+  if (!raw) {
+    return ''
+  }
+
+  const display = getChordDisplayValue(raw)
+  const sanitized = display ? String(display).trim() : ''
+  if (sanitized) {
+    return sanitized
+  }
+
+  return isHoldChordToken(raw) ? raw : ''
+}
+
 export function transposePitchToken(value, semitoneShift = 0, preferFlats = false) {
   const normalized = normalizePitchToken(value)
   if (!normalized) {
@@ -415,8 +434,7 @@ export function formatSegmentsForStackedMode(segmentos) {
 
   segmentos.forEach((segmento, index) => {
     const textoRaw = stripHtml(segmento?.texto || '').trim()
-    const acordeRaw = getChordDisplayValue(segmento?.acorde || '')
-    const acordeSanitized = acordeRaw ? String(acordeRaw).trim() : ''
+    const acordeSanitized = getChordPreviewValue(segmento?.acorde)
     const texto = textoRaw || '...'
     const acorde = acordeSanitized || '?'
     const width = Math.max(texto.length, acorde.length)
@@ -443,8 +461,7 @@ export function formatSegmentsForStackedCells(segmentos) {
 
   segmentos.forEach((segmento, index) => {
     const textoRaw = stripHtml(segmento?.texto || '').trim()
-    const acordeRaw = getChordDisplayValue(segmento?.acorde || '')
-    const acordeSanitized = acordeRaw ? String(acordeRaw).trim() : ''
+    const acordeSanitized = getChordPreviewValue(segmento?.acorde)
     const texto = textoRaw || '...'
     const acorde = acordeSanitized || '?'
     const chordLabel = acorde ? `[${acorde}]` : ''

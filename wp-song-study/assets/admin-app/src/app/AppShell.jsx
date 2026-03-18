@@ -62,6 +62,10 @@ export default function AppShell() {
             reversion_raiz_titulo: song.reversion_raiz_titulo || '',
             reversion_autor_origen_id: song.reversion_autor_origen_id || null,
             reversion_autor_origen_nombre: song.reversion_autor_origen_nombre || '',
+            estado_transcripcion: song.estado_transcripcion || 'sin_iniciar',
+            estado_transcripcion_label: song.estado_transcripcion_label || 'Sin iniciar',
+            estado_ensayo: song.estado_ensayo || 'sin_ensayar',
+            estado_ensayo_label: song.estado_ensayo_label || 'No ensayada',
             titulo: song.titulo || '',
             bpm: bpmDefault,
             tonica: song.tonica || song.tonalidad || '',
@@ -122,6 +126,31 @@ export default function AppShell() {
       handleNewSong()
     }
   }, [handleNewSong, state.view])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      document.querySelectorAll('details.wpss-action-menu[open]').forEach((menu) => {
+        if (menu.contains(target)) {
+          return
+        }
+        menu.removeAttribute('open')
+      })
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [])
 
   return (
     <div className="wpss-app-layout">

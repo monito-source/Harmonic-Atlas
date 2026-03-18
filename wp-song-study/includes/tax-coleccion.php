@@ -57,6 +57,154 @@ function wpss_register_coleccion_tax() {
             ],
         ]
     );
+
+    register_term_meta(
+        'coleccion',
+        '_owner_user_id',
+        [
+            'type'              => 'integer',
+            'single'            => true,
+            'sanitize_callback' => 'absint',
+            'auth_callback'     => '__return_true',
+            'show_in_rest'      => false,
+        ]
+    );
+
+    register_term_meta(
+        'coleccion',
+        '_shared_user_ids',
+        [
+            'type'              => 'string',
+            'single'            => true,
+            'sanitize_callback' => 'wpss_sanitize_coleccion_shared_user_ids_meta',
+            'auth_callback'     => '__return_true',
+            'show_in_rest'      => false,
+        ]
+    );
+}
+
+/**
+ * Obtiene el ID de usuario propietario de una colección.
+ *
+ * @param int $term_id ID de la colección.
+ * @return int
+ */
+function wpss_get_coleccion_owner_id( $term_id ) {
+    return absint( get_term_meta( $term_id, '_owner_user_id', true ) );
+}
+
+/**
+ * Actualiza el usuario propietario de una colección.
+ *
+ * @param int $term_id ID de la colección.
+ * @param int $user_id ID del usuario propietario.
+ * @return void
+ */
+function wpss_update_coleccion_owner_id( $term_id, $user_id ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        delete_term_meta( $term_id, '_owner_user_id' );
+        return;
+    }
+
+    update_term_meta( $term_id, '_owner_user_id', $user_id );
+}
+
+/**
+ * Obtiene los IDs de usuarios con quienes está compartida la colección.
+ *
+ * @param int $term_id ID de la colección.
+ * @return int[]
+ */
+function wpss_get_coleccion_shared_user_ids( $term_id ) {
+    $raw = get_term_meta( $term_id, '_shared_user_ids', true );
+
+    if ( empty( $raw ) ) {
+        return [];
+    }
+
+    if ( is_string( $raw ) ) {
+        $decoded = json_decode( $raw, true );
+        if ( is_array( $decoded ) ) {
+            $raw = $decoded;
+        }
+    }
+
+    if ( ! is_array( $raw ) ) {
+        return [];
+    }
+
+    return wpss_normalize_coleccion_user_ids( $raw );
+}
+
+/**
+ * Actualiza los usuarios con quienes está compartida la colección.
+ *
+ * @param int   $term_id ID de la colección.
+ * @param array $ids     IDs de usuarios.
+ * @return void
+ */
+function wpss_update_coleccion_shared_user_ids( $term_id, $ids ) {
+    $ids = wpss_normalize_coleccion_user_ids( $ids );
+
+    if ( empty( $ids ) ) {
+        update_term_meta( $term_id, '_shared_user_ids', '' );
+        return;
+    }
+
+    $encoded = wp_json_encode( $ids, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+    update_term_meta( $term_id, '_shared_user_ids', $encoded );
+}
+
+/**
+ * Sanitiza el meta de usuarios compartidos.
+ *
+ * @param mixed   $value    Valor recibido.
+ * @param WP_Term $term     Término asociado.
+ * @param string  $meta_key Clave del meta.
+ * @return string
+ */
+function wpss_sanitize_coleccion_shared_user_ids_meta( $value, $term, $meta_key ) { // phpcs:ignore VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
+    if ( is_string( $value ) && '' !== $value ) {
+        $decoded = json_decode( $value, true );
+        if ( is_array( $decoded ) ) {
+            $value = $decoded;
+        }
+    }
+
+    if ( ! is_array( $value ) ) {
+        $value = [];
+    }
+
+    $normalized = wpss_normalize_coleccion_user_ids( $value );
+
+    if ( empty( $normalized ) ) {
+        return '';
+    }
+
+    return wp_json_encode( $normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+}
+
+/**
+ * Normaliza una lista de IDs de usuario.
+ *
+ * @param mixed $ids IDs proporcionados.
+ * @return int[]
+ */
+function wpss_normalize_coleccion_user_ids( $ids ) {
+    if ( ! is_array( $ids ) ) {
+        return [];
+    }
+
+    $normalized = [];
+    foreach ( $ids as $id ) {
+        $id = (int) $id;
+        if ( $id > 0 && ! in_array( $id, $normalized, true ) ) {
+            $normalized[] = $id;
+        }
+    }
+
+    return $normalized;
 }
 
 /**

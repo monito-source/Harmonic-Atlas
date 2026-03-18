@@ -186,6 +186,7 @@ function wpss_register_cpt_cancion() {
     register_post_meta( 'cancion', '_reversion_origen_titulo', $meta_single_text );
     register_post_meta( 'cancion', '_reversion_raiz_titulo', $meta_single_text );
     register_post_meta( 'cancion', '_reversion_autor_origen_nombre', $meta_single_text );
+    register_post_meta( 'cancion', '_estado_transcripcion', $meta_single_text );
 
     $meta_bool = [
         'show_in_rest'      => true,

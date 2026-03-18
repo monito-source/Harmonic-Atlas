@@ -1,9 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
 import {
   formatSegmentsForStackedMode,
-  getChordDisplayValue,
+  getChordPreviewValue,
   getDefaultSectionName,
   getValidSegmentIndex,
   normalizeVerseOrder,
@@ -27,6 +27,8 @@ export default function VersesPanel({
   onSplitVerse,
   onSplitSection,
   onSelectionChange,
+  focusRequest = null,
+  onFocusRequestHandled,
   compactMidiRows = false,
   allowMidiRowToggle = false,
   midiRangePresets = [],
@@ -48,7 +50,6 @@ export default function VersesPanel({
   const activeSectionName =
     safeSections.find((section) => section.id === activeSectionId)?.nombre || getDefaultSectionName(0)
 
-  const [collapsed, setCollapsed] = useState(() => new Set())
   const [selection, setSelection] = useState({
     verseIndex: null,
     segmentIndex: null,
@@ -68,6 +69,48 @@ export default function VersesPanel({
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const dragDropHandledRef = useRef(false)
   const editorsRef = useRef(new Map())
+  const pendingSegmentFocusRef = useRef(null)
+
+  const clearSelection = useCallback(() => {
+    setSelection((prev) => {
+      if (
+        prev.verseIndex === null
+        && prev.segmentIndex === null
+        && prev.start === null
+        && prev.end === null
+        && prev.element === null
+      ) {
+        return prev
+      }
+      return {
+        verseIndex: null,
+        segmentIndex: null,
+        start: null,
+        end: null,
+        element: null,
+      }
+    })
+    if (onSelectionChange) {
+      onSelectionChange(null, null, null, null, null)
+    }
+  }, [onSelectionChange])
+
+  const handlePanelClickCapture = useCallback(
+    (event) => {
+      if (selection.verseIndex === null && selection.segmentIndex === null) {
+        return
+      }
+      const target = event.target
+      if (!(target instanceof Element)) {
+        return
+      }
+      if (target.closest('.wpss-segment, .wpss-verse-actions, .wpss-verse-format-toolbar')) {
+        return
+      }
+      clearSelection()
+    },
+    [clearSelection, selection.segmentIndex, selection.verseIndex],
+  )
 
   const versesInSection = useMemo(() => {
     if (!activeSectionId) return []
@@ -111,6 +154,96 @@ export default function VersesPanel({
       onSelectionChange(verseIndex, segmentIndex, start, end, element)
     }
   }
+
+  const queueSegmentFocus = useCallback(
+    (verseIndex, segmentIndex, selectAll = true, requestId = null) => {
+      pendingSegmentFocusRef.current = { verseIndex, segmentIndex, selectAll, requestId }
+      setSelection({
+        verseIndex,
+        segmentIndex,
+        start: 0,
+        end: 0,
+        element: null,
+      })
+      if (onSelectionChange) {
+        onSelectionChange(verseIndex, segmentIndex, 0, 0, null)
+      }
+    },
+    [onSelectionChange],
+  )
+
+  useEffect(() => {
+    if (!focusRequest || !Number.isInteger(focusRequest.verseIndex) || !Number.isInteger(focusRequest.segmentIndex)) {
+      return
+    }
+    queueSegmentFocus(
+      focusRequest.verseIndex,
+      focusRequest.segmentIndex,
+      focusRequest.selectAll !== false,
+      focusRequest.requestId ?? null,
+    )
+  }, [focusRequest, queueSegmentFocus])
+
+  useEffect(() => {
+    const pendingFocus = pendingSegmentFocusRef.current
+    if (!pendingFocus) {
+      return undefined
+    }
+
+    const key = `${pendingFocus.verseIndex}:${pendingFocus.segmentIndex}`
+    const element = editorsRef.current.get(key)
+    if (!element || !element.isContentEditable) {
+      return undefined
+    }
+
+    const applyPendingFocus = () => {
+      pendingSegmentFocusRef.current = null
+      element.focus()
+
+      const selectionObj = window.getSelection()
+      const range = document.createRange()
+      const textLength = stripHtml(element.innerHTML || '').length
+
+      range.selectNodeContents(element)
+      if (!pendingFocus.selectAll) {
+        range.collapse(false)
+      }
+
+      if (selectionObj) {
+        selectionObj.removeAllRanges()
+        selectionObj.addRange(range)
+      }
+
+      const nextSelection = {
+        verseIndex: pendingFocus.verseIndex,
+        segmentIndex: pendingFocus.segmentIndex,
+        start: pendingFocus.selectAll ? 0 : textLength,
+        end: textLength,
+        element,
+      }
+      setSelection(nextSelection)
+      if (onSelectionChange) {
+        onSelectionChange(
+          nextSelection.verseIndex,
+          nextSelection.segmentIndex,
+          nextSelection.start,
+          nextSelection.end,
+          nextSelection.element,
+        )
+      }
+      if (pendingFocus.requestId !== null && onFocusRequestHandled) {
+        onFocusRequestHandled(pendingFocus.requestId)
+      }
+    }
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const frameId = window.requestAnimationFrame(applyPendingFocus)
+      return () => window.cancelAnimationFrame(frameId)
+    }
+
+    applyPendingFocus()
+    return undefined
+  }, [onFocusRequestHandled, onSelectionChange, safeVerses, visibleVersesInSection])
 
   const normalizeSegmentHtml = (html) => {
     if (!html) return ''
@@ -212,6 +345,7 @@ export default function VersesPanel({
 
   const handleAddVerse = () => {
     if (!activeSectionId) return
+    queueSegmentFocus(safeVerses.length, 0, true)
     const next = [...safeVerses]
     const newVerse = createEmptyVerse(next.length + 1, activeSectionId)
     next.push(newVerse)
@@ -316,18 +450,6 @@ export default function VersesPanel({
     return true
   }
 
-  const handleToggleCollapsed = (verseIndex) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(verseIndex)) {
-        next.delete(verseIndex)
-      } else {
-        next.add(verseIndex)
-      }
-      return next
-    })
-  }
-
   const toggleNotes = (key) => {
     setOpenNotes((prev) => {
       const next = new Set(prev)
@@ -364,6 +486,10 @@ export default function VersesPanel({
   }
 
   const handleAddSegment = (verseIndex) => {
+    const nextSegmentIndex = Array.isArray(safeVerses[verseIndex]?.segmentos)
+      ? safeVerses[verseIndex].segmentos.length
+      : 0
+    queueSegmentFocus(verseIndex, nextSegmentIndex, true)
     updateVerse(verseIndex, (verse) => ({
       ...verse,
       segmentos: [
@@ -637,25 +763,6 @@ export default function VersesPanel({
     })
   }
 
-  const buildVersePreview = (verse) => {
-    const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
-    if (!segmentos.length) {
-      return 'Verso vacío'
-    }
-    return segmentos
-      .map((segment) => {
-        const texto = segment.texto ? stripHtml(String(segment.texto)).trim() : ''
-        const acordeValue = getChordDisplayValue(segment.acorde ? String(segment.acorde) : '')
-        const acorde = acordeValue ? String(acordeValue).trim() : ''
-        const textoLabel = texto || '...'
-        const acordeLabel = acorde || '?'
-        return `${textoLabel} ${acordeLabel}`
-      })
-      .filter(Boolean)
-      .join(' ')
-      .slice(0, 160)
-  }
-
   const renderPreviewVerse = (verse, verseIndex) => {
     const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
     if (!segmentos.length) {
@@ -676,7 +783,7 @@ export default function VersesPanel({
   }
 
   return (
-    <div className="wpss-verses">
+    <div className="wpss-verses" onClickCapture={handlePanelClickCapture}>
       {showHeader ? (
         <div className="wpss-verses__header">
           <div className="wpss-section-selector">
@@ -749,10 +856,7 @@ export default function VersesPanel({
           ) : null}
           {visibleVersesInSection.length ? (
             visibleVersesInSection.map(({ verse, index: verseIndex }) => {
-              const isCollapsed = collapsed.has(verseIndex)
-              const preview = buildVersePreview(verse)
               const label = verse.instrumental ? `Instrumental ${verseIndex + 1}` : `Verso ${verseIndex + 1}`
-              const collapsedLabel = preview ? `${label} · ${preview}` : label
               const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
               const segmentTarget = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
               const eventType = verse.evento_armonico?.tipo || ''
@@ -768,9 +872,7 @@ export default function VersesPanel({
               return (
                 <div
                   key={`verse-${verseIndex}`}
-                  className={`wpss-verse-card ${isCollapsed ? 'is-collapsed' : ''} ${
-                    dragOver.verseIndex === verseIndex ? 'is-dragover' : ''
-                  }`}
+                  className={`wpss-verse-card ${dragOver.verseIndex === verseIndex ? 'is-dragover' : ''}`}
                   onDragOver={(event) => {
                     event.preventDefault()
                     setDragOver({ verseIndex, segmentIndex: null })
@@ -793,13 +895,6 @@ export default function VersesPanel({
                   }}
                 >
                   <div className="wpss-verse-card__header">
-                    <button
-                      type="button"
-                      className="button button-small"
-                      onClick={() => handleToggleCollapsed(verseIndex)}
-                    >
-                      {isCollapsed ? '▸' : '▾'}
-                    </button>
                     <span
                       className={`wpss-drag-handle ${dragState.type === 'verse' ? 'is-dragging' : ''}`}
                       draggable
@@ -829,7 +924,7 @@ export default function VersesPanel({
                     >
                       ☰
                     </span>
-                    <strong>{isCollapsed ? collapsedLabel : label}</strong>
+                    <strong>{label}</strong>
                     <div className="wpss-verse-actions">
                       {activeSegmentIndex !== null ? (
                         <>
@@ -980,7 +1075,7 @@ export default function VersesPanel({
                         const isEventTarget = segmentTarget !== null && segmentTarget === segmentIndex
                         const isEditingSegment =
                           selection.verseIndex === verseIndex && selection.segmentIndex === segmentIndex
-                        const chordValue = getChordDisplayValue(segment?.acorde ? String(segment.acorde) : '')
+                        const chordValue = getChordPreviewValue(segment?.acorde)
                         const segmentChordLabel = (chordValue ? String(chordValue).trim() : '') || '?'
                         const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
                         const isDragOver =

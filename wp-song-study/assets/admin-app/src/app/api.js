@@ -133,11 +133,29 @@ export function createApi(wpData) {
     reversionSong(id) {
       return request(`cancion/${id}/reversion`, { method: 'POST' })
     },
+    setSongTranscriptionStatus(id, estado) {
+      return request(`cancion/${id}/estado-transcripcion`, {
+        method: 'POST',
+        body: { estado_transcripcion: estado },
+      })
+    },
+    setSongRehearsalStatus(id, estado) {
+      return request(`cancion/${id}/estado-ensayo`, {
+        method: 'POST',
+        body: { estado_ensayo: estado },
+      })
+    },
     getPublicSong(id) {
       return requestPublic(`public/cancion/${id}`)
     },
     saveSong(payload) {
       return request('cancion', { method: 'POST', body: payload })
+    },
+    listColleagues() {
+      return request('colegas-musicales')
+    },
+    assignRepertoire(items) {
+      return request('repertorio-asignaciones', { method: 'POST', body: { items } })
     },
     listCampos() {
       return request('campos-armonicos')

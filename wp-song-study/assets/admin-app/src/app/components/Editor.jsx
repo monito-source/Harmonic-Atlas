@@ -76,6 +76,7 @@ export default function Editor({ onShowList }) {
   const [verseDragIndex, setVerseDragIndex] = useState(null)
   const [verseDragOverIndex, setVerseDragOverIndex] = useState(null)
   const [expandedSectionId, setExpandedSectionId] = useState(null)
+  const [verseFocusRequest, setVerseFocusRequest] = useState(null)
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
@@ -86,6 +87,7 @@ export default function Editor({ onShowList }) {
   const lastSilentErrorRef = useRef(null)
   const previewScaleRef = useRef(previewScale)
   const previewPinchRef = useRef({ active: false, startDistance: 0, startScale: 100 })
+  const verseFocusRequestIdRef = useRef(0)
   const currentUserId = wpData?.currentUserId || 0
   const preferCompactMidiRows = !!wpData?.isPublicReader
   const midiRangePresets = Array.isArray(wpData?.midiRanges) ? wpData.midiRanges : []
@@ -365,11 +367,6 @@ export default function Editor({ onShowList }) {
       return
     }
 
-    if (!currentSong.tonica.trim()) {
-      warnSilent(wpData?.strings?.tonicaRequired || 'La tónica es obligatoria.')
-      return
-    }
-
     const segmentError = validateSegments(currentSong.versos, wpData?.strings)
     if (segmentError) {
       warnSilent(segmentError)
@@ -461,6 +458,13 @@ export default function Editor({ onShowList }) {
             body.reversion_autor_origen_id || editingSong.reversion_autor_origen_id || null,
           reversion_autor_origen_nombre:
             body.reversion_autor_origen_nombre || editingSong.reversion_autor_origen_nombre || '',
+          estado_transcripcion:
+            body.estado_transcripcion || editingSong.estado_transcripcion || 'sin_iniciar',
+          estado_transcripcion_label:
+            body.estado_transcripcion_label || editingSong.estado_transcripcion_label || 'Sin iniciar',
+          estado_ensayo: body.estado_ensayo || editingSong.estado_ensayo || 'sin_ensayar',
+          estado_ensayo_label:
+            body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
           secciones,
           estructura,
@@ -503,6 +507,16 @@ export default function Editor({ onShowList }) {
       })
   }
 
+  const handleOpenReadingView = () => {
+    dispatch({
+      type: 'SET_STATE',
+      payload: {
+        editingSong: editingSongRef.current,
+        activeTab: 'reading',
+      },
+    })
+  }
+
   const updateSegmentSelection = (verseIndex, segmentIndex, start, end, element) => {
     selectionRef.current = {
       verse: verseIndex,
@@ -512,6 +526,23 @@ export default function Editor({ onShowList }) {
       element,
     }
   }
+
+  const requestVerseSegmentFocus = useCallback((verseIndex, segmentIndex = 0, selectAll = true) => {
+    verseFocusRequestIdRef.current += 1
+    const requestId = verseFocusRequestIdRef.current
+    setVerseFocusRequest({ requestId, verseIndex, segmentIndex, selectAll })
+    selectionRef.current = {
+      verse: verseIndex,
+      segment: segmentIndex,
+      start: 0,
+      end: 0,
+      element: null,
+    }
+  }, [])
+
+  const handleVerseFocusHandled = useCallback((requestId) => {
+    setVerseFocusRequest((prev) => (prev?.requestId === requestId ? null : prev))
+  }, [])
 
   const splitSegment = (verseIndex, segmentIndex, textarea) => {
     if (!textarea?.isContentEditable) {
@@ -849,10 +880,33 @@ export default function Editor({ onShowList }) {
     setNavLevel('verses')
   }
 
-  const clearVerseSelection = () => {
-    setSelectedVerseIndexes(new Set())
+  const clearVerseSelection = useCallback(() => {
+    setSelectedVerseIndexes((prev) => (prev.size ? new Set() : prev))
     setExpandedSectionId(null)
-  }
+    setVerseFocusRequest(null)
+    selectionRef.current = { verse: null, segment: null, start: null, end: null, element: null }
+  }, [])
+
+  const handleVerseSelectionClearClick = useCallback(
+    (event) => {
+      if (!selectedVerseIndexes.size) {
+        return
+      }
+      const target = event.target
+      if (!(target instanceof Element)) {
+        return
+      }
+      if (
+        target.closest(
+          '.wpss-verse-inline-editor, .wpss-verse-card, .wpss-preview-verse-card:not(.wpss-preview-verse-card--ghost), .wpss-verse-card-mini:not(.wpss-verse-card-mini--ghost)',
+        )
+      ) {
+        return
+      }
+      clearVerseSelection()
+    },
+    [clearVerseSelection, selectedVerseIndexes.size],
+  )
 
   const enterVerseLevel = (sectionId) => {
     persistSelectedSection(sectionId)
@@ -1089,6 +1143,7 @@ export default function Editor({ onShowList }) {
       }
       return lastIndex
     }, -1)
+    const nextVerseIndex = insertAfter >= 0 ? insertAfter + 1 : nextVerses.length
     if (insertAfter >= 0) {
       nextVerses.splice(insertAfter + 1, 0, newVerse)
     } else {
@@ -1097,6 +1152,11 @@ export default function Editor({ onShowList }) {
     normalizeVerseOrder(nextVerses)
     const nextSong = { ...editingSong, versos: nextVerses }
     syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    persistSelectedSection(sectionId)
+    setSelectedVerseIndexes(new Set([nextVerseIndex]))
+    setExpandedSectionId(sectionId)
+    setNavLevel('verses')
+    requestVerseSegmentFocus(nextVerseIndex, 0, true)
     updateSong(nextSong)
     scheduleAutosave()
   }
@@ -1430,7 +1490,7 @@ export default function Editor({ onShowList }) {
             <button
               className="button"
               type="button"
-              onClick={() => dispatch({ type: 'SET_STATE', payload: { activeTab: 'reading' } })}
+              onClick={handleOpenReadingView}
           >
             {wpData?.strings?.readingView || 'Vista de lectura'}
           </button>
@@ -1938,7 +1998,10 @@ export default function Editor({ onShowList }) {
                   />
                 </div>
               ) : navLevel === 'verses' ? (
-                <div className="wpss-work-verse-explorer">
+                <div
+                  className="wpss-work-verse-explorer"
+                  onClickCapture={handleVerseSelectionClearClick}
+                >
                   <div className="wpss-work-verse-list">
                     <div className="wpss-work-verse-list__header">
                       <p>Selecciona un verso para editarlo.</p>
@@ -2015,6 +2078,8 @@ export default function Editor({ onShowList }) {
                                               onSplitVerse={splitVerseFromCursor}
                                               onSplitSection={splitSectionFromCursor}
                                               onSelectionChange={updateSegmentSelection}
+                                              focusRequest={verseFocusRequest}
+                                              onFocusRequestHandled={handleVerseFocusHandled}
                                               compactMidiRows={preferCompactMidiRows}
                                               allowMidiRowToggle={preferCompactMidiRows}
                                               midiRangePresets={midiRangePresets}
@@ -2109,7 +2174,7 @@ export default function Editor({ onShowList }) {
                                     onClick={() => handleAddVerseToSection(section.id)}
                                   >
                                     <strong>Nuevo verso</strong>
-                                    <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                                    <span className="wpss-ghost-invite__hint">Agregar a esta sección</span>
                                   </button>
                                 </div>
                               </>
@@ -2135,6 +2200,8 @@ export default function Editor({ onShowList }) {
                   onSplitVerse={splitVerseFromCursor}
                   onSplitSection={splitSectionFromCursor}
                   onSelectionChange={updateSegmentSelection}
+                  focusRequest={verseFocusRequest}
+                  onFocusRequestHandled={handleVerseFocusHandled}
                   compactMidiRows={preferCompactMidiRows}
                   allowMidiRowToggle={preferCompactMidiRows}
                   midiRangePresets={midiRangePresets}
@@ -2159,7 +2226,10 @@ export default function Editor({ onShowList }) {
                 }}
               />
             ) : null}
-            <aside className={`wpss-editor-preview wpss-editor-column ${isFocusWork && !useMasterPreview ? '' : 'is-sections'}`}>
+            <aside
+              className={`wpss-editor-preview wpss-editor-column ${isFocusWork && !useMasterPreview ? '' : 'is-sections'}`}
+              onClickCapture={handleVerseSelectionClearClick}
+            >
               <div className="wpss-section-preview">
                 <div className="wpss-section-preview__header">
                   <strong>Vista previa</strong>
@@ -2313,6 +2383,8 @@ export default function Editor({ onShowList }) {
                                           onSplitVerse={splitVerseFromCursor}
                                           onSplitSection={splitSectionFromCursor}
                                           onSelectionChange={updateSegmentSelection}
+                                          focusRequest={verseFocusRequest}
+                                          onFocusRequestHandled={handleVerseFocusHandled}
                                           compactMidiRows={preferCompactMidiRows}
                                           allowMidiRowToggle={preferCompactMidiRows}
                                           midiRangePresets={midiRangePresets}
@@ -2372,7 +2444,7 @@ export default function Editor({ onShowList }) {
                                   onClick={() => handleAddVerseToSection(section.id)}
                                 >
                                   <strong>Nuevo verso</strong>
-                                  <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                                  <span className="wpss-ghost-invite__hint">Agregar a esta sección</span>
                                 </button>
                               ) : null}
                             </div>
@@ -2383,7 +2455,7 @@ export default function Editor({ onShowList }) {
                               onClick={() => handleAddVerseToSection(section.id)}
                             >
                               <strong>Nuevo verso</strong>
-                              <pre className="wpss-verse-card-mini__stack">{` \n...`}</pre>
+                              <span className="wpss-ghost-invite__hint">Agregar a esta sección</span>
                             </button>
                           ) : (
                             <p className="wpss-empty">Sin versos</p>
