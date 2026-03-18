@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 2,
+  "name": "wp-song-study/public-reader",
+  "version": "0.1.0",
+  "title": "Lector público de canciones",
+  "category": "widgets",
+  "icon": "playlist-audio",
+  "description": "Inserta el lector público del cancionario para temas clásicos y block themes.",
+  "textdomain": "wp-song-study",
+  "supports": {
+    "html": false
+  }
+}

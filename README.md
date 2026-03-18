@@ -135,6 +135,19 @@ Payload esperado al guardar:
 
 * `[songs_by_key key="C-jonico"]` — Lista todas las canciones asignadas a la tonalidad indicada.
 * `[song id="123"]` — Muestra la ficha completa de una canción con versos segmentados, acordes incrustados y eventos armónicos. Si `id` se omite, utiliza el ID del post en contexto.
+* `[wpss_public_reader]` — Inserta el lector público React del cancionario en una página clásica.
+
+## Compatibilidad con temas block
+
+El plugin ahora expone también un bloque dinámico nativo: **`wp-song-study/public-reader`**.
+
+Esto permite:
+
+1. Insertar el lector público directamente desde el editor de bloques.
+2. Usarlo en páginas construidas con temas block/FSE sin depender exclusivamente del shortcode legacy.
+3. Mantener compatibilidad retroactiva con sitios existentes que ya usan `[wpss_public_reader]`.
+
+Además, la página pública autogenerada de canciones (`/canciones`) intenta guardar preferentemente el bloque del plugin cuando el sitio tiene soporte de bloques, y conserva fallback automático al shortcode en instalaciones más antiguas.
 
 ## Desarrollo
 
@@ -186,5 +199,7 @@ El build genera `wp-song-study/assets/admin-build/manifest.json` y WordPress lo 
 7. Dividir un verso en múltiples segmentos con caracteres acentuados/ñ, guardar la canción, recargar el editor y confirmar que cada segmento reaparece con su texto UTF-8 intacto.
 8. Usar la exportación “Copiar como texto” y la vista de lectura para verificar que los versos se agrupan por sección con sus encabezados correspondientes.
 9. Abrir una canción previa sin `_segmentos_json`, comprobar que genera un segmento único, dividirla en el editor, guardar y confirmar que al recargar obtiene los segmentos reales y se crean secciones derivadas automáticamente.
+10. En un sitio con tema block, crear o editar una página en el editor, insertar el bloque **Lector público de canciones** y verificar que el frontend cargue el contenedor React y consuma correctamente `/wpss/v1/public/*`.
+11. En la página pública autogenerada `Canciones`, confirmar que el contenido contiene el bloque `wp-song-study/public-reader` o, en instalaciones legacy, el shortcode `[wpss_public_reader]`, y que ambos siguen renderizando el lector.
 
 Consulta `CHANGELOG.md` para detalles de versiones.
