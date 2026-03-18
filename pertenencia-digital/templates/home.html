@@ -1,0 +1,24 @@
+<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
+<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"3rem","bottom":"3rem","left":"min(6%, 2rem)","right":"min(6%, 2rem)"}}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group" style="padding-top:3rem;padding-right:min(6%, 2rem);padding-bottom:3rem;padding-left:min(6%, 2rem)">
+  <!-- wp:heading {"level":1,"style":{"typography":{"fontSize":"2.4rem"}}} -->
+  <h1 style="font-size:2.4rem">Pertenencia Digital</h1>
+  <!-- /wp:heading -->
+  <!-- wp:paragraph -->
+  <p>Un tema WordPress construido para edición completa del sitio con bloques.</p>
+  <!-- /wp:paragraph -->
+  <!-- wp:query {"query":{"inherit":true}} -->
+  <div class="wp-block-query">
+    <!-- wp:post-template -->
+    <!-- wp:group {"style":{"spacing":{"padding":{"bottom":"2rem"}},"border":{"bottom":{"color":"#cbd5e1","width":"1px"}}},"layout":{"type":"constrained"}} -->
+    <div class="wp-block-group" style="border-bottom-color:#cbd5e1;border-bottom-width:1px;padding-bottom:2rem">
+      <!-- wp:post-title {"isLink":true} /-->
+      <!-- wp:post-excerpt {"moreText":"Leer más"} /-->
+    </div>
+    <!-- /wp:group -->
+    <!-- /wp:post-template -->
+  </div>
+  <!-- /wp:query -->
+</main>
+<!-- /wp:group -->
+<!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->

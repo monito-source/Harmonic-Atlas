@@ -1,0 +1,78 @@
+/*
+Theme Name: Pertenencia Digital
+Theme URI: https://tusitio.local/
+Author: Sergio Mendoza
+Description: Tema de bloques inspirado en Laboratorio Digital, reconstruido para funcionar principalmente con bloques.
+Version: 1.0
+License: GPL-2.0+
+Text Domain: pertenencia-digital
+Requires at least: 6.5
+Requires PHP: 7.4
+Tags: full-site-editing, block-patterns, block-styles, editor-style
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  margin: 0;
+  font-family: 'Libre Baskerville', serif;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: #2c3e50;
+  background-color: #ecf0f1;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+.wp-site-blocks {
+  min-height: 100vh;
+}
+
+.wp-block-button__link,
+.wp-block-post-comments-form input[type='submit'],
+button,
+input[type='submit'],
+input[type='button'],
+input[type='reset'] {
+  border-radius: 10px;
+}
+
+.is-style-outline > .wp-block-button__link,
+.wp-block-button.is-style-outline > .wp-block-button__link {
+  border-width: 1px;
+}
+
+.wp-block-navigation__responsive-container.is-menu-open {
+  padding: 2rem;
+}
+
+.wp-block-post-title a,
+a {
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.14em;
+}
+
+footer .wp-block-site-title a,
+header .wp-block-site-title a {
+  text-decoration: none;
+}
