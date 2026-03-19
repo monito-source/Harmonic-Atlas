@@ -48,6 +48,16 @@ iframe {
   min-height: 100vh;
 }
 
+main,
+.wp-site-blocks,
+.wp-block-group,
+.wp-block-post-content,
+.wp-block-post-featured-image,
+.entry-content,
+.entry-content > * {
+  min-width: 0;
+}
+
 .wp-block-button__link,
 .wp-block-post-comments-form input[type='submit'],
 button,
@@ -75,4 +85,135 @@ a {
 footer .wp-block-site-title a,
 header .wp-block-site-title a {
   text-decoration: none;
+}
+
+body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)),
+body .wp-block-post-content.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
+  width: min(100%, var(--wp--style--global--content-size));
+  max-width: min(100%, var(--wp--style--global--content-size));
+}
+
+body .is-layout-constrained > .alignwide,
+body .wp-block-post-content.is-layout-constrained > .alignwide {
+  width: min(100%, var(--wp--style--global--wide-size));
+  max-width: min(100%, var(--wp--style--global--wide-size));
+}
+
+body .is-layout-constrained > .alignfull {
+  width: 100%;
+  max-width: 100%;
+}
+
+body .wp-block-post-content > .alignfull,
+body .wp-block-post-content > .wp-block-group.alignfull,
+body .wp-block-post-content > .wp-block-cover.alignfull {
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
+body .wp-block-post-content:has(#wpss-cancion-app),
+body .wp-block-group:has(#wpss-cancion-app),
+body .entry-content:has(#wpss-cancion-app) {
+  width: 100%;
+  max-width: 100%;
+}
+
+body #wpss-cancion-app,
+body #wpss-cancion-app > div,
+body .wpss-cancion-app,
+body .wpss-cancion-app > div,
+body .wpss-public-reader,
+body .wpss-public-reader__layout,
+body .wpss-public-reader__reading,
+body .wpss-public-reader__list,
+body .wpss-panel,
+body .wpss-reading,
+body .wpss-reading__sections,
+body .wpss-reading__sections-frame,
+body .wpss-reading__sections-scroll,
+body .wpss-reading__section,
+body .wpss-reading__section-body,
+body .wpss-reading__verses,
+body .wpss-reading__verses li,
+body .wpss-reading__verse-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body .wpss-public-reader,
+body .wpss-public-reader__layout,
+body .wpss-public-reader__layout .wpss-panel,
+body .wpss-public-reader__layout .wpss-public-reader__reading {
+  width: 100%;
+}
+
+body .wpss-public-reader {
+  overflow: visible;
+}
+
+body .wpss-public-reader__layout {
+  max-width: none;
+  min-height: calc(100vh - 120px);
+}
+
+body .wpss-public-reader .wpss-reading {
+  width: min(100%, var(--wp--style--global--wide-size));
+  margin-inline: auto;
+}
+
+body .wpss-public-reader .wpss-reading__sections,
+body .wpss-public-reader .wpss-reading__sections-frame,
+body .wpss-public-reader .wpss-reading__sections-scroll,
+body .wpss-public-reader .wpss-reading__section-strip-shell,
+body .wpss-public-reader .wpss-reading__section-strip {
+  width: 100%;
+  max-width: 100%;
+}
+
+body .wpss-public-reader .wpss-reading__stack-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)),
+  body .wp-block-post-content.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body main.wp-block-group {
+    padding-left: clamp(0.9rem, 4vw, 1.25rem) !important;
+    padding-right: clamp(0.9rem, 4vw, 1.25rem) !important;
+  }
+
+  body .wpss-public-reader .wpss-reading,
+  body .wpss-public-reader .wpss-panel,
+  body .wpss-public-reader .wpss-reading__sections,
+  body .wpss-public-reader .wpss-reading__section,
+  body .wpss-public-reader .wpss-reading__section-body,
+  body .wpss-public-reader .wpss-reading__verses,
+  body .wpss-public-reader .wpss-reading__verses li,
+  body .wpss-public-reader .wpss-reading__verse-body,
+  body .wpss-public-reader .wpss-reading__section-strip-shell,
+  body .wpss-public-reader .wpss-reading__section-strip {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  body .wpss-public-reader .wpss-reading {
+    margin-inline: 0;
+  }
+}
+
+@media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  body .wpss-public-reader .wpss-reading {
+    width: min(100%, var(--wp--style--global--wide-size));
+  }
 }
