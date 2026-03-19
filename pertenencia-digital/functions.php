@@ -39,3 +39,40 @@ add_action(
         );
     }
 );
+
+
+add_action(
+    'after_switch_theme',
+    function () {
+        $pages = [
+            [
+                'title'   => 'Música',
+                'slug'    => 'musica',
+                'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, recursos y recorridos dedicados a la música.</p><!-- /wp:paragraph -->',
+            ],
+            [
+                'title'   => 'Tecnologías y web',
+                'slug'    => 'tecnologias-web',
+                'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, herramientas y publicaciones sobre tecnologías y web.</p><!-- /wp:paragraph -->',
+            ],
+        ];
+
+        foreach ( $pages as $page ) {
+            $existing = get_page_by_path( $page['slug'] );
+
+            if ( $existing instanceof WP_Post ) {
+                continue;
+            }
+
+            wp_insert_post(
+                [
+                    'post_type'    => 'page',
+                    'post_status'  => 'publish',
+                    'post_title'   => $page['title'],
+                    'post_name'    => $page['slug'],
+                    'post_content' => $page['content'],
+                ]
+            );
+        }
+    }
+);

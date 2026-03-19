@@ -217,3 +217,114 @@ body .wpss-public-reader .wpss-reading__stack-shell {
     width: min(100%, var(--wp--style--global--wide-size));
   }
 }
+
+.pd-header-musica-tecnologia {
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.pd-header-musica-tecnologia__top,
+.pd-header-musica-tecnologia__actions,
+.pd-home__hero {
+  gap: 1.5rem;
+}
+
+.pd-header-musica-tecnologia__top {
+  align-items: flex-start;
+}
+
+.pd-header-musica-tecnologia__branding {
+  flex: 1 1 320px;
+}
+
+.pd-header-musica-tecnologia__nav-shell {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.pd-header-musica-tecnologia__nav {
+  width: auto;
+}
+
+.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content,
+.pd-header-musica-tecnologia__nav .wp-block-navigation__container {
+  align-items: flex-start;
+}
+
+.pd-header-musica-tecnologia__nav .wp-block-navigation__container {
+  gap: 0.75rem;
+}
+
+.pd-header-musica-tecnologia__nav .wp-block-navigation-item {
+  width: 100%;
+}
+
+.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content {
+  width: 100%;
+}
+
+.pd-header-musica-tecnologia__button .wp-block-button__link,
+.pd-home__cta .wp-block-button__link {
+  min-width: 220px;
+  text-align: center;
+}
+
+.pd-header-musica-tecnologia__button--secondary .wp-block-button__link,
+.pd-home__cta--secondary .wp-block-button__link {
+  border-color: currentColor;
+}
+
+.pd-home__about,
+.pd-home__cta-panel {
+  flex: 1 1 320px;
+}
+
+.pd-home__cta-panel {
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 18px 45px rgba(30, 58, 138, 0.12);
+}
+
+.pd-home__cta-panel .wp-block-buttons {
+  width: 100%;
+}
+
+.pd-home__cta {
+  width: 100%;
+}
+
+.pd-home__cta .wp-block-button__link {
+  width: 100%;
+  padding: 1rem 1.4rem;
+  font-size: 1.15rem;
+}
+
+.pd-home__illustration {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.pd-home__illustration svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 28px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+}
+
+@media (max-width: 781px) {
+  .pd-header-musica-tecnologia__top,
+  .pd-header-musica-tecnologia__actions,
+  .pd-home__hero {
+    flex-direction: column;
+  }
+
+  .pd-header-musica-tecnologia__nav-shell,
+  .pd-header-musica-tecnologia__actions,
+  .pd-home__cta-panel,
+  .pd-home__cta .wp-block-button__link,
+  .pd-header-musica-tecnologia__button .wp-block-button__link {
+    width: 100%;
+  }
+}

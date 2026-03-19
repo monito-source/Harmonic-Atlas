@@ -1,21 +1,38 @@
-<!-- wp:group {"tagName":"header","style":{"spacing":{"padding":{"top":"1.25rem","bottom":"1.25rem","left":"6%","right":"6%"}},"color":{"background":"#2c3e50","text":"#ecf0f1"}},"layout":{"type":"constrained","wideSize":"100%"}} -->
-<header class="wp-block-group has-text-color has-background" style="background-color:#2c3e50;color:#ecf0f1;padding-top:1.25rem;padding-right:6%;padding-bottom:1.25rem;padding-left:6%">
-  <!-- wp:group {"align":"wide","layout":{"type":"flex","justifyContent":"space-between","flexWrap":"wrap","verticalAlignment":"center"}} -->
-  <div class="wp-block-group alignwide">
-    <!-- wp:group {"layout":{"type":"constrained"}} -->
-    <div class="wp-block-group">
-      <!-- wp:site-title {"level":1,"style":{"elements":{"link":{"color":{"text":"#ecf0f1"}}}}} /-->
-      <!-- wp:site-tagline {"style":{"color":{"text":"#d9e2ec"},"typography":{"fontSize":"0.95rem"}}} /-->
+<!-- wp:group {"tagName":"header","className":"pd-header-musica-tecnologia","style":{"spacing":{"padding":{"top":"1.5rem","bottom":"1.5rem","left":"6%","right":"6%"}},"color":{"background":"#2c3e50","text":"#ecf0f1"}},"layout":{"type":"constrained","wideSize":"100%"}} -->
+<header class="wp-block-group pd-header-musica-tecnologia has-text-color has-background" style="background-color:#2c3e50;color:#ecf0f1;padding-top:1.5rem;padding-right:6%;padding-bottom:1.5rem;padding-left:6%">
+  <!-- wp:group {"align":"wide","className":"pd-header-musica-tecnologia__inner","style":{"spacing":{"blockGap":"1.5rem"}},"layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-header-musica-tecnologia__inner">
+    <!-- wp:group {"className":"pd-header-musica-tecnologia__top","layout":{"type":"flex","justifyContent":"space-between","flexWrap":"nowrap","verticalAlignment":"top"}} -->
+    <div class="wp-block-group pd-header-musica-tecnologia__top">
+      <!-- wp:group {"className":"pd-header-musica-tecnologia__branding","layout":{"type":"constrained"}} -->
+      <div class="wp-block-group pd-header-musica-tecnologia__branding">
+        <!-- wp:site-title {"level":1,"style":{"elements":{"link":{"color":{"text":"#ecf0f1"}}}},"fontSize":"x-large"} /-->
+        <!-- wp:site-tagline {"style":{"color":{"text":"#d9e2ec"},"typography":{"fontSize":"0.95rem"}}} /-->
+      </div>
+      <!-- /wp:group -->
+
+      <!-- wp:group {"className":"pd-header-musica-tecnologia__nav-shell","layout":{"type":"constrained"}} -->
+      <div class="wp-block-group pd-header-musica-tecnologia__nav-shell">
+        <!-- wp:navigation {"overlayMenu":"always","layout":{"type":"flex","orientation":"vertical","justifyContent":"right"},"style":{"typography":{"fontSize":"1rem"},"spacing":{"blockGap":"0.6rem"}},"textColor":"blanco","icon":"menu","className":"pd-header-musica-tecnologia__nav"} /-->
+      </div>
+      <!-- /wp:group -->
     </div>
     <!-- /wp:group -->
 
-    <!-- wp:group {"layout":{"type":"flex","flexWrap":"wrap","verticalAlignment":"center"}} -->
-    <div class="wp-block-group">
-      <!-- wp:navigation {"overlayMenu":"mobile","layout":{"type":"flex","justifyContent":"right"},"style":{"typography":{"fontSize":"1rem"}},"textColor":"blanco","icon":"menu"} /-->
+    <!-- wp:group {"className":"pd-header-musica-tecnologia__actions","layout":{"type":"flex","justifyContent":"space-between","flexWrap":"wrap","verticalAlignment":"center"}} -->
+    <div class="wp-block-group pd-header-musica-tecnologia__actions">
       <!-- wp:buttons -->
       <div class="wp-block-buttons">
-        <!-- wp:button {"backgroundColor":"azul-principal","textColor":"blanco"} -->
-        <div class="wp-block-button"><a class="wp-block-button__link has-blanco-color has-azul-principal-background-color has-text-color has-background wp-element-button" href="/wp-login.php">Iniciar sesión</a></div>
+        <!-- wp:button {"className":"is-style-fill pd-header-musica-tecnologia__button"} -->
+        <div class="wp-block-button is-style-fill pd-header-musica-tecnologia__button"><a class="wp-block-button__link wp-element-button" href="/musica">Música</a></div>
+        <!-- /wp:button -->
+      </div>
+      <!-- /wp:buttons -->
+
+      <!-- wp:buttons -->
+      <div class="wp-block-buttons">
+        <!-- wp:button {"className":"is-style-outline pd-header-musica-tecnologia__button pd-header-musica-tecnologia__button--secondary","textColor":"blanco"} -->
+        <div class="wp-block-button is-style-outline pd-header-musica-tecnologia__button pd-header-musica-tecnologia__button--secondary"><a class="wp-block-button__link has-blanco-color has-text-color wp-element-button" href="/tecnologias-web">Tecnologías y web</a></div>
         <!-- /wp:button -->
       </div>
       <!-- /wp:buttons -->
