@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/song-list",
+  "version": "0.1.0",
+  "title": "Song List",
+  "category": "widgets",
+  "icon": "list-view",
+  "description": "Server-rendered list of songs from the WP Song Study catalog.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["song", "list", "music"],
+  "attributes": {
+    "postsToShow": {
+      "type": "number",
+      "default": 10
+    },
+    "orderBy": {
+      "type": "string",
+      "default": "title"
+    },
+    "order": {
+      "type": "string",
+      "default": "ASC"
+    },
+    "tonalidad": {
+      "type": "string",
+      "default": ""
+    },
+    "coleccion": {
+      "type": "string",
+      "default": ""
+    },
+    "showKey": {
+      "type": "boolean",
+      "default": true
+    },
+    "showCollection": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "editorScript": "file:./index.js"
+}
