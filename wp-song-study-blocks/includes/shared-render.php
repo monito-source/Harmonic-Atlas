@@ -10,22 +10,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Determina si el usuario actual puede ver el cancionero blocks.
+ *
+ * @return bool
+ */
+function wpssb_user_can_view_songbook() {
+    if ( function_exists( 'wpss_user_can_view_songbook' ) ) {
+        return wpss_user_can_view_songbook();
+    }
+
+    $capability = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
+    return current_user_can( 'manage_options' ) || current_user_can( $capability );
+}
+
+/**
  * Obtiene el payload JS necesario para la interfaz pública.
  * Reutiliza la función heredada si ya existe.
  *
  * @return array
  */
 function wpssb_get_public_reader_data() {
-    if ( function_exists( 'wpss_get_public_localized_data' ) ) {
-        return wpss_get_public_localized_data();
-    }
-
     $can_manage = current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
     $is_admin   = current_user_can( 'manage_options' );
-    $can_read   = $can_manage || $is_admin;
+    $can_read   = wpssb_user_can_view_songbook();
 
-    if ( function_exists( 'wpss_user_is_colega_musical' ) && wpss_user_is_colega_musical() ) {
-        $can_read = true;
+    if ( function_exists( 'wpss_get_public_localized_data' ) ) {
+        $data = wpss_get_public_localized_data();
+        if ( ! is_array( $data ) ) {
+            $data = [];
+        }
+
+        $data['canManage'] = ! empty( $data['canManage'] ) || $can_manage;
+        $data['canRead']   = $can_read;
+        $data['isAdmin']   = ! empty( $data['isAdmin'] ) || $is_admin;
+
+        return $data;
     }
 
     return [
@@ -96,6 +115,10 @@ function wpssb_enqueue_interface_assets() {
  * @return string
  */
 function wpssb_render_interface_markup( $attributes = [], $content = '' ) {
+    if ( ! wpssb_user_can_view_songbook() ) {
+        return '';
+    }
+
     wpssb_enqueue_interface_assets();
 
     $class_name = 'wpssb-interface';

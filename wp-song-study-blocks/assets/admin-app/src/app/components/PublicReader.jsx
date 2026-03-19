@@ -39,14 +39,15 @@ export default function PublicReader() {
   const [statusSavingMap, setStatusSavingMap] = useState({})
   const canManage = !!wpData?.canManage
   const isAdmin = !!wpData?.isAdmin
-  const canRead = wpData?.canRead !== undefined ? !!wpData.canRead : canManage || isAdmin
+  const canViewSongbook = wpData?.canRead !== undefined ? !!wpData.canRead : canManage || isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const [showDebugIds, setShowDebugIds] = useState(false)
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const selectedSong = state.selectedSongId
     ? state.songs.find((song) => Number(song.id) === Number(state.selectedSongId))
     : null
-  const canManageSong = (song) => !!song && (isAdmin || (canRead && isOwnSong(song)))
+  const canManageSong = (song) => !!song && (isAdmin || isOwnSong(song))
+  const canReversionSong = (song) => !!song && canViewSongbook && (isAdmin || !isOwnSong(song))
   const canEditSelected = canManageSong(selectedSong) && !!state.selectedSongId
 
   const canDeleteSong = (song) => canManageSong(song)
@@ -556,7 +557,7 @@ export default function PublicReader() {
               <h1>{wpData?.strings?.filtersTitle || 'Canciones disponibles'}</h1>
               <p className="wpss-panel__meta">
                 {state.songs.length} canciones
-                {canRead ? (
+                {canViewSongbook ? (
                   <button
                     type="button"
                     className="button button-link wpss-public-reader__debug-toggle"
@@ -567,7 +568,7 @@ export default function PublicReader() {
                 ) : null}
               </p>
             </div>
-            {canRead ? (
+            {canViewSongbook ? (
               <div className="wpss-panel__actions">
                 <button type="button" className="button button-primary" onClick={handleNewSong}>
                   {wpData?.strings?.newSong || 'Nueva canción'}
@@ -575,7 +576,7 @@ export default function PublicReader() {
               </div>
             ) : null}
           </header>
-          {canRead ? (
+          {canViewSongbook ? (
             <div className="wpss-tab-nav wpss-public-reader__tabs">
               <button
                 type="button"
@@ -807,7 +808,7 @@ export default function PublicReader() {
                                 {wpData?.strings?.editorView || 'Editar'}
                               </button>
                             ) : null}
-                            {canRead && !canManageSong(song) ? (
+                            {canReversionSong(song) ? (
                               <button
                                 type="button"
                                 className="button button-small button-secondary"
@@ -826,7 +827,7 @@ export default function PublicReader() {
                               </button>
                             ) : null}
                           </div>
-                          {canRead ? (
+                          {canViewSongbook ? (
                             <div className="wpss-public-reader__song-status-controls">
                               {isOwnSong(song) ? (
                                 <label>

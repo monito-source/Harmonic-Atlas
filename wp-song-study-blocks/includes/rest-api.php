@@ -45,17 +45,30 @@ function wpss_is_song_publicly_visible( $post_id ) {
 }
 
 /**
- * Determina si el usuario actual tiene rol permitido.
+ * Determina si el usuario actual puede ver el cancionero blocks.
  *
  * @return bool
  */
-function wpss_user_has_allowed_role() {
+function wpss_user_can_view_songbook() {
     if ( function_exists( 'is_super_admin' ) && is_super_admin() ) {
+        return true;
+    }
+
+    if ( current_user_can( 'manage_options' ) ) {
         return true;
     }
 
     $capability = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
     return current_user_can( $capability ) || wpss_user_is_colega_musical();
+}
+
+/**
+ * Conserva compatibilidad con validaciones existentes de rol autorizado.
+ *
+ * @return bool
+ */
+function wpss_user_has_allowed_role() {
+    return wpss_user_can_view_songbook();
 }
 
 /**
@@ -215,7 +228,7 @@ function wpss_register_rest_routes() {
         [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => 'wpss_rest_get_canciones',
-            'permission_callback' => '__return_true',
+            'permission_callback' => 'wpss_rest_verify_public_songbook_permissions',
         ]
     );
 
@@ -225,7 +238,7 @@ function wpss_register_rest_routes() {
         [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => 'wpss_rest_get_cancion_public',
-            'permission_callback' => '__return_true',
+            'permission_callback' => 'wpss_rest_verify_public_songbook_permissions',
             'args'                => [
                 'id' => [
                     'description'       => __( 'ID de la canción.', 'wp-song-study' ),
@@ -244,7 +257,7 @@ function wpss_register_rest_routes() {
         [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => 'wpss_rest_get_colecciones',
-            'permission_callback' => '__return_true',
+            'permission_callback' => 'wpss_rest_verify_public_songbook_permissions',
         ]
     );
 
@@ -395,20 +408,21 @@ function wpss_register_rest_routes() {
  * @return bool|WP_Error
  */
 /**
- * Determina si una solicitud REST del módulo puede ser usada por colegas musicales.
- * Se limita a operaciones del cancionero.
+ * Valida acceso a rutas públicas del cancionero blocks.
  *
  * @param WP_REST_Request $request Solicitud entrante.
- * @return bool
+ * @return bool|WP_Error
  */
-function wpss_rest_request_allows_colega( WP_REST_Request $request ) {
-    $route = $request->get_route();
-
-    if ( ! is_string( $route ) ) {
-        return false;
+function wpss_rest_verify_public_songbook_permissions( WP_REST_Request $request ) {
+    if ( ! is_user_logged_in() ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'Debes iniciar sesión para acceder al cancionero.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
-    return 0 === strpos( $route, '/wpss/v1/canciones' ) || 0 === strpos( $route, '/wpss/v1/cancion/' ) || '/wpss/v1/cancion' === $route;
+    if ( ! wpss_user_can_view_songbook() ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos para ver el cancionero.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    return true;
 }
 
 function wpss_rest_verify_permissions( WP_REST_Request $request ) {
@@ -423,10 +437,7 @@ function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     }
 
     if ( ! wpss_user_has_allowed_role() ) {
-        $can_access_songbook = wpss_user_is_colega_musical() && wpss_rest_request_allows_colega( $request );
-        if ( ! $can_access_songbook ) {
-            return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
-        }
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
     return true;
