@@ -55,7 +55,7 @@ function wpss_user_has_allowed_role() {
     }
 
     $capability = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
-    return current_user_can( $capability );
+    return current_user_can( $capability ) || wpss_user_is_colega_musical();
 }
 
 /**
@@ -394,6 +394,23 @@ function wpss_register_rest_routes() {
  * @param WP_REST_Request $request Solicitud entrante.
  * @return bool|WP_Error
  */
+/**
+ * Determina si una solicitud REST del módulo puede ser usada por colegas musicales.
+ * Se limita a operaciones del cancionero.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return bool
+ */
+function wpss_rest_request_allows_colega( WP_REST_Request $request ) {
+    $route = $request->get_route();
+
+    if ( ! is_string( $route ) ) {
+        return false;
+    }
+
+    return 0 === strpos( $route, '/wpss/v1/canciones' ) || 0 === strpos( $route, '/wpss/v1/cancion/' ) || '/wpss/v1/cancion' === $route;
+}
+
 function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     $wp_nonce   = $request->get_header( 'x-wp-nonce' );
     $wpss_nonce = $request->get_header( 'x-wpss-nonce' );
@@ -406,7 +423,10 @@ function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     }
 
     if ( ! wpss_user_has_allowed_role() ) {
-        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
+        $can_access_songbook = wpss_user_is_colega_musical() && wpss_rest_request_allows_colega( $request );
+        if ( ! $can_access_songbook ) {
+            return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos suficientes para esta acción.', 'wp-song-study' ), [ 'status' => 403 ] );
+        }
     }
 
     return true;
@@ -501,6 +521,27 @@ function wpss_user_can_bypass_coleccion_acl() {
     }
 
     return current_user_can( 'manage_options' );
+}
+
+/**
+ * Determina si el usuario actual puede administrar una canción específica.
+ * Los administradores pueden editar/eliminar todas; el resto solo las propias.
+ *
+ * @param int $post_id ID de la canción.
+ * @return bool
+ */
+function wpss_current_user_can_manage_song( $post_id ) {
+    $post_id = absint( $post_id );
+    if ( $post_id <= 0 ) {
+        return false;
+    }
+
+    if ( wpss_user_can_bypass_coleccion_acl() ) {
+        return true;
+    }
+
+    $author_id = (int) get_post_field( 'post_author', $post_id );
+    return $author_id > 0 && $author_id === get_current_user_id();
 }
 
 /**
@@ -1743,7 +1784,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             return new WP_REST_Response( [ 'message' => __( 'Canción no encontrada.', 'wp-song-study' ) ], 404 );
         }
 
-        if ( (int) $existing_post->post_author !== get_current_user_id() ) {
+        if ( ! wpss_current_user_can_manage_song( $id ) ) {
             return new WP_REST_Response(
                 [ 'message' => __( 'No puedes editar directamente canciones de otros usuarios. Usa Reversionar.', 'wp-song-study' ) ],
                 403
@@ -2032,7 +2073,7 @@ function wpss_rest_delete_cancion( WP_REST_Request $request ) {
         );
     }
 
-    if ( (int) $post->post_author !== get_current_user_id() ) {
+    if ( ! wpss_current_user_can_manage_song( $post_id ) ) {
         return new WP_Error(
             'wpss_forbidden',
             __( 'No puedes eliminar canciones de otros usuarios.', 'wp-song-study' ),

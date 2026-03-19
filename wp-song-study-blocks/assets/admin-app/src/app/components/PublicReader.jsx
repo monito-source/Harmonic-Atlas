@@ -38,15 +38,18 @@ export default function PublicReader() {
   const [assignRows, setAssignRows] = useState(() => [createAssignRow(wpData?.currentUserId || 0)])
   const [statusSavingMap, setStatusSavingMap] = useState({})
   const canManage = !!wpData?.canManage
+  const isAdmin = !!wpData?.isAdmin
+  const canRead = wpData?.canRead !== undefined ? !!wpData.canRead : canManage || isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const [showDebugIds, setShowDebugIds] = useState(false)
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const selectedSong = state.selectedSongId
     ? state.songs.find((song) => Number(song.id) === Number(state.selectedSongId))
     : null
-  const canEditSelected = canManage && isOwnSong(selectedSong) && !!state.selectedSongId
+  const canManageSong = (song) => !!song && (isAdmin || (canRead && isOwnSong(song)))
+  const canEditSelected = canManageSong(selectedSong) && !!state.selectedSongId
 
-  const canDeleteSong = (song) => canManage && isOwnSong(song)
+  const canDeleteSong = (song) => canManageSong(song)
 
   const markStatusSaving = (songId, type, saving) => {
     const key = `${songId}:${type}`
@@ -515,7 +518,7 @@ export default function PublicReader() {
 
   return (
     <div className="wpss-public-reader__layout">
-      {state.activeTab === 'editor' && canManage ? (
+      {state.activeTab === 'editor' && canEditSelected ? (
         <section className="wpss-public-reader__reading wpss-panel wpss-public-editor">
           {state.songLoading ? (
             <p className="wpss-loading">Cargando canción…</p>
@@ -553,7 +556,7 @@ export default function PublicReader() {
               <h1>{wpData?.strings?.filtersTitle || 'Canciones disponibles'}</h1>
               <p className="wpss-panel__meta">
                 {state.songs.length} canciones
-                {canManage ? (
+                {canRead ? (
                   <button
                     type="button"
                     className="button button-link wpss-public-reader__debug-toggle"
@@ -564,7 +567,7 @@ export default function PublicReader() {
                 ) : null}
               </p>
             </div>
-            {canManage ? (
+            {canRead ? (
               <div className="wpss-panel__actions">
                 <button type="button" className="button button-primary" onClick={handleNewSong}>
                   {wpData?.strings?.newSong || 'Nueva canción'}
@@ -572,7 +575,7 @@ export default function PublicReader() {
               </div>
             ) : null}
           </header>
-          {canManage ? (
+          {canRead ? (
             <div className="wpss-tab-nav wpss-public-reader__tabs">
               <button
                 type="button"
@@ -795,7 +798,7 @@ export default function PublicReader() {
                             ) : null}
                           </button>
                           <div className="wpss-public-reader__song-actions">
-                            {canManage && isOwnSong(song) ? (
+                            {canManageSong(song) ? (
                               <button
                                 type="button"
                                 className="button button-small"
@@ -804,7 +807,7 @@ export default function PublicReader() {
                                 {wpData?.strings?.editorView || 'Editar'}
                               </button>
                             ) : null}
-                            {canManage && !isOwnSong(song) ? (
+                            {canRead && !canManageSong(song) ? (
                               <button
                                 type="button"
                                 className="button button-small button-secondary"
@@ -823,7 +826,7 @@ export default function PublicReader() {
                               </button>
                             ) : null}
                           </div>
-                          {canManage ? (
+                          {canRead ? (
                             <div className="wpss-public-reader__song-status-controls">
                               {isOwnSong(song) ? (
                                 <label>

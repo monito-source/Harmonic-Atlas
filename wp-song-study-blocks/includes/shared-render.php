@@ -20,13 +20,22 @@ function wpssb_get_public_reader_data() {
         return wpss_get_public_localized_data();
     }
 
+    $can_manage = current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
+    $is_admin   = current_user_can( 'manage_options' );
+    $can_read   = $can_manage || $is_admin;
+
+    if ( function_exists( 'wpss_user_is_colega_musical' ) && wpss_user_is_colega_musical() ) {
+        $can_read = true;
+    }
+
     return [
         'restUrl'       => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'publicRestUrl' => esc_url_raw( rest_url( 'wpss/v1/' ) ),
         'wpRestNonce'   => wp_create_nonce( 'wp_rest' ),
         'wpssNonce'     => wp_create_nonce( 'wpss' ),
-        'canManage'     => current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' ),
-        'isAdmin'       => current_user_can( 'manage_options' ),
+        'canManage'     => $can_manage,
+        'canRead'       => $can_read,
+        'isAdmin'       => $is_admin,
         'isPublicReader' => true,
         'currentUserId' => get_current_user_id(),
         'tonicas'       => [ 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B' ],
