@@ -37,22 +37,21 @@ const MOBILE_READING_QUERY = '(max-width: 860px)'
 const PRINT_BODY_CLASS = 'wpss-print-mode'
 const GLOBAL_READING_WIDTH_CLASS = 'wpss-reading-global-width'
 const MOBILE_DEFAULT_READING_ZOOM = 60
-const READING_ZOOM_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100, 126, 158, 180]
+const READING_ZOOM_MIN = 10
+const READING_ZOOM_MAX = 180
+const READING_ZOOM_STEP = 5
 
-const getNearestReadingZoomIndex = (value) => {
+const clampReadingZoom = (value) => {
   if (!Number.isFinite(value)) {
-    return READING_ZOOM_LEVELS.indexOf(100)
+    return 100
   }
-  let nearestIndex = 0
-  let nearestDistance = Number.POSITIVE_INFINITY
-  READING_ZOOM_LEVELS.forEach((level, index) => {
-    const distance = Math.abs(level - value)
-    if (distance < nearestDistance) {
-      nearestDistance = distance
-      nearestIndex = index
-    }
-  })
-  return nearestIndex
+  return Math.min(READING_ZOOM_MAX, Math.max(READING_ZOOM_MIN, value))
+}
+
+const snapReadingZoom = (value) => {
+  const bounded = clampReadingZoom(value)
+  const snapped = Math.round(bounded / READING_ZOOM_STEP) * READING_ZOOM_STEP
+  return clampReadingZoom(snapped)
 }
 
 const isCompactReadingViewport = () => {
@@ -169,9 +168,6 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     }
 
     const pinch = pinchStateRef.current
-    const minZoom = READING_ZOOM_LEVELS[0]
-    const maxZoom = READING_ZOOM_LEVELS[READING_ZOOM_LEVELS.length - 1]
-
     const finishPinch = () => {
       if (!pinch.active) {
         return
@@ -179,7 +175,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
       pinch.active = false
       pinch.startDistance = 0
       pinch.startZoom = readingZoomRef.current
-      setReadingZoom((current) => READING_ZOOM_LEVELS[getNearestReadingZoomIndex(current)])
+      setReadingZoom((current) => snapReadingZoom(current))
     }
 
     const handleTouchStart = (event) => {
@@ -204,7 +200,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
         return
       }
       const scaledZoom = pinch.startZoom * (distance / pinch.startDistance)
-      const bounded = Math.min(maxZoom, Math.max(minZoom, Math.round(scaledZoom)))
+      const bounded = clampReadingZoom(Math.round(scaledZoom))
       setReadingZoom(bounded)
       event.preventDefault()
     }
@@ -477,27 +473,19 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     setActiveSectionIndex(index)
   }
 
-  const zoomIndex = getNearestReadingZoomIndex(readingZoom)
-  const canZoomOut = zoomIndex > 0
-  const canZoomIn = zoomIndex < READING_ZOOM_LEVELS.length - 1
+  const canZoomOut = readingZoom > READING_ZOOM_MIN
+  const canZoomIn = readingZoom < READING_ZOOM_MAX
   const zoomFactor = readingZoom / 100
   const handleZoomChange = (nextZoom) => {
     const parsed = Number.parseInt(nextZoom, 10)
     if (!Number.isFinite(parsed)) {
       return
     }
-    const minZoom = READING_ZOOM_LEVELS[0]
-    const maxZoom = READING_ZOOM_LEVELS[READING_ZOOM_LEVELS.length - 1]
-    const bounded = Math.min(maxZoom, Math.max(minZoom, parsed))
-    setReadingZoom(READING_ZOOM_LEVELS[getNearestReadingZoomIndex(bounded)])
+    setReadingZoom(clampReadingZoom(parsed))
   }
 
   const handleZoomStep = (direction) => {
-    const nextIndex = Math.min(
-      READING_ZOOM_LEVELS.length - 1,
-      Math.max(0, zoomIndex + direction),
-    )
-    setReadingZoom(READING_ZOOM_LEVELS[nextIndex])
+    setReadingZoom((current) => clampReadingZoom(current + (direction * READING_ZOOM_STEP)))
   }
 
   const patchSongState = (patch) => {
@@ -845,12 +833,25 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
           <button
             type="button"
             className="button button-secondary wpss-reading__zoom-reset"
-            onClick={() => handleZoomChange(100)}
+            onClick={() => setReadingZoom(100)}
             disabled={readingZoom === 100}
             aria-label="Restablecer zoom"
           >
             {`${readingZoom}%`}
           </button>
+          <label className="wpss-reading__zoom-slider-field">
+            <span className="screen-reader-text">Ajustar zoom</span>
+            <input
+              type="range"
+              className="wpss-reading__zoom-slider"
+              min={READING_ZOOM_MIN}
+              max={READING_ZOOM_MAX}
+              step={READING_ZOOM_STEP}
+              value={readingZoom}
+              onChange={(event) => handleZoomChange(event.target.value)}
+              aria-label="Ajustar zoom"
+            />
+          </label>
           <button
             type="button"
             className="button button-secondary"

@@ -2470,6 +2470,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
 }
 
 .wpss-reading__zoom-controls .button {
@@ -2481,6 +2482,16 @@
 .wpss-reading__zoom-reset {
     min-width: 72px !important;
     font-variant-numeric: tabular-nums;
+}
+
+.wpss-reading__zoom-slider-field {
+    display: inline-flex;
+    align-items: center;
+}
+
+.wpss-reading__zoom-slider {
+    width: clamp(120px, 20vw, 180px);
+    margin: 0;
 }
 
 .wpss-reading__sections-frame {
@@ -2954,6 +2965,10 @@
 
     .wpss-reading__zoom-reset {
         min-width: 64px !important;
+    }
+
+    .wpss-reading__zoom-slider {
+        width: min(32vw, 140px);
     }
 
     .wpss-reading__sections-frame {
