@@ -145,6 +145,24 @@ export default function Editor({ onShowList }) {
   }, [api, dispatch, state.collections])
 
   useEffect(() => {
+    if (Array.isArray(state.songTags) && state.songTags.length) {
+      return
+    }
+
+    api
+      .listSongTags()
+      .then((response) => {
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            songTags: Array.isArray(response?.data) ? response.data : [],
+          },
+        })
+      })
+      .catch(() => {})
+  }, [api, dispatch, state.songTags])
+
+  useEffect(() => {
     return () => {
       if (autosaveRef.current) {
         clearTimeout(autosaveRef.current)
@@ -217,6 +235,27 @@ export default function Editor({ onShowList }) {
   }
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
+  const availableTags = Array.isArray(state.songTags) ? state.songTags : []
+
+  const handleTagsChange = (event) => {
+    const raw = event.target.value || ''
+    const names = raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+    const seen = new Set()
+    const normalized = names.filter((value) => {
+      const key = value.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).map((value) => {
+      const existing = availableTags.find((tag) => String(tag?.name || '').toLowerCase() === value.toLowerCase())
+      return existing || { id: null, name: value, slug: value.toLowerCase() }
+    })
+    updateSong((current) => ({ ...current, tags: normalized }))
+    scheduleAutosave()
+  }
 
   const handleToggleCollection = (collection) => {
     const collectionId = Number(collection?.id)
@@ -473,6 +512,7 @@ export default function Editor({ onShowList }) {
         }
       }),
       colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones.map((item) => item.id) : [],
+      tags: Array.isArray(currentSong.tags) ? currentSong.tags.map((item) => item.id || item.name || item.slug) : [],
       estructura: estructuraPayload,
       estructura_personalizada: true,
     }
@@ -516,6 +556,7 @@ export default function Editor({ onShowList }) {
           estado_ensayo_label:
             body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
+          tags: Array.isArray(body.tags) ? body.tags : editingSong.tags || [],
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -1637,6 +1678,17 @@ export default function Editor({ onShowList }) {
                 }}
               />
             </label>
+            <label>
+              <span>Tags</span>
+              <input
+                type="text"
+                value={Array.isArray(editingSong.tags) ? editingSong.tags.map((tag) => tag?.name || '').filter(Boolean).join(', ') : ''}
+                onChange={handleTagsChange}
+                placeholder="Ej: liturgia, adviento, coro"
+                list="wpss-song-tags"
+              />
+              <small>Separá múltiples tags con comas.</small>
+            </label>
           </div>
           <div className="wpss-field-group">
             <label className="wpss-field">
@@ -2567,6 +2619,11 @@ export default function Editor({ onShowList }) {
           />
         </details>
 
+        <datalist id="wpss-song-tags">
+          {availableTags.map((tag) => (
+            <option key={tag.id || tag.slug || tag.name} value={tag.name} />
+          ))}
+        </datalist>
         <datalist id="wpss-tonicas">
           {(wpData?.tonicas || []).map((tonica) => (
             <option key={tonica} value={tonica} />

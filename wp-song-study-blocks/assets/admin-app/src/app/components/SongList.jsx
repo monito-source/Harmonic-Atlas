@@ -19,6 +19,9 @@ export default function SongList({ onSelectSong, onNewSong }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [statusSavingMap, setStatusSavingMap] = useState({})
   const currentUserId = wpData?.currentUserId || 0
+  const filters = state.filters || {}
+  const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
+  const availableTags = Array.isArray(state.songTags) ? state.songTags : []
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const canDeleteSong = (song) => isOwnSong(song)
   const handleOpen = (songId, targetTab) => {
@@ -161,11 +164,25 @@ export default function SongList({ onSelectSong, onNewSong }) {
   }
 
   useEffect(() => {
+    if (!availableCollections.length) {
+      api.listCollections().then((response) => {
+        const items = Array.isArray(response?.data) ? response.data : []
+        dispatch({ type: 'SET_STATE', payload: { collections: { ...state.collections, items } } })
+      }).catch(() => {})
+    }
+    if (!availableTags.length) {
+      api.listSongTags().then((response) => {
+        dispatch({ type: 'SET_STATE', payload: { songTags: Array.isArray(response?.data) ? response.data : [] } })
+      }).catch(() => {})
+    }
+  }, [api, availableCollections.length, availableTags.length, dispatch, state.collections])
+
+  useEffect(() => {
     let mounted = true
     dispatch({ type: 'SET_STATE', payload: { listLoading: true } })
 
     api
-      .listSongs({ page: state.pagination.page, per_page: 20 })
+      .listSongs({ page: state.pagination.page, per_page: 20, ...filters })
       .then((response) => {
         if (!mounted) return
         const items = Array.isArray(response.data) ? response.data : []
@@ -195,7 +212,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
     return () => {
       mounted = false
     }
-  }, [api, dispatch, state.pagination.page, wpData])
+  }, [api, dispatch, filters, state.pagination.page, wpData])
 
   return (
     <section className="wpss-panel wpss-panel--list">
@@ -210,6 +227,31 @@ export default function SongList({ onSelectSong, onNewSong }) {
           </button>
         </div>
       </header>
+
+      <div className="wpss-filters">
+        <label>
+          <span>Tónica</span>
+          <select value={filters.tonica || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, tonica: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
+            <option value="">Todas</option>
+            {(wpData?.tonicas || []).map((tonica) => <option key={tonica} value={tonica}>{tonica}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Colección</span>
+          <select value={filters.coleccion || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, coleccion: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
+            <option value="">Todas</option>
+            {availableCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.nombre}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Tag</span>
+          <select value={filters.tag || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, tag: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
+            <option value="">Todos</option>
+            {availableTags.map((tag) => <option key={tag.id || tag.slug} value={tag.slug}>{tag.name}</option>)}
+          </select>
+        </label>
+        <button className="button button-secondary" type="button" onClick={() => dispatch({ type: 'SET_STATE', payload: { filters: { tonica: '', con_prestamos: '', con_modulaciones: '', coleccion: '', tag: '' }, pagination: { ...state.pagination, page: 1 } } })}>Limpiar filtros</button>
+      </div>
 
       {state.listLoading ? (
         <p className="wpss-loading">Cargando canciones…</p>
@@ -250,6 +292,11 @@ export default function SongList({ onSelectSong, onNewSong }) {
                     <span className="wpss-sub">
                       Ensayo (yo): {getStatusLabel(REHEARSAL_STATUS_LABELS, song.estado_ensayo)}
                     </span>
+                    {Array.isArray(song.tags) && song.tags.length ? (
+                      <span className="wpss-sub">
+                        Tags: {song.tags.map((tag) => tag.name).join(' · ')}
+                      </span>
+                    ) : null}
                     {Array.isArray(song.colecciones) && song.colecciones.length ? (
                       <span className="wpss-sub">
                         Repertorios: {song.colecciones.map((collection) => {

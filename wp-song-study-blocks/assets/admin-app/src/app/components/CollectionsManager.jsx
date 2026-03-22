@@ -344,6 +344,37 @@ export default function CollectionsManager({
       })
   }
 
+  const handleDuplicate = () => {
+    if (!draft.id) return
+    setSaving(true)
+    setError(null)
+    api
+      .duplicateCollection(draft.id)
+      .then((response) => {
+        const raw = response?.data && typeof response.data === 'object' ? response.data : {}
+        const normalized = normalizeCollectionDraft(raw, catalogMap)
+        setDraft(normalized)
+        setIsNewDraft(false)
+        setActiveId(normalized.id || null)
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            feedback: { message: 'Colección duplicada.', type: 'success' },
+            error: null,
+          },
+        })
+        refreshCollections(normalized.id || null)
+      })
+      .catch((requestError) => {
+        const message = requestError?.payload?.message || 'No fue posible duplicar la colección.'
+        setError(message)
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      })
+      .finally(() => {
+        setSaving(false)
+      })
+  }
+
   const handleDelete = () => {
     if (!draft.id) return
     const confirmed = window.confirm('¿Eliminar la colección seleccionada?')
@@ -578,6 +609,16 @@ export default function CollectionsManager({
               >
                 {saving ? 'Guardando…' : 'Guardar colección'}
               </button>
+              {draft.id ? (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={handleDuplicate}
+                  disabled={saving || deleting}
+                >
+                  Duplicar colección
+                </button>
+              ) : null}
               {draft.id ? (
                 <button
                   type="button"

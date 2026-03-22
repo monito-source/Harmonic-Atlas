@@ -187,5 +187,11 @@ export function createApi(wpData) {
     deleteCollection(id) {
       return request(`coleccion/${id}`, { method: 'DELETE' })
     },
+    duplicateCollection(id) {
+      return request(`coleccion/${id}/duplicar`, { method: 'POST' })
+    },
+    listSongTags() {
+      return request('tags-cancion')
+    },
   }
 }

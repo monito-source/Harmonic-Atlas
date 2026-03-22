@@ -38,8 +38,10 @@ export default function PublicReader() {
     con_prestamos: '',
     con_modulaciones: '',
     coleccion: '',
+    tag: '',
   })
   const [collections, setCollections] = useState([])
+  const [tags, setTags] = useState([])
   const [listTab, setListTab] = useState('songs')
   const [colleagues, setColleagues] = useState([])
   const [colleaguesLoading, setColleaguesLoading] = useState(false)
@@ -734,6 +736,20 @@ export default function PublicReader() {
                     ))}
                   </select>
                 </label>
+                <label>
+                  <span>Tag</span>
+                  <select
+                    value={filters.tag}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, tag: event.target.value }))}
+                  >
+                    <option value="">Todos</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id || tag.slug} value={tag.slug}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <div className="wpss-filters__actions">
                   <button
                     type="button"
@@ -744,6 +760,7 @@ export default function PublicReader() {
                         con_prestamos: '',
                         con_modulaciones: '',
                         coleccion: '',
+                        tag: '',
                       })
                     }
                   >
@@ -793,6 +810,11 @@ export default function PublicReader() {
                             <span className="wpss-public-reader__song-meta">
                               Ensayo (yo): {rehearsalLabel}
                             </span>
+                            {Array.isArray(song.tags) && song.tags.length ? (
+                              <span className="wpss-public-reader__song-meta">
+                                Tags: {song.tags.map((tag) => tag.name).join(' · ')}
+                              </span>
+                            ) : null}
                             {Array.isArray(song.colecciones) && song.colecciones.length ? (
                               <span className="wpss-public-reader__song-meta">
                                 Repertorios: {song.colecciones.map((collection) => {

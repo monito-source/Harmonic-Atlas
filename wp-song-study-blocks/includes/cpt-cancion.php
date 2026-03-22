@@ -91,7 +91,7 @@ function wpss_register_cpt_cancion() {
         'supports'           => [ 'title' ],
         'has_archive'        => false,
         'menu_icon'          => 'dashicons-album',
-        'taxonomies'         => [ 'tonalidad' ],
+        'taxonomies'         => [ 'tonalidad', 'cancion_tag' ],
         'rewrite'            => [ 'slug' => 'cancion' ],
     ];
 

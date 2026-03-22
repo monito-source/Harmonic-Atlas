@@ -44,6 +44,7 @@ function wpssb_load_legacy_backend() {
 
     require_once WPSSB_PATH . 'includes/tax-tonalidad.php';
     require_once WPSSB_PATH . 'includes/tax-coleccion.php';
+    require_once WPSSB_PATH . 'includes/tax-etiqueta-cancion.php';
     require_once WPSSB_PATH . 'includes/cpt-cancion.php';
     require_once WPSSB_PATH . 'includes/cpt-verso.php';
     require_once WPSSB_PATH . 'includes/admin-columns.php';
@@ -67,6 +68,9 @@ function wpssb_register_content_types() {
     }
     if ( function_exists( 'wpss_register_coleccion_tax' ) ) {
         wpss_register_coleccion_tax();
+    }
+    if ( function_exists( 'wpss_register_cancion_tag_tax' ) ) {
+        wpss_register_cancion_tag_tax();
     }
     if ( function_exists( 'wpss_register_cpt_cancion' ) ) {
         wpss_register_cpt_cancion();

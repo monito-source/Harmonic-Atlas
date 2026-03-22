@@ -63,6 +63,7 @@ export function createEmptySong() {
     tiene_prestamos: false,
     tiene_modulaciones: false,
     colecciones: [],
+    tags: [],
     estructura: [],
     estructuraPersonalizada: true,
   }
@@ -98,6 +99,7 @@ export function buildInitialState(wpData, view = 'dashboard') {
       con_prestamos: '',
       con_modulaciones: '',
       coleccion: '',
+      tag: '',
     },
     pagination: {
       page: 1,
@@ -139,6 +141,7 @@ export function buildInitialState(wpData, view = 'dashboard') {
       selectionStart: null,
       selectionEnd: null,
     },
+    songTags: [],
     collections: {
       items: [],
       loading: false,

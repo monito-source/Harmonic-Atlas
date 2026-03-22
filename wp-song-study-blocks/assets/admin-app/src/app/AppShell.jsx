@@ -87,6 +87,7 @@ export default function AppShell() {
             tiene_prestamos: !!song.tiene_prestamos,
             tiene_modulaciones: !!song.tiene_modulaciones,
             colecciones: Array.isArray(song.colecciones) ? song.colecciones : [],
+            tags: Array.isArray(song.tags) ? song.tags : [],
             estructuraPersonalizada: true,
           }
 

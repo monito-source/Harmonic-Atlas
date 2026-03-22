@@ -127,6 +127,9 @@ function wpss_register_rest_routes() {
                     'sanitize_callback' => 'absint',
                     'validate_callback' => 'wpss_validate_coleccion_exists',
                 ],
+                'tag' => [
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
             ],
         ]
     );
@@ -380,6 +383,24 @@ function wpss_register_rest_routes() {
             'permission_callback' => 'wpss_rest_verify_permissions',
         ]
     );
+    register_rest_route(
+        'wpss/v1',
+        '/coleccion/(?P<id>\d+)/duplicar',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_duplicate_coleccion',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID de la colección.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_coleccion_exists',
+                ],
+            ],
+        ]
+    );
 
     register_rest_route(
         'wpss/v1',
@@ -602,6 +623,10 @@ function wpss_user_can_access_coleccion( $term_id, $mode = 'read', $user_id = nu
 
     if ( 'write' === $mode ) {
         return false;
+    }
+
+    if ( wpss_user_has_allowed_role() ) {
+        return true;
     }
 
     $shared_user_ids = wpss_get_coleccion_shared_user_ids( $term_id );
@@ -1200,6 +1225,15 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
         $args['meta_query'] = $meta_query;
     }
 
+    $tag_slug = sanitize_title( (string) $request->get_param( 'tag' ) );
+    if ( '' !== $tag_slug ) {
+        $tax_query[] = [
+            'taxonomy' => 'cancion_tag',
+            'field'    => 'slug',
+            'terms'    => [ $tag_slug ],
+        ];
+    }
+
     $coleccion_id = absint( $request->get_param( 'coleccion' ) );
 
     if ( $coleccion_id > 0 && ! wpss_user_can_access_coleccion( $coleccion_id, 'read' ) ) {
@@ -1572,6 +1606,7 @@ function wpss_prepare_cancion_list_item( $post_id ) {
             'conteo_versos_normales' => (int) get_post_meta( $post_id, '_conteo_versos_normales', true ),
             'conteo_versos_instrumentales' => (int) get_post_meta( $post_id, '_conteo_versos_instrumentales', true ),
             'colecciones'        => wpss_get_song_colecciones( $post_id ),
+            'tags'               => wpss_get_song_tags( $post_id ),
             'estado_transcripcion' => $estado_transcripcion,
             'estado_transcripcion_label' => wpss_get_estado_label( $estado_transcripcion_options, $estado_transcripcion ),
             'estado_ensayo'      => $estado_ensayo,
@@ -1729,6 +1764,7 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
             'tiene_prestamos'            => (bool) get_post_meta( $post_id, '_tiene_prestamos', true ),
             'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
             'colecciones'                => wpss_get_song_colecciones( $post_id ),
+            'tags'                       => wpss_get_song_tags( $post_id ),
             'estructura'                 => $estructura,
             'estructura_personalizada'   => $estructura_personalizada,
             'estado_transcripcion'       => $estado_transcripcion,
@@ -2075,6 +2111,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_conteo_versos_instrumentales', $conteos['versos_instrumentales'] );
 
     $colecciones_ids = wpss_sanitize_coleccion_ids( isset( $params['colecciones'] ) ? $params['colecciones'] : [] );
+    $tags_ids        = wpss_sanitize_cancion_tag_ids( isset( $params['tags'] ) ? $params['tags'] : [] );
 
     $previas = wp_get_post_terms( $post_id, 'coleccion', [ 'fields' => 'ids' ] );
     if ( is_wp_error( $previas ) ) {
@@ -2084,6 +2121,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $previas = array_map( 'intval', $previas );
 
     wp_set_post_terms( $post_id, $colecciones_ids, 'coleccion', false );
+    wp_set_post_terms( $post_id, $tags_ids, 'cancion_tag', false );
 
     $current_user_id = get_current_user_id();
 
@@ -2122,6 +2160,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             'estructura'         => $estructura_sanitizada,
             'estructura_personalizada' => (bool) $estructura_personalizada_flag,
             'colecciones'        => wpss_get_song_colecciones( $post_id ),
+            'tags'               => wpss_get_song_tags( $post_id ),
             'item'               => wpss_prepare_cancion_list_item( $post_id ),
         ],
         wpss_get_song_reversion_data( $post_id )
@@ -2196,6 +2235,9 @@ function wpss_rest_reversionar_cancion( WP_REST_Request $request ) {
         'estructura_personalizada'    => ! empty( $source_data['estructura_personalizada'] ),
         'colecciones'                 => isset( $source_data['colecciones'] ) && is_array( $source_data['colecciones'] )
             ? wp_list_pluck( $source_data['colecciones'], 'id' )
+            : [],
+        'tags'                        => isset( $source_data['tags'] ) && is_array( $source_data['tags'] )
+            ? wp_list_pluck( $source_data['tags'], 'id' )
             : [],
         'reversion_origen_id'         => $source_id,
     ];
@@ -3409,6 +3451,125 @@ function wpss_apply_legacy_stanza_markers( array $versos, array $secciones ) {
     return $versos;
 }
 
+
+/**
+ * Obtiene las etiquetas asociadas a una canción.
+ *
+ * @param int $post_id ID de la canción.
+ * @return array
+ */
+function wpss_get_song_tags( $post_id ) {
+    $terms = wp_get_post_terms( $post_id, 'cancion_tag' );
+
+    if ( is_wp_error( $terms ) || empty( $terms ) ) {
+        return [];
+    }
+
+    $result = [];
+    foreach ( $terms as $term ) {
+        if ( ! $term instanceof WP_Term ) {
+            continue;
+        }
+
+        $result[] = [
+            'id'   => (int) $term->term_id,
+            'slug' => sanitize_title( $term->slug ),
+            'name' => sanitize_text_field( $term->name ),
+        ];
+    }
+
+    return $result;
+}
+
+/**
+ * Sanitiza un arreglo de etiquetas recibido vía REST.
+ *
+ * @param mixed $tags Datos recibidos.
+ * @return int[]
+ */
+function wpss_sanitize_cancion_tag_ids( $tags ) {
+    if ( ! is_array( $tags ) ) {
+        return [];
+    }
+
+    $ids = [];
+
+    foreach ( $tags as $value ) {
+        if ( is_array( $value ) ) {
+            if ( isset( $value['id'] ) ) {
+                $value = $value['id'];
+            } elseif ( isset( $value['name'] ) ) {
+                $value = $value['name'];
+            } elseif ( isset( $value['slug'] ) ) {
+                $value = $value['slug'];
+            }
+        }
+
+        $term_id = 0;
+
+        if ( is_numeric( $value ) ) {
+            $term = get_term( absint( $value ), 'cancion_tag' );
+            if ( $term && ! is_wp_error( $term ) ) {
+                $term_id = (int) $term->term_id;
+            }
+        } else {
+            $name = sanitize_text_field( (string) $value );
+            if ( '' === $name ) {
+                continue;
+            }
+
+            $term = term_exists( $name, 'cancion_tag' );
+            if ( ! $term ) {
+                $term = wp_insert_term( $name, 'cancion_tag' );
+            }
+
+            if ( is_wp_error( $term ) || empty( $term['term_id'] ) ) {
+                continue;
+            }
+
+            $term_id = (int) $term['term_id'];
+        }
+
+        if ( $term_id > 0 && ! in_array( $term_id, $ids, true ) ) {
+            $ids[] = $term_id;
+        }
+    }
+
+    return $ids;
+}
+
+/**
+ * Obtiene las etiquetas registradas para canciones.
+ *
+ * @return array
+ */
+function wpss_get_cancion_tags_catalog() {
+    $terms = get_terms( [
+        'taxonomy'   => 'cancion_tag',
+        'hide_empty' => false,
+    ] );
+
+    if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+        return [];
+    }
+
+    $items = [];
+    foreach ( $terms as $term ) {
+        if ( ! $term instanceof WP_Term ) {
+            continue;
+        }
+
+        $items[] = [
+            'id'    => (int) $term->term_id,
+            'slug'  => sanitize_title( $term->slug ),
+            'name'  => sanitize_text_field( $term->name ),
+            'count' => (int) $term->count,
+        ];
+    }
+
+    return $items;
+}
+
 /**
  * Sanitiza un arreglo de colecciones recibido vía REST.
  *
@@ -3712,6 +3873,64 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
     $term = get_term( $term_id, 'coleccion' );
 
     return rest_ensure_response( wpss_prepare_coleccion_for_response( $term, true ) );
+}
+
+/**
+ * Duplica una colección existente para el usuario actual.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_duplicate_coleccion( WP_REST_Request $request ) {
+    $term_id = absint( $request->get_param( 'id' ) );
+    $term    = get_term( $term_id, 'coleccion' );
+
+    if ( ! $term || is_wp_error( $term ) ) {
+        return new WP_REST_Response( [ 'message' => __( 'Colección no encontrada.', 'wp-song-study' ) ], 404 );
+    }
+
+    if ( ! wpss_user_can_access_coleccion( $term_id, 'read' ) ) {
+        return new WP_REST_Response( [ 'message' => __( 'No tienes acceso a esta colección.', 'wp-song-study' ) ], 403 );
+    }
+
+    $current_user_id = get_current_user_id();
+    if ( $current_user_id <= 0 ) {
+        return new WP_REST_Response( [ 'message' => __( 'Debes iniciar sesión para duplicar colecciones.', 'wp-song-study' ) ], 403 );
+    }
+
+    $base_name = sanitize_text_field( $term->name );
+    $copy_name = sprintf( __( '%s (copia)', 'wp-song-study' ), $base_name );
+    $result = wp_insert_term( $copy_name, 'coleccion', [
+        'description' => $term->description,
+    ] );
+
+    if ( is_wp_error( $result ) ) {
+        return new WP_REST_Response( [ 'message' => __( 'No fue posible duplicar la colección.', 'wp-song-study' ) ], 400 );
+    }
+
+    $new_term_id = (int) $result['term_id'];
+    $orden       = wpss_get_coleccion_sorted_song_ids( $term_id );
+
+    wpss_update_coleccion_owner_id( $new_term_id, $current_user_id );
+    wpss_update_coleccion_shared_user_ids( $new_term_id, [] );
+    wpss_update_coleccion_order( $new_term_id, $orden );
+
+    foreach ( $orden as $post_id ) {
+        wp_set_object_terms( $post_id, [ $new_term_id ], 'coleccion', true );
+        wpss_upsert_song_repertorio_assignment( $post_id, $new_term_id, $current_user_id );
+    }
+
+    $new_term = get_term( $new_term_id, 'coleccion' );
+    return rest_ensure_response( wpss_prepare_coleccion_for_response( $new_term, true ) );
+}
+
+/**
+ * Lista etiquetas disponibles para canciones.
+ *
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_cancion_tags() {
+    return rest_ensure_response( wpss_get_cancion_tags_catalog() );
 }
 
 /**
