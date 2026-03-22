@@ -1,0 +1,14 @@
+{
+  "name": "wp-song-study-blocks",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gutenberg block version of WP Song Study.",
+  "scripts": {
+    "build": "wp-scripts build src/index.js --output-path=build",
+    "start": "wp-scripts start src/index.js --output-path=build",
+    "lint:js": "wp-scripts lint-js src"
+  },
+  "devDependencies": {
+    "@wordpress/scripts": "^30.27.0"
+  }
+}

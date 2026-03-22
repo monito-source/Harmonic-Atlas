@@ -1,0 +1,23 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/interface",
+  "version": "0.1.0",
+  "title": "Song Study Interface",
+  "category": "widgets",
+  "icon": "playlist-audio",
+  "description": "Interactive song study browser, reading view, and editor powered by the WP Song Study REST API.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["song", "study", "reader", "music"],
+  "attributes": {
+    "compactMode": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "editorScript": "file:./index.js"
+}
