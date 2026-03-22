@@ -206,7 +206,7 @@ export default function PublicReader() {
   }, [loadCollections])
 
   useEffect(() => {
-    if (!canManage) return undefined
+    if (!canViewSongbook) return undefined
     let mounted = true
     setColleaguesLoading(true)
     api
@@ -235,7 +235,7 @@ export default function PublicReader() {
     return () => {
       mounted = false
     }
-  }, [api, canManage, currentUserId])
+  }, [api, canViewSongbook, currentUserId])
 
   useEffect(() => {
     if (wpData?.initialSongId && !state.selectedSongId && !state.songLoading) {
@@ -612,7 +612,7 @@ export default function PublicReader() {
               </button>
             </div>
           ) : null}
-          {listTab === 'assign' && canManage ? (
+          {listTab === 'assign' && canViewSongbook ? (
             <section className="wpss-public-reader__assign">
               <p className="wpss-panel__meta">
                 Escribe el repertorio pendiente y asigna cada canción al colega que la transcribirá.
@@ -677,7 +677,7 @@ export default function PublicReader() {
                 </button>
               </div>
             </section>
-          ) : listTab === 'collections' && canManage ? (
+          ) : listTab === 'collections' && canViewSongbook ? (
             <CollectionsManager
               colleagues={colleagues}
               colleaguesLoading={colleaguesLoading}
