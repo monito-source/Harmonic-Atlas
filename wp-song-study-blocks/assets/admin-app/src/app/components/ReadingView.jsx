@@ -21,6 +21,13 @@ import {
 import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from './MidiSketch.jsx'
 import MidiClipList from './MidiClipList.jsx'
 
+const formatCollectionAssignment = (collection) => {
+  if (!collection || typeof collection !== 'object') return ''
+  const assignedBy = collection.assigned_by_user_name || ''
+  if (collection.assigned_by_author) return assignedBy ? `Transcriptor: ${assignedBy}` : 'Transcriptor'
+  return assignedBy ? `Asignó: ${assignedBy}` : ''
+}
+
 const TRANSPOSE_TARGETS = [
   { id: 'concert', label: 'Concierto', semitones: 0 },
   { id: 'sax-alto-eb', label: 'Sax alto (Eb)', semitones: 9 },
@@ -761,6 +768,14 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                         ))}
                       </select>
                     </label>
+                    {Array.isArray(song?.colecciones) && song.colecciones.length ? (
+                      <span className="wpss-reading__status-label">
+                        Repertorios: {song.colecciones.map((collection) => {
+                          const detail = formatCollectionAssignment(collection)
+                          return detail ? `${collection.nombre} (${detail})` : collection.nombre
+                        }).join(' · ')}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

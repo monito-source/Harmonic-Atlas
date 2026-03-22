@@ -58,6 +58,15 @@ const getTouchDistance = (touches) => {
   return Math.hypot(deltaX, deltaY)
 }
 
+const formatCollectionAssignment = (collection) => {
+  if (!collection || typeof collection !== 'object') return ''
+  const assignedBy = collection.assigned_by_user_name || ''
+  if (collection.assigned_by_author) {
+    return assignedBy ? `Asignado por transcriptor: ${assignedBy}` : 'Asignado por transcriptor'
+  }
+  return assignedBy ? `Asignado por: ${assignedBy}` : ''
+}
+
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
@@ -116,6 +125,24 @@ export default function Editor({ onShowList }) {
     editingSongRef.current = editingSong
   }, [editingSong])
 
+  useEffect(() => {
+    if (Array.isArray(state.collections?.items) && state.collections.items.length) {
+      return
+    }
+
+    api
+      .listCollections()
+      .then((response) => {
+        const items = Array.isArray(response?.data) ? response.data : []
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            collections: { ...state.collections, items },
+          },
+        })
+      })
+      .catch(() => {})
+  }, [api, dispatch, state.collections])
 
   useEffect(() => {
     return () => {
@@ -187,6 +214,29 @@ export default function Editor({ onShowList }) {
       editingSongRef.current = next
       return next
     })
+  }
+
+  const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
+
+  const handleToggleCollection = (collection) => {
+    const collectionId = Number(collection?.id)
+    if (!Number.isInteger(collectionId) || collectionId <= 0) {
+      return
+    }
+
+    updateSong((current) => {
+      const currentCollections = Array.isArray(current.colecciones) ? current.colecciones : []
+      const exists = currentCollections.some((item) => Number(item?.id) === collectionId)
+      const nextCollections = exists
+        ? currentCollections.filter((item) => Number(item?.id) !== collectionId)
+        : currentCollections.concat({
+            id: collectionId,
+            nombre: collection?.nombre || `Repertorio #${collectionId}`,
+            descripcion: collection?.descripcion || '',
+          })
+      return { ...current, colecciones: nextCollections }
+    })
+    scheduleAutosave()
   }
 
   const handleDeleteSong = () => {
@@ -1586,6 +1636,30 @@ export default function Editor({ onShowList }) {
                   scheduleAutosave()
                 }}
               />
+            </label>
+          </div>
+          <div className="wpss-field-group">
+            <label className="wpss-field">
+              <span>Repertorios asignados</span>
+              <div className="wpss-collections__shared-list">
+                {availableCollections.length ? availableCollections.map((collection) => {
+                  const collectionId = Number(collection?.id)
+                  const assigned = (editingSong.colecciones || []).find((item) => Number(item?.id) === collectionId)
+                  return (
+                    <label key={collectionId} className="wpss-collections__shared-item">
+                      <input
+                        type="checkbox"
+                        checked={!!assigned}
+                        onChange={() => handleToggleCollection(collection)}
+                      />
+                      <span>
+                        <strong>{collection?.nombre || `Repertorio #${collectionId}`}</strong>
+                        {assigned ? <small> · {formatCollectionAssignment(assigned)}</small> : null}
+                      </span>
+                    </label>
+                  )
+                }) : <span>No hay repertorios disponibles todavía.</span>}
+              </div>
             </label>
           </div>
           <details className="wpss-section wpss-section--collapsible wpss-section--nested">

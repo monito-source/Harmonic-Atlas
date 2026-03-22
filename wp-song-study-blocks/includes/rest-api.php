@@ -1400,6 +1400,149 @@ function wpss_get_song_reversion_data( $post_id ) {
  * @param int $post_id ID de la canción.
  * @return array
  */
+/**
+ * Normaliza las asignaciones de repertorio guardadas en una canción.
+ *
+ * @param int $post_id ID de la canción.
+ * @return array
+ */
+function wpss_get_song_repertorio_assignments( $post_id ) {
+    $post_id = (int) $post_id;
+    if ( $post_id <= 0 ) {
+        return [];
+    }
+
+    $raw = get_post_meta( $post_id, '_repertorio_asignaciones_json', true );
+    $decoded = is_array( $raw ) ? $raw : wpss_decode_json_meta( $raw );
+    if ( ! is_array( $decoded ) ) {
+        return [];
+    }
+
+    $assignments = [];
+    foreach ( $decoded as $term_id => $item ) {
+        if ( $item instanceof Traversable ) {
+            $item = iterator_to_array( $item );
+        } elseif ( is_object( $item ) ) {
+            $item = get_object_vars( $item );
+        }
+
+        $normalized_term_id = absint( is_array( $item ) && isset( $item['repertorio_id'] ) ? $item['repertorio_id'] : $term_id );
+        if ( $normalized_term_id <= 0 ) {
+            continue;
+        }
+
+        $assigned_by_user_id = absint( is_array( $item ) && isset( $item['assigned_by_user_id'] ) ? $item['assigned_by_user_id'] : 0 );
+        $assigned_by_author  = ! empty( $item['assigned_by_author'] );
+        $assigned_at         = is_array( $item ) && isset( $item['assigned_at'] ) ? sanitize_text_field( $item['assigned_at'] ) : '';
+
+        $assignments[ $normalized_term_id ] = [
+            'repertorio_id'        => $normalized_term_id,
+            'assigned_by_user_id'  => $assigned_by_user_id,
+            'assigned_by_author'   => $assigned_by_author,
+            'assigned_at'          => $assigned_at,
+        ];
+    }
+
+    return $assignments;
+}
+
+/**
+ * Guarda las asignaciones de repertorio de una canción.
+ *
+ * @param int   $post_id      ID de la canción.
+ * @param array $assignments  Asignaciones normalizadas.
+ * @return void
+ */
+function wpss_set_song_repertorio_assignments( $post_id, array $assignments ) {
+    $post_id = (int) $post_id;
+    if ( $post_id <= 0 ) {
+        return;
+    }
+
+    if ( empty( $assignments ) ) {
+        delete_post_meta( $post_id, '_repertorio_asignaciones_json' );
+        return;
+    }
+
+    update_post_meta(
+        $post_id,
+        '_repertorio_asignaciones_json',
+        wp_json_encode( array_values( $assignments ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+    );
+}
+
+/**
+ * Registra o conserva la autoría de asignación de una canción en un repertorio.
+ *
+ * @param int $post_id     ID de la canción.
+ * @param int $term_id     ID del repertorio.
+ * @param int $user_id     Usuario que asigna.
+ * @return void
+ */
+function wpss_upsert_song_repertorio_assignment( $post_id, $term_id, $user_id ) {
+    $post_id = (int) $post_id;
+    $term_id = (int) $term_id;
+    $user_id = (int) $user_id;
+
+    if ( $post_id <= 0 || $term_id <= 0 ) {
+        return;
+    }
+
+    $assignments = wpss_get_song_repertorio_assignments( $post_id );
+    $existing = isset( $assignments[ $term_id ] ) && is_array( $assignments[ $term_id ] ) ? $assignments[ $term_id ] : [];
+    $song_author_id = (int) get_post_field( 'post_author', $post_id );
+
+    $assigned_by_user_id = ! empty( $existing['assigned_by_user_id'] )
+        ? absint( $existing['assigned_by_user_id'] )
+        : max( 0, $user_id );
+
+    $assignments[ $term_id ] = [
+        'repertorio_id'       => $term_id,
+        'assigned_by_user_id' => $assigned_by_user_id,
+        'assigned_by_author'  => ! empty( $existing['assigned_by_author'] ) || ( $song_author_id > 0 && $assigned_by_user_id === $song_author_id ),
+        'assigned_at'         => ! empty( $existing['assigned_at'] )
+            ? sanitize_text_field( $existing['assigned_at'] )
+            : current_time( 'mysql' ),
+    ];
+
+    wpss_set_song_repertorio_assignments( $post_id, $assignments );
+}
+
+/**
+ * Elimina asignaciones de repertorio de una canción según los términos vigentes.
+ *
+ * @param int   $post_id          ID de la canción.
+ * @param int[] $active_term_ids  Repertorios que deben conservarse.
+ * @return void
+ */
+function wpss_cleanup_song_repertorio_assignments( $post_id, array $active_term_ids ) {
+    $post_id = (int) $post_id;
+    if ( $post_id <= 0 ) {
+        return;
+    }
+
+    $active = [];
+    foreach ( $active_term_ids as $term_id ) {
+        $normalized = absint( $term_id );
+        if ( $normalized > 0 ) {
+            $active[ $normalized ] = true;
+        }
+    }
+
+    $assignments = wpss_get_song_repertorio_assignments( $post_id );
+    if ( empty( $assignments ) ) {
+        return;
+    }
+
+    foreach ( array_keys( $assignments ) as $term_id ) {
+        if ( ! isset( $active[ (int) $term_id ] ) ) {
+            unset( $assignments[ $term_id ] );
+        }
+    }
+
+    wpss_set_song_repertorio_assignments( $post_id, $assignments );
+}
+
 function wpss_prepare_cancion_list_item( $post_id ) {
     $post_id = (int) $post_id;
 
@@ -1451,6 +1594,8 @@ function wpss_get_song_colecciones( $post_id ) {
         return [];
     }
 
+    $assignments = wpss_get_song_repertorio_assignments( $post_id );
+    $song_author_id = (int) get_post_field( 'post_author', $post_id );
     $result = [];
 
     foreach ( $terms as $term ) {
@@ -1462,10 +1607,21 @@ function wpss_get_song_colecciones( $post_id ) {
             continue;
         }
 
+        $assignment = isset( $assignments[ $term->term_id ] ) && is_array( $assignments[ $term->term_id ] )
+            ? $assignments[ $term->term_id ]
+            : [];
+        $assigned_by_user_id = isset( $assignment['assigned_by_user_id'] ) ? absint( $assignment['assigned_by_user_id'] ) : 0;
+        $assigned_by_author  = ! empty( $assignment['assigned_by_author'] )
+            || ( $song_author_id > 0 && $assigned_by_user_id === $song_author_id );
+
         $result[] = [
-            'id'      => (int) $term->term_id,
-            'nombre'  => $term->name,
-            'descripcion' => $term->description,
+            'id'                    => (int) $term->term_id,
+            'nombre'                => $term->name,
+            'descripcion'           => $term->description,
+            'assigned_by_user_id'   => $assigned_by_user_id,
+            'assigned_by_user_name' => wpss_get_user_display_name( $assigned_by_user_id ),
+            'assigned_by_author'    => $assigned_by_author,
+            'assigned_at'           => isset( $assignment['assigned_at'] ) ? sanitize_text_field( $assignment['assigned_at'] ) : '',
         ];
     }
 
@@ -1929,8 +2085,11 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     wp_set_post_terms( $post_id, $colecciones_ids, 'coleccion', false );
 
+    $current_user_id = get_current_user_id();
+
     foreach ( $colecciones_ids as $coleccion_id ) {
         wpss_append_song_to_coleccion_order( $coleccion_id, $post_id );
+        wpss_upsert_song_repertorio_assignment( $post_id, $coleccion_id, $current_user_id );
     }
 
     foreach ( $previas as $coleccion_id ) {
@@ -1938,6 +2097,8 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             wpss_remove_song_from_coleccion_order( $coleccion_id, $post_id );
         }
     }
+
+    wpss_cleanup_song_repertorio_assignments( $post_id, $colecciones_ids );
 
     $autor_id = (int) get_post_field( 'post_author', $post_id );
     $estado_transcripcion = wpss_get_song_estado_transcripcion( $post_id );
@@ -3535,11 +3696,17 @@ function wpss_rest_save_coleccion( WP_REST_Request $request ) {
     foreach ( $current as $post_id ) {
         if ( ! in_array( $post_id, $orden, true ) ) {
             wp_remove_object_terms( $post_id, $term_id, 'coleccion' );
+            $remaining_terms = wp_get_post_terms( $post_id, 'coleccion', [ 'fields' => 'ids' ] );
+            if ( is_wp_error( $remaining_terms ) ) {
+                $remaining_terms = [];
+            }
+            wpss_cleanup_song_repertorio_assignments( $post_id, array_map( 'intval', $remaining_terms ) );
         }
     }
 
     foreach ( $orden as $post_id ) {
         wp_set_object_terms( $post_id, [ $term_id ], 'coleccion', true );
+        wpss_upsert_song_repertorio_assignment( $post_id, $term_id, $current_user_id );
     }
 
     $term = get_term( $term_id, 'coleccion' );
@@ -3615,9 +3782,22 @@ function wpss_prepare_coleccion_for_response( WP_Term $term, $include_items = fa
         $items = [];
 
         foreach ( $orden as $post_id ) {
+            $song_collections = wpss_get_song_colecciones( $post_id );
+            $assignment = [];
+            foreach ( $song_collections as $song_collection ) {
+                if ( (int) $song_collection['id'] === $term_id ) {
+                    $assignment = $song_collection;
+                    break;
+                }
+            }
+
             $items[] = [
-                'id'     => (int) $post_id,
-                'titulo' => get_the_title( $post_id ),
+                'id'                    => (int) $post_id,
+                'titulo'                => get_the_title( $post_id ),
+                'assigned_by_user_id'   => isset( $assignment['assigned_by_user_id'] ) ? (int) $assignment['assigned_by_user_id'] : 0,
+                'assigned_by_user_name' => isset( $assignment['assigned_by_user_name'] ) ? $assignment['assigned_by_user_name'] : '',
+                'assigned_by_author'    => ! empty( $assignment['assigned_by_author'] ),
+                'assigned_at'           => isset( $assignment['assigned_at'] ) ? $assignment['assigned_at'] : '',
             ];
         }
 

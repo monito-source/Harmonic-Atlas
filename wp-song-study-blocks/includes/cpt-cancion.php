@@ -146,6 +146,7 @@ function wpss_register_cpt_cancion() {
 
     register_post_meta( 'cancion', '_prestamos_tonales_json', $meta_json );
     register_post_meta( 'cancion', '_modulaciones_json', $meta_json );
+    register_post_meta( 'cancion', '_repertorio_asignaciones_json', $meta_json );
 
     register_post_meta(
         'cancion',

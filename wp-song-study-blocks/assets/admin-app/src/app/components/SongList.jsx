@@ -8,6 +8,13 @@ import {
   getStatusLabel,
 } from '../songStatus.js'
 
+const formatCollectionAssignment = (collection) => {
+  if (!collection || typeof collection !== 'object') return ''
+  const assignedBy = collection.assigned_by_user_name || ''
+  if (collection.assigned_by_author) return assignedBy ? `Transcriptor: ${assignedBy}` : 'Transcriptor'
+  return assignedBy ? `Asignó: ${assignedBy}` : ''
+}
+
 export default function SongList({ onSelectSong, onNewSong }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [statusSavingMap, setStatusSavingMap] = useState({})
@@ -243,6 +250,14 @@ export default function SongList({ onSelectSong, onNewSong }) {
                     <span className="wpss-sub">
                       Ensayo (yo): {getStatusLabel(REHEARSAL_STATUS_LABELS, song.estado_ensayo)}
                     </span>
+                    {Array.isArray(song.colecciones) && song.colecciones.length ? (
+                      <span className="wpss-sub">
+                        Repertorios: {song.colecciones.map((collection) => {
+                          const detail = formatCollectionAssignment(collection)
+                          return detail ? `${collection.nombre} (${detail})` : collection.nombre
+                        }).join(' · ')}
+                      </span>
+                    ) : null}
                     {song.es_reversion ? (
                       <span className="wpss-sub">
                         Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}

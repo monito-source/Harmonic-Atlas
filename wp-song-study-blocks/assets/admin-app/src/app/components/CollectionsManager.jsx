@@ -53,10 +53,26 @@ function normalizeCollectionDraft(input, catalogMap) {
     })
   }
 
-  const items = order.map((id) => ({
-    id,
-    titulo: titleById.get(id) || catalogMap.get(id) || `Canción #${id}`,
-  }))
+  const detailById = new Map()
+  if (Array.isArray(next.items)) {
+    next.items.forEach((item) => {
+      const id = Number(item?.id)
+      if (!Number.isInteger(id) || id <= 0) return
+      detailById.set(id, item)
+    })
+  }
+
+  const items = order.map((id) => {
+    const detail = detailById.get(id) || {}
+    return {
+      id,
+      titulo: titleById.get(id) || catalogMap.get(id) || `Canción #${id}`,
+      assigned_by_user_id: Number(detail?.assigned_by_user_id) || 0,
+      assigned_by_user_name: detail?.assigned_by_user_name || '',
+      assigned_by_author: !!detail?.assigned_by_author,
+      assigned_at: detail?.assigned_at || '',
+    }
+  })
 
   const shared = []
   const sharedSeen = new Set()
@@ -518,7 +534,7 @@ export default function CollectionsManager({
               <ul className="wpss-collection-songs">
                 {draft.items.map((item, index) => (
                   <li key={`${item.id}-${index}`}>
-                    <span className="wpss-collection-songs__label">{item.titulo}</span>
+                    <span className="wpss-collection-songs__label">{item.titulo}{item.assigned_by_user_name ? ` · ${item.assigned_by_author ? 'Transcriptor' : 'Asignó'}: ${item.assigned_by_user_name}` : ""}</span>
                     <div className="wpss-collection-songs__actions">
                       <button
                         type="button"

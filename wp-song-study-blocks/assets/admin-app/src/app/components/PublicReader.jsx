@@ -13,6 +13,15 @@ import ReadingView from './ReadingView.jsx'
 import Editor from './Editor.jsx'
 import CollectionsManager from './CollectionsManager.jsx'
 
+function formatCollectionAssignment(collection) {
+  if (!collection || typeof collection !== 'object') return ''
+  const assignedBy = collection.assigned_by_user_name || ''
+  if (collection.assigned_by_author) {
+    return assignedBy ? `Transcriptor: ${assignedBy}` : 'Transcriptor'
+  }
+  return assignedBy ? `Asignó: ${assignedBy}` : ''
+}
+
 function createAssignRow(defaultAuthorId = 0) {
   return {
     id: `assign-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
@@ -784,6 +793,16 @@ export default function PublicReader() {
                             <span className="wpss-public-reader__song-meta">
                               Ensayo (yo): {rehearsalLabel}
                             </span>
+                            {Array.isArray(song.colecciones) && song.colecciones.length ? (
+                              <span className="wpss-public-reader__song-meta">
+                                Repertorios: {song.colecciones.map((collection) => {
+                                  const details = formatCollectionAssignment(collection)
+                                  return details
+                                    ? `${collection.nombre} (${details})`
+                                    : collection.nombre
+                                }).join(' · ')}
+                              </span>
+                            ) : null}
                             {song.es_reversion ? (
                               <span className="wpss-public-reader__song-meta">
                                 Reversión de {song.reversion_origen_titulo || `#${song.reversion_origen_id || '—'}`}
