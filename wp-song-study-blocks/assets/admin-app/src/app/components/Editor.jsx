@@ -86,6 +86,7 @@ export default function Editor({ onShowList }) {
   const [verseDragOverIndex, setVerseDragOverIndex] = useState(null)
   const [expandedSectionId, setExpandedSectionId] = useState(null)
   const [verseFocusRequest, setVerseFocusRequest] = useState(null)
+  const [tagInputValue, setTagInputValue] = useState('')
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
@@ -124,6 +125,10 @@ export default function Editor({ onShowList }) {
   useEffect(() => {
     editingSongRef.current = editingSong
   }, [editingSong])
+
+  useEffect(() => {
+    setTagInputValue('')
+  }, [editingSong.id])
 
   useEffect(() => {
     if (Array.isArray(state.collections?.items) && state.collections.items.length) {
@@ -236,24 +241,116 @@ export default function Editor({ onShowList }) {
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
+  const selectedTags = Array.isArray(editingSong.tags) ? editingSong.tags : []
+  const selectedTagKeys = useMemo(
+    () => new Set(selectedTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean)),
+    [selectedTags],
+  )
+  const filteredTagSuggestions = useMemo(() => {
+    const query = tagInputValue.trim().toLowerCase()
+    return availableTags.filter((tag) => {
+      const key = String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()
+      if (!key || selectedTagKeys.has(key)) return false
+      if (!query) return true
+      return String(tag?.name || '').toLowerCase().includes(query)
+    }).slice(0, 8)
+  }, [availableTags, selectedTagKeys, tagInputValue])
 
-  const handleTagsChange = (event) => {
-    const raw = event.target.value || ''
-    const names = raw
-      .split(',')
-      .map((value) => value.trim())
+  const buildTagOption = useCallback((value) => {
+    const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ')
+    if (!normalizedValue) return null
+    const existing = availableTags.find((tag) => String(tag?.name || '').toLowerCase() === normalizedValue.toLowerCase())
+    return existing || { id: null, name: normalizedValue, slug: normalizedValue.toLowerCase() }
+  }, [availableTags])
+
+  const commitTags = useCallback((values) => {
+    const list = Array.isArray(values) ? values : [values]
+    const nextItems = list
+      .flatMap((value) => String(value || '').split(','))
+      .map((value) => buildTagOption(value))
       .filter(Boolean)
-    const seen = new Set()
-    const normalized = names.filter((value) => {
-      const key = value.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    }).map((value) => {
-      const existing = availableTags.find((tag) => String(tag?.name || '').toLowerCase() === value.toLowerCase())
-      return existing || { id: null, name: value, slug: value.toLowerCase() }
+
+    if (!nextItems.length) {
+      return false
+    }
+
+    let changed = false
+
+    updateSong((current) => {
+      const currentTags = Array.isArray(current.tags) ? current.tags : []
+      const seen = new Set(
+        currentTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean),
+      )
+      const merged = [...currentTags]
+
+      nextItems.forEach((tag) => {
+        const key = String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()
+        if (!key || seen.has(key)) {
+          return
+        }
+        seen.add(key)
+        merged.push(tag)
+        changed = true
+      })
+
+      return changed ? { ...current, tags: merged } : current
     })
-    updateSong((current) => ({ ...current, tags: normalized }))
+
+    if (changed) {
+      scheduleAutosave()
+    }
+
+    return changed
+  }, [buildTagOption])
+
+  const handleTagInputChange = (event) => {
+    setTagInputValue(event.target.value || '')
+  }
+
+  const handleTagInputKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      if (commitTags(tagInputValue)) {
+        setTagInputValue('')
+      }
+      return
+    }
+
+    if (event.key === 'Backspace' && !tagInputValue.trim() && selectedTags.length) {
+      event.preventDefault()
+      const lastTag = selectedTags[selectedTags.length - 1]
+      handleRemoveTag(lastTag)
+    }
+  }
+
+  const handleTagInputBlur = () => {
+    if (commitTags(tagInputValue)) {
+      setTagInputValue('')
+      return
+    }
+    if (tagInputValue && !tagInputValue.trim()) {
+      setTagInputValue('')
+    }
+  }
+
+  const handleSelectSuggestedTag = (tag) => {
+    if (commitTags(tag?.name || '')) {
+      setTagInputValue('')
+    }
+  }
+
+  const handleRemoveTag = (tagToRemove) => {
+    const removeKey = String(tagToRemove?.slug || tagToRemove?.name || tagToRemove?.id || '').toLowerCase()
+    if (!removeKey) return
+
+    updateSong((current) => {
+      const currentTags = Array.isArray(current.tags) ? current.tags : []
+      const nextTags = currentTags.filter((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase() !== removeKey)
+      if (nextTags.length === currentTags.length) {
+        return current
+      }
+      return { ...current, tags: nextTags }
+    })
     scheduleAutosave()
   }
 
@@ -1678,16 +1775,50 @@ export default function Editor({ onShowList }) {
                 }}
               />
             </label>
-            <label>
+            <label className="wpss-tags-field">
               <span>Tags</span>
-              <input
-                type="text"
-                value={Array.isArray(editingSong.tags) ? editingSong.tags.map((tag) => tag?.name || '').filter(Boolean).join(', ') : ''}
-                onChange={handleTagsChange}
-                placeholder="Ej: liturgia, adviento, coro"
-                list="wpss-song-tags"
-              />
-              <small>Separá múltiples tags con comas.</small>
+              <div className="wpss-tags-input">
+                {selectedTags.map((tag) => {
+                  const key = tag?.id || tag?.slug || tag?.name
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="wpss-tag-chip"
+                      onClick={() => handleRemoveTag(tag)}
+                      aria-label={`Quitar tag ${tag?.name || ''}`}
+                    >
+                      <span>{tag?.name || 'Sin nombre'}</span>
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  )
+                })}
+                <input
+                  type="text"
+                  value={tagInputValue}
+                  onChange={handleTagInputChange}
+                  onKeyDown={handleTagInputKeyDown}
+                  onBlur={handleTagInputBlur}
+                  placeholder="Escribí un tag y confirmá con Enter o coma"
+                  list="wpss-song-tags"
+                />
+              </div>
+              <small>Elegí una sugerencia existente o creá una nueva; solo se guarda al confirmar la tag.</small>
+              {filteredTagSuggestions.length ? (
+                <div className="wpss-tag-suggestions" role="listbox" aria-label="Tags sugeridas">
+                  {filteredTagSuggestions.map((tag) => (
+                    <button
+                      key={tag.id || tag.slug || tag.name}
+                      type="button"
+                      className="wpss-tag-suggestion"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleSelectSuggestedTag(tag)}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </label>
           </div>
           <div className="wpss-field-group">

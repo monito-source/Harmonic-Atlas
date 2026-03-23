@@ -244,6 +244,78 @@
     min-height: 80px;
 }
 
+.wpss-tags-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wpss-tags-input {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    min-height: 42px;
+    padding: 8px;
+    border: 1px solid #8c8f94;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.wpss-tags-input:focus-within {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.wpss-tags-input input {
+    flex: 1 1 180px;
+    min-width: 160px;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+}
+
+.wpss-tags-input input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.wpss-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: #e7f1ff;
+    color: #0a4b78;
+    cursor: pointer;
+}
+
+.wpss-tag-chip:hover {
+    background: #d7e8ff;
+}
+
+.wpss-tag-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wpss-tag-suggestion {
+    border: 1px solid #c3c4c7;
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: #f6f7f7;
+    cursor: pointer;
+}
+
+.wpss-tag-suggestion:hover {
+    background: #eef2f6;
+    border-color: #8c8f94;
+}
+
 .wpss-collections-field {
     display: flex;
     flex-wrap: wrap;
