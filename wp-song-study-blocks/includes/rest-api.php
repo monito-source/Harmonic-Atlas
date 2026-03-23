@@ -357,6 +357,16 @@ function wpss_register_rest_routes() {
 
     register_rest_route(
         'wpss/v1',
+        '/tags-cancion',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_cancion_tags',
+            'permission_callback' => 'wpss_rest_verify_permissions',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
         '/coleccion/(?P<id>\\d+)',
         [
             'methods'             => WP_REST_Server::READABLE,
