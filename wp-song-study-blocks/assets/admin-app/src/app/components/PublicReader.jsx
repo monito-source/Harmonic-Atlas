@@ -206,6 +206,17 @@ export default function PublicReader() {
   }, [loadCollections])
 
   useEffect(() => {
+    api
+      .listSongTags()
+      .then((response) => {
+        setTags(Array.isArray(response.data) ? response.data : [])
+      })
+      .catch(() => {
+        setTags([])
+      })
+  }, [api])
+
+  useEffect(() => {
     if (!canViewSongbook) return undefined
     let mounted = true
     setColleaguesLoading(true)
@@ -261,7 +272,7 @@ export default function PublicReader() {
     dispatch({ type: 'SET_STATE', payload: { songLoading: true, selectedSongId: id, error: null } })
 
     api
-      .getPublicSong(id)
+      .getSong(id)
       .then((response) => {
         const song = response.data || {}
         const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
