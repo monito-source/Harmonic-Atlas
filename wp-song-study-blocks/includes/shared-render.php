@@ -40,9 +40,10 @@ function wpssb_get_public_reader_data() {
             $data = [];
         }
 
-        $data['canManage'] = ! empty( $data['canManage'] ) || $can_manage;
-        $data['canRead']   = $can_read;
-        $data['isAdmin']   = ! empty( $data['isAdmin'] ) || $is_admin;
+        $data['canManage']    = ! empty( $data['canManage'] ) || $can_manage;
+        $data['canRead']      = $can_read;
+        $data['isAdmin']      = ! empty( $data['isAdmin'] ) || $is_admin;
+        $data['currentUserId'] = isset( $data['currentUserId'] ) ? (int) $data['currentUserId'] : get_current_user_id();
 
         return $data;
     }

@@ -59,7 +59,8 @@ export default function PublicReader() {
     : null
   const canManageSong = (song) => !!song && (isAdmin || isOwnSong(song))
   const canReversionSong = (song) => !!song && canViewSongbook && (isAdmin || !isOwnSong(song))
-  const canEditSelected = canManageSong(selectedSong) && !!state.selectedSongId
+  const isCreatingNewSong = state.activeTab === 'editor' && !state.selectedSongId
+  const canEditSelected = isCreatingNewSong || (canManageSong(selectedSong) && !!state.selectedSongId)
 
   const canDeleteSong = (song) => canManageSong(song)
 
