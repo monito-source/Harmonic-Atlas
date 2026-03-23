@@ -555,7 +555,7 @@ export default function PublicReader() {
               onExit={() => dispatch({ type: 'SET_STATE', payload: { selectedSongId: null } })}
               onEdit={
                 canEditSelected
-                  ? () => dispatch({ type: 'SET_STATE', payload: { activeTab: 'editor' } })
+                  ? () => handleEditSong(state.selectedSongId)
                   : null
               }
             />
