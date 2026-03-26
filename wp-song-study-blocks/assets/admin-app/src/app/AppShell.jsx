@@ -46,6 +46,14 @@ export default function AppShell() {
         .getSong(id)
         .then((response) => {
           const song = response.data || {}
+          const songFromList = Array.isArray(state.songs)
+            ? state.songs.find((item) => Number(item?.id) === Number(id))
+            : null
+          const resolvedTags = Array.isArray(song?.tags) && song.tags.length
+            ? song.tags
+            : Array.isArray(songFromList?.tags)
+              ? songFromList.tags
+              : []
           const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
           const secciones = normalizeSectionsFromApi(song.secciones, bpmDefault)
           const estructura = normalizeStructureFromApi(song.estructura || [], secciones)
@@ -87,7 +95,7 @@ export default function AppShell() {
             tiene_prestamos: !!song.tiene_prestamos,
             tiene_modulaciones: !!song.tiene_modulaciones,
             colecciones: Array.isArray(song.colecciones) ? song.colecciones : [],
-            tags: Array.isArray(song.tags) ? song.tags : [],
+            tags: resolvedTags,
             estructuraPersonalizada: true,
           }
 
@@ -119,7 +127,7 @@ export default function AppShell() {
           })
         })
     },
-    [api, dispatch, state.songLoading, wpData],
+    [api, dispatch, state.songLoading, state.songs, wpData],
   )
 
   useEffect(() => {

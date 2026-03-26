@@ -640,7 +640,16 @@ export default function Editor({ onShowList }) {
     }
 
     const estructuraPayload = normalizeStructureFromApi(currentSong.estructura || [], currentSong.secciones || [])
-      const payload = {
+    const songFromList = Array.isArray(state.songs)
+      ? state.songs.find((item) => Number(item?.id) === Number(currentSong.id))
+      : null
+    const currentSongTags = Array.isArray(currentSong.tags) ? currentSong.tags : []
+    const fallbackSongTags = Array.isArray(songFromList?.tags) ? songFromList.tags : []
+    const resolvedTagsForPayload = (currentSongTags.length ? currentSongTags : fallbackSongTags)
+      .map((item) => normalizeTagCandidate(item, availableTags))
+      .filter(Boolean)
+
+    const payload = {
         id: currentSong.id || null,
         titulo: currentSong.titulo,
         bpm: currentSong.bpm,
@@ -683,12 +692,7 @@ export default function Editor({ onShowList }) {
         }
       }),
       colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones.map((item) => item.id) : [],
-      tags: Array.isArray(currentSong.tags)
-        ? currentSong.tags
-            .map((item) => normalizeTagCandidate(item, availableTags))
-            .filter(Boolean)
-            .map((item) => item.id || item.name || item.slug)
-        : [],
+      tags: resolvedTagsForPayload.map((item) => item.id || item.name || item.slug),
       estructura: estructuraPayload,
       estructura_personalizada: true,
     }
@@ -739,6 +743,26 @@ export default function Editor({ onShowList }) {
           estructura,
           estructuraPersonalizada: true,
         }
+        const listSongPatch = {
+          ...songFromList,
+          ...normalizedSong,
+          id: body.id,
+          titulo: normalizedSong.titulo || body.titulo || songFromList?.titulo || '',
+          tonica: normalizedSong.tonica || body.tonica || songFromList?.tonica || '',
+          bpm: normalizedSong.bpm,
+          tags: normalizedSong.tags,
+          colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones : (songFromList?.colecciones || []),
+        }
+        const updatedSongs = Array.isArray(state.songs)
+          ? (() => {
+              const targetId = Number(body.id || currentSong.id || 0)
+              const exists = state.songs.some((item) => Number(item?.id) === targetId)
+              if (!exists) {
+                return [listSongPatch].concat(state.songs)
+              }
+              return state.songs.map((item) => (Number(item?.id) === targetId ? { ...item, ...listSongPatch } : item))
+            })()
+          : state.songs
 
         const shouldSync = !silent || !editingSong.id || body.id !== editingSong.id
 
@@ -748,6 +772,7 @@ export default function Editor({ onShowList }) {
             payload: {
               selectedSongId: body.id,
               editingSong: normalizedSong,
+              songs: updatedSongs,
               feedback: !silent
                 ? { message: wpData?.strings?.saved || 'Cambios guardados.', type: 'success' }
                 : null,
@@ -760,6 +785,7 @@ export default function Editor({ onShowList }) {
             type: 'SET_STATE',
             payload: {
               selectedSongId: body.id,
+              songs: updatedSongs,
               feedback: null,
               error: null,
             },
