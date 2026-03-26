@@ -24,8 +24,12 @@ export default function SongList({ onSelectSong, onNewSong }) {
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const canDeleteSong = (song) => isOwnSong(song)
-  const handleOpen = (songId, targetTab) => {
-    onSelectSong(songId)
+  const handleOpen = (song, targetTab) => {
+    const songId = Number(song?.id || 0)
+    if (!songId) {
+      return
+    }
+    onSelectSong(song)
     if (targetTab) {
       dispatch({ type: 'SET_STATE', payload: { activeTab: targetTab } })
     }
@@ -69,7 +73,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
           },
         })
 
-        handleOpen(clonedId, 'editor')
+        handleOpen(clonedSong || { id: clonedId }, 'editor')
       })
       .catch((error) => {
         const message = error?.payload?.message || 'No fue posible crear la reversión.'
@@ -275,7 +279,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
                 <tr
                   key={song.id}
                   className={song.id === state.selectedSongId ? 'is-active' : ''}
-                  onClick={() => handleOpen(song.id, isOwnSong(song) ? 'editor' : 'reading')}
+                  onClick={() => handleOpen(song, isOwnSong(song) ? 'editor' : 'reading')}
                 >
                   <td className="wpss-col-title">
                     <strong>{song.titulo}</strong>
@@ -328,7 +332,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
                           className="button button-small"
                           onClick={(event) => {
                             event.stopPropagation()
-                            handleOpen(song.id, 'editor')
+                            handleOpen(song, 'editor')
                           }}
                         >
                           Editar
@@ -347,7 +351,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
                         className="button button-small button-secondary"
                         onClick={(event) => {
                           event.stopPropagation()
-                          handleOpen(song.id, 'reading')
+                          handleOpen(song, 'reading')
                         }}
                       >
                         Leer

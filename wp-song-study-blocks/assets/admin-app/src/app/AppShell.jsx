@@ -31,26 +31,32 @@ export default function AppShell() {
   }, [dispatch])
 
   const loadSong = useCallback(
-    (id) => {
-      if (!id || state.songLoading) {
+    (songInput) => {
+      const selectedSongId = typeof songInput === 'object' ? Number(songInput?.id) : Number(songInput)
+      const selectedSong = typeof songInput === 'object' ? songInput : null
+      if (!selectedSongId || state.songLoading) {
         return
       }
 
       setShowSongList(false)
       dispatch({
         type: 'SET_STATE',
-        payload: { songLoading: true, selectedSongId: id, feedback: null, error: null },
+        payload: { songLoading: true, selectedSongId: selectedSongId, feedback: null, error: null },
       })
 
       api
-        .getSong(id)
+        .getSong(selectedSongId)
         .then((response) => {
           const song = response.data || {}
           const songFromList = Array.isArray(state.songs)
-            ? state.songs.find((item) => Number(item?.id) === Number(id))
+            ? state.songs.find((item) => Number(item?.id) === Number(selectedSongId))
             : null
           const resolvedTags = Array.isArray(song?.tags) && song.tags.length
             ? song.tags
+            : Array.isArray(song?.item?.tags) && song.item.tags.length
+              ? song.item.tags
+              : Array.isArray(selectedSong?.tags) && selectedSong.tags.length
+                ? selectedSong.tags
             : Array.isArray(songFromList?.tags)
               ? songFromList.tags
               : []
