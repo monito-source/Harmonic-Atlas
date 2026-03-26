@@ -2120,8 +2120,17 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_conteo_versos_normales', $conteos['versos_normales'] );
     update_post_meta( $post_id, '_conteo_versos_instrumentales', $conteos['versos_instrumentales'] );
 
-    $colecciones_ids = wpss_sanitize_coleccion_ids( isset( $params['colecciones'] ) ? $params['colecciones'] : [] );
-    $tags_ids        = wpss_sanitize_cancion_tag_ids( isset( $params['tags'] ) ? $params['tags'] : [] );
+    $has_colecciones_param = is_array( $params ) && array_key_exists( 'colecciones', $params );
+    $has_tags_param        = is_array( $params ) && array_key_exists( 'tags', $params );
+
+    $colecciones_ids = wpss_sanitize_coleccion_ids( $has_colecciones_param ? $params['colecciones'] : [] );
+    $tags_ids        = $has_tags_param
+        ? wpss_sanitize_cancion_tag_ids( $params['tags'] )
+        : wp_get_post_terms( $post_id, 'cancion_tag', [ 'fields' => 'ids' ] );
+
+    if ( is_wp_error( $tags_ids ) || ! is_array( $tags_ids ) ) {
+        $tags_ids = [];
+    }
 
     $previas = wp_get_post_terms( $post_id, 'coleccion', [ 'fields' => 'ids' ] );
     if ( is_wp_error( $previas ) ) {
@@ -2131,7 +2140,10 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $previas = array_map( 'intval', $previas );
 
     wp_set_post_terms( $post_id, $colecciones_ids, 'coleccion', false );
-    wp_set_post_terms( $post_id, $tags_ids, 'cancion_tag', false );
+
+    if ( $has_tags_param ) {
+        wp_set_post_terms( $post_id, $tags_ids, 'cancion_tag', false );
+    }
 
     $current_user_id = get_current_user_id();
 

@@ -63,10 +63,54 @@ function wpssb_get_public_reader_data() {
         'camposArmonicosNombres' => [],
         'chordsLibrary' => [],
         'chordsConfig'  => [ 'paradigms' => [], 'qualities' => [] ],
+        'assetVersion'  => wpssb_get_interface_assets_version(),
         'strings'       => [
             'filtersTitle' => __( 'Canciones disponibles', 'wp-song-study-blocks' ),
         ],
     ];
+}
+
+/**
+ * Resuelve entrypoint y versión del build Vite del admin-app.
+ *
+ * @return array{file:string,css:array,version:string}|array{}
+ */
+function wpssb_get_interface_assets_manifest_entry() {
+    $manifest_path = WPSSB_PATH . 'assets/admin-build/manifest.json';
+    if ( ! file_exists( $manifest_path ) ) {
+        $manifest_path = WPSSB_PATH . 'assets/admin-build/.vite/manifest.json';
+    }
+
+    if ( ! file_exists( $manifest_path ) ) {
+        return [];
+    }
+
+    $manifest = json_decode( file_get_contents( $manifest_path ), true );
+    if ( ! is_array( $manifest ) || empty( $manifest['index.html']['file'] ) ) {
+        return [];
+    }
+
+    $entry = $manifest['index.html'];
+
+    return [
+        'file'    => (string) $entry['file'],
+        'css'     => ! empty( $entry['css'] ) && is_array( $entry['css'] ) ? $entry['css'] : [],
+        'version' => (string) filemtime( $manifest_path ),
+    ];
+}
+
+/**
+ * Obtiene una versión de assets útil para cache-busting y diagnóstico.
+ *
+ * @return string
+ */
+function wpssb_get_interface_assets_version() {
+    $entry = wpssb_get_interface_assets_manifest_entry();
+    if ( ! empty( $entry['version'] ) ) {
+        return (string) $entry['version'];
+    }
+
+    return (string) WPSSB_VERSION;
 }
 
 /**
@@ -75,6 +119,7 @@ function wpssb_get_public_reader_data() {
 function wpssb_enqueue_interface_assets() {
     $style_handle = 'wpssb-public-reader-style';
     $script_handle = 'wpssb-public-reader-script';
+    $entry = wpssb_get_interface_assets_manifest_entry();
 
     wp_register_style(
         $style_handle,
@@ -85,19 +130,28 @@ function wpssb_enqueue_interface_assets() {
 
     wp_enqueue_style( $style_handle );
 
-    wp_register_style(
-        'wpssb-public-reader-vite-style',
-        WPSSB_URL . 'assets/admin-build/assets/index-DyABIkx9.css',
-        [ $style_handle ],
-        WPSSB_VERSION
-    );
-    wp_enqueue_style( 'wpssb-public-reader-vite-style' );
+    if ( empty( $entry['file'] ) ) {
+        return false;
+    }
+
+    if ( ! empty( $entry['css'] ) ) {
+        foreach ( $entry['css'] as $index => $css_file ) {
+            $handle = sprintf( 'wpssb-public-reader-vite-style-%d', $index );
+            wp_register_style(
+                $handle,
+                WPSSB_URL . 'assets/admin-build/' . ltrim( (string) $css_file, '/' ),
+                [ $style_handle ],
+                $entry['version']
+            );
+            wp_enqueue_style( $handle );
+        }
+    }
 
     wp_register_script(
         $script_handle,
-        WPSSB_URL . 'assets/admin-build/assets/index-BgR-wIHi.js',
+        WPSSB_URL . 'assets/admin-build/' . ltrim( (string) $entry['file'], '/' ),
         [],
-        WPSSB_VERSION,
+        $entry['version'],
         true
     );
 
