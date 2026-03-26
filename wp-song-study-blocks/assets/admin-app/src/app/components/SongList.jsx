@@ -15,6 +15,12 @@ const formatCollectionAssignment = (collection) => {
   return assignedBy ? `Asignó: ${assignedBy}` : ''
 }
 
+const toTagArray = (value) => {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') return Object.values(value)
+  return []
+}
+
 export default function SongList({ onSelectSong, onNewSong }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [statusSavingMap, setStatusSavingMap] = useState({})
@@ -296,9 +302,9 @@ export default function SongList({ onSelectSong, onNewSong }) {
                     <span className="wpss-sub">
                       Ensayo (yo): {getStatusLabel(REHEARSAL_STATUS_LABELS, song.estado_ensayo)}
                     </span>
-                    {Array.isArray(song.tags) && song.tags.length ? (
+                    {toTagArray(song.tags).length ? (
                       <span className="wpss-sub">
-                        Tags: {song.tags.map((tag) => tag.name).join(' · ')}
+                        Tags: {toTagArray(song.tags).map((tag) => tag.name).join(' · ')}
                       </span>
                     ) : null}
                     {Array.isArray(song.colecciones) && song.colecciones.length ? (

@@ -12,6 +12,16 @@ import ReadingView from './components/ReadingView.jsx'
 import PublicReader from './components/PublicReader.jsx'
 import ChordLibrary from './components/ChordLibrary.jsx'
 
+const toTagArray = (value) => {
+  if (Array.isArray(value)) {
+    return value
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value)
+  }
+  return []
+}
+
 export default function AppShell() {
   const { state, dispatch, api, wpData } = useAppState()
   const [showSongList, setShowSongList] = useState(true)
@@ -51,15 +61,17 @@ export default function AppShell() {
           const songFromList = Array.isArray(state.songs)
             ? state.songs.find((item) => Number(item?.id) === Number(selectedSongId))
             : null
-          const resolvedTags = Array.isArray(song?.tags) && song.tags.length
-            ? song.tags
-            : Array.isArray(song?.item?.tags) && song.item.tags.length
-              ? song.item.tags
-              : Array.isArray(selectedSong?.tags) && selectedSong.tags.length
-                ? selectedSong.tags
-            : Array.isArray(songFromList?.tags)
-              ? songFromList.tags
-              : []
+          const directSongTags = toTagArray(song?.tags)
+          const itemSongTags = toTagArray(song?.item?.tags)
+          const selectedSongTags = toTagArray(selectedSong?.tags)
+          const listSongTags = toTagArray(songFromList?.tags)
+          const resolvedTags = directSongTags.length
+            ? directSongTags
+            : itemSongTags.length
+              ? itemSongTags
+              : selectedSongTags.length
+                ? selectedSongTags
+                : listSongTags
           const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
           const secciones = normalizeSectionsFromApi(song.secciones, bpmDefault)
           const estructura = normalizeStructureFromApi(song.estructura || [], secciones)

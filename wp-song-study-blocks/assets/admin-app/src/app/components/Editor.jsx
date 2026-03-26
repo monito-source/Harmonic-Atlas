@@ -113,6 +113,16 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
     : { id: null, name: rawValue, slug: lowered }
 }
 
+const toTagArray = (value) => {
+  if (Array.isArray(value)) {
+    return value
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value)
+  }
+  return []
+}
+
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
@@ -288,7 +298,7 @@ export default function Editor({ onShowList }) {
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
   const selectedTags = useMemo(() => {
-    const rawTags = Array.isArray(editingSong.tags) ? editingSong.tags : []
+    const rawTags = toTagArray(editingSong.tags)
     const normalized = []
     const seen = new Set()
 
@@ -347,7 +357,7 @@ export default function Editor({ onShowList }) {
     let changed = false
 
     updateSong((current) => {
-      const currentTags = (Array.isArray(current.tags) ? current.tags : [])
+      const currentTags = toTagArray(current.tags)
         .map((tag) => normalizeTagCandidate(tag, availableTags))
         .filter(Boolean)
       const seen = new Set(
@@ -416,7 +426,7 @@ export default function Editor({ onShowList }) {
     if (!removeKey) return
 
     updateSong((current) => {
-      const currentTags = (Array.isArray(current.tags) ? current.tags : [])
+      const currentTags = toTagArray(current.tags)
         .map((tag) => normalizeTagCandidate(tag, availableTags))
         .filter(Boolean)
       const nextTags = currentTags.filter((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase() !== removeKey)
@@ -643,8 +653,8 @@ export default function Editor({ onShowList }) {
     const songFromList = Array.isArray(state.songs)
       ? state.songs.find((item) => Number(item?.id) === Number(currentSong.id))
       : null
-    const currentSongTags = Array.isArray(currentSong.tags) ? currentSong.tags : []
-    const fallbackSongTags = Array.isArray(songFromList?.tags) ? songFromList.tags : []
+    const currentSongTags = toTagArray(currentSong.tags)
+    const fallbackSongTags = toTagArray(songFromList?.tags)
     const resolvedTagsForPayload = (currentSongTags.length ? currentSongTags : fallbackSongTags)
       .map((item) => normalizeTagCandidate(item, availableTags))
       .filter(Boolean)
@@ -736,8 +746,8 @@ export default function Editor({ onShowList }) {
           estado_ensayo_label:
             body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
-          tags: Array.isArray(body.tags)
-            ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
+          tags: toTagArray(body.tags).length
+            ? toTagArray(body.tags).map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
             : selectedTags,
           secciones,
           estructura,
@@ -1903,21 +1913,24 @@ export default function Editor({ onShowList }) {
                 </select>
               </div>
               <div className="wpss-tags-input">
-                {selectedTags.map((tag) => {
-                  const key = tag?.id || tag?.slug || tag?.name
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className="wpss-tag-chip"
-                      onClick={() => handleRemoveTag(tag)}
-                      aria-label={`Quitar tag ${tag?.name || ''}`}
-                    >
-                      <span>{tag?.name || 'Sin nombre'}</span>
-                      <span aria-hidden="true">×</span>
-                    </button>
-                  )
-                })}
+                <ul className="tagchecklist" role="list" aria-label="Tags asignadas">
+                  {selectedTags.map((tag) => {
+                    const key = tag?.id || tag?.slug || tag?.name
+                    return (
+                      <li key={key}>
+                        <button
+                          type="button"
+                          className="ntdelbutton wpss-tag-remove"
+                          onClick={() => handleRemoveTag(tag)}
+                          aria-label={`Quitar tag ${tag?.name || ''}`}
+                        >
+                          <span className="remove-tag-icon" aria-hidden="true">×</span>
+                        </button>
+                        <span className="wpss-tag-chip">{tag?.name || 'Sin nombre'}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
                 <input
                   type="text"
                   value={tagInputValue}
