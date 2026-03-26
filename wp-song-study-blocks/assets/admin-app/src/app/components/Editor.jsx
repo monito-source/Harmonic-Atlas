@@ -67,6 +67,52 @@ const formatCollectionAssignment = (collection) => {
   return assignedBy ? `Asignado por: ${assignedBy}` : ''
 }
 
+const normalizeTagCandidate = (candidate, availableTags = []) => {
+  if (candidate === null || typeof candidate === 'undefined') {
+    return null
+  }
+
+  if (typeof candidate === 'object') {
+    const fallbackName = String(candidate?.name || candidate?.slug || '').trim()
+    if (!fallbackName && !Number.isInteger(Number(candidate?.id))) {
+      return null
+    }
+    return {
+      id: Number.isInteger(Number(candidate?.id)) ? Number(candidate.id) : null,
+      name: fallbackName || `Tag ${candidate?.id}`,
+      slug: String(candidate?.slug || fallbackName || '').trim().toLowerCase(),
+    }
+  }
+
+  const rawValue = String(candidate).trim()
+  if (!rawValue) {
+    return null
+  }
+
+  const numericId = Number(rawValue)
+  const hasNumericId = Number.isInteger(numericId) && numericId > 0
+  const lowered = rawValue.toLowerCase()
+  const existing = availableTags.find((tag) => {
+    const tagId = Number(tag?.id)
+    if (hasNumericId && Number.isInteger(tagId) && tagId === numericId) {
+      return true
+    }
+    return String(tag?.slug || '').toLowerCase() === lowered || String(tag?.name || '').toLowerCase() === lowered
+  })
+
+  if (existing) {
+    return {
+      id: Number.isInteger(Number(existing?.id)) ? Number(existing.id) : null,
+      name: String(existing?.name || rawValue).trim(),
+      slug: String(existing?.slug || existing?.name || rawValue).trim().toLowerCase(),
+    }
+  }
+
+  return hasNumericId
+    ? { id: numericId, name: `Tag ${numericId}`, slug: '' }
+    : { id: null, name: rawValue, slug: lowered }
+}
+
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
@@ -241,7 +287,26 @@ export default function Editor({ onShowList }) {
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
-  const selectedTags = Array.isArray(editingSong.tags) ? editingSong.tags : []
+  const selectedTags = useMemo(() => {
+    const rawTags = Array.isArray(editingSong.tags) ? editingSong.tags : []
+    const normalized = []
+    const seen = new Set()
+
+    rawTags.forEach((tag) => {
+      const normalizedTag = normalizeTagCandidate(tag, availableTags)
+      if (!normalizedTag) {
+        return
+      }
+      const key = String(normalizedTag.slug || normalizedTag.name || normalizedTag.id || '').toLowerCase()
+      if (!key || seen.has(key)) {
+        return
+      }
+      seen.add(key)
+      normalized.push(normalizedTag)
+    })
+
+    return normalized
+  }, [availableTags, editingSong.tags])
   const selectedTagKeys = useMemo(
     () => new Set(selectedTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean)),
     [selectedTags],
@@ -259,13 +324,7 @@ export default function Editor({ onShowList }) {
   const buildTagOption = useCallback((value) => {
     const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ')
     if (!normalizedValue) return null
-    const normalizedKey = normalizedValue.toLowerCase()
-    const existing = availableTags.find((tag) => {
-      const name = String(tag?.name || '').toLowerCase()
-      const slug = String(tag?.slug || '').toLowerCase()
-      return name === normalizedKey || slug === normalizedKey
-    })
-    return existing || { id: null, name: normalizedValue, slug: normalizedValue.toLowerCase() }
+    return normalizeTagCandidate(normalizedValue, availableTags)
   }, [availableTags])
 
   const parseTagValues = useCallback((values) => {
@@ -288,7 +347,9 @@ export default function Editor({ onShowList }) {
     let changed = false
 
     updateSong((current) => {
-      const currentTags = Array.isArray(current.tags) ? current.tags : []
+      const currentTags = (Array.isArray(current.tags) ? current.tags : [])
+        .map((tag) => normalizeTagCandidate(tag, availableTags))
+        .filter(Boolean)
       const seen = new Set(
         currentTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean),
       )
@@ -312,7 +373,7 @@ export default function Editor({ onShowList }) {
     }
 
     return changed
-  }, [buildTagOption, parseTagValues])
+  }, [availableTags, buildTagOption, parseTagValues])
 
   const handleTagInputChange = (event) => {
     setTagInputValue(event.target.value || '')
@@ -355,7 +416,9 @@ export default function Editor({ onShowList }) {
     if (!removeKey) return
 
     updateSong((current) => {
-      const currentTags = Array.isArray(current.tags) ? current.tags : []
+      const currentTags = (Array.isArray(current.tags) ? current.tags : [])
+        .map((tag) => normalizeTagCandidate(tag, availableTags))
+        .filter(Boolean)
       const nextTags = currentTags.filter((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase() !== removeKey)
       if (nextTags.length === currentTags.length) {
         return current
@@ -620,7 +683,12 @@ export default function Editor({ onShowList }) {
         }
       }),
       colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones.map((item) => item.id) : [],
-      tags: Array.isArray(currentSong.tags) ? currentSong.tags.map((item) => item.id || item.name || item.slug) : [],
+      tags: Array.isArray(currentSong.tags)
+        ? currentSong.tags
+            .map((item) => normalizeTagCandidate(item, availableTags))
+            .filter(Boolean)
+            .map((item) => item.id || item.name || item.slug)
+        : [],
       estructura: estructuraPayload,
       estructura_personalizada: true,
     }
@@ -664,7 +732,9 @@ export default function Editor({ onShowList }) {
           estado_ensayo_label:
             body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
-          tags: Array.isArray(body.tags) ? body.tags : editingSong.tags || [],
+          tags: Array.isArray(body.tags)
+            ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
+            : selectedTags,
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -1788,6 +1858,24 @@ export default function Editor({ onShowList }) {
             </label>
             <label className="wpss-tags-field">
               <span>Tags</span>
+              <div className="wpss-tags-toolbar">
+                <select
+                  value=""
+                  onChange={(event) => {
+                    if (event.target.value) {
+                      commitTags(event.target.value)
+                      setTagInputValue('')
+                    }
+                  }}
+                >
+                  <option value="">Agregar tag existente…</option>
+                  {filteredTagSuggestions.map((tag) => (
+                    <option key={tag.id || tag.slug || tag.name} value={tag.name}>
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="wpss-tags-input">
                 {selectedTags.map((tag) => {
                   const key = tag?.id || tag?.slug || tag?.name
@@ -1810,11 +1898,11 @@ export default function Editor({ onShowList }) {
                   onChange={handleTagInputChange}
                   onKeyDown={handleTagInputKeyDown}
                   onBlur={handleTagInputBlur}
-                  placeholder="Escribí un tag y confirmá con Enter o coma"
+                  placeholder="Escribí una tag nueva y confirmá con Enter o coma"
                   list="wpss-song-tags"
                 />
               </div>
-              <small>Elegí una sugerencia existente o creá una nueva; solo se guarda al confirmar la tag.</small>
+              <small>Mostramos tags ya asignadas. Podés quitar, elegir una existente o crear una nueva.</small>
               {filteredTagSuggestions.length ? (
                 <div className="wpss-tag-suggestions" role="listbox" aria-label="Tags sugeridas">
                   {filteredTagSuggestions.map((tag) => (

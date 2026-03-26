@@ -262,6 +262,10 @@
     background: #fff;
 }
 
+.wpss-tags-toolbar select {
+    width: 100%;
+}
+
 .wpss-tags-input:focus-within {
     border-color: #2271b1;
     box-shadow: 0 0 0 1px #2271b1;
