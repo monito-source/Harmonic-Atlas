@@ -259,14 +259,25 @@ export default function Editor({ onShowList }) {
   const buildTagOption = useCallback((value) => {
     const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ')
     if (!normalizedValue) return null
-    const existing = availableTags.find((tag) => String(tag?.name || '').toLowerCase() === normalizedValue.toLowerCase())
+    const normalizedKey = normalizedValue.toLowerCase()
+    const existing = availableTags.find((tag) => {
+      const name = String(tag?.name || '').toLowerCase()
+      const slug = String(tag?.slug || '').toLowerCase()
+      return name === normalizedKey || slug === normalizedKey
+    })
     return existing || { id: null, name: normalizedValue, slug: normalizedValue.toLowerCase() }
   }, [availableTags])
 
-  const commitTags = useCallback((values) => {
+  const parseTagValues = useCallback((values) => {
     const list = Array.isArray(values) ? values : [values]
-    const nextItems = list
+    return list
       .flatMap((value) => String(value || '').split(','))
+      .map((value) => value.trim().replace(/\s+/g, ' '))
+      .filter(Boolean)
+  }, [])
+
+  const commitTags = useCallback((values) => {
+    const nextItems = parseTagValues(values)
       .map((value) => buildTagOption(value))
       .filter(Boolean)
 
@@ -301,7 +312,7 @@ export default function Editor({ onShowList }) {
     }
 
     return changed
-  }, [buildTagOption])
+  }, [buildTagOption, parseTagValues])
 
   const handleTagInputChange = (event) => {
     setTagInputValue(event.target.value || '')

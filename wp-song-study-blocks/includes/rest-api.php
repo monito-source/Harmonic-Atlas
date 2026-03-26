@@ -3505,43 +3505,63 @@ function wpss_sanitize_cancion_tag_ids( $tags ) {
     $ids = [];
 
     foreach ( $tags as $value ) {
+        $raw_values = [ $value ];
+
         if ( is_array( $value ) ) {
             if ( isset( $value['id'] ) ) {
-                $value = $value['id'];
+                $raw_values = [ $value['id'] ];
             } elseif ( isset( $value['name'] ) ) {
-                $value = $value['name'];
+                $raw_values = [ $value['name'] ];
             } elseif ( isset( $value['slug'] ) ) {
-                $value = $value['slug'];
+                $raw_values = [ $value['slug'] ];
             }
         }
 
-        $term_id = 0;
-
-        if ( is_numeric( $value ) ) {
-            $term = get_term( absint( $value ), 'cancion_tag' );
-            if ( $term && ! is_wp_error( $term ) ) {
-                $term_id = (int) $term->term_id;
-            }
-        } else {
-            $name = sanitize_text_field( (string) $value );
-            if ( '' === $name ) {
+        $normalized_values = [];
+        foreach ( $raw_values as $raw_value ) {
+            if ( is_numeric( $raw_value ) ) {
+                $normalized_values[] = $raw_value;
                 continue;
             }
 
-            $term = term_exists( $name, 'cancion_tag' );
-            if ( ! $term ) {
-                $term = wp_insert_term( $name, 'cancion_tag' );
+            $parts = explode( ',', (string) $raw_value );
+            foreach ( $parts as $part ) {
+                $clean = trim( sanitize_text_field( $part ) );
+                if ( '' !== $clean ) {
+                    $normalized_values[] = $clean;
+                }
             }
-
-            if ( is_wp_error( $term ) || empty( $term['term_id'] ) ) {
-                continue;
-            }
-
-            $term_id = (int) $term['term_id'];
         }
 
-        if ( $term_id > 0 && ! in_array( $term_id, $ids, true ) ) {
-            $ids[] = $term_id;
+        foreach ( $normalized_values as $normalized_value ) {
+            $term_id = 0;
+
+            if ( is_numeric( $normalized_value ) ) {
+                $term = get_term( absint( $normalized_value ), 'cancion_tag' );
+                if ( $term && ! is_wp_error( $term ) ) {
+                    $term_id = (int) $term->term_id;
+                }
+            } else {
+                $name = sanitize_text_field( (string) $normalized_value );
+                if ( '' === $name ) {
+                    continue;
+                }
+
+                $term = term_exists( $name, 'cancion_tag' );
+                if ( ! $term ) {
+                    $term = wp_insert_term( $name, 'cancion_tag' );
+                }
+
+                if ( is_wp_error( $term ) || empty( $term['term_id'] ) ) {
+                    continue;
+                }
+
+                $term_id = (int) $term['term_id'];
+            }
+
+            if ( $term_id > 0 && ! in_array( $term_id, $ids, true ) ) {
+                $ids[] = $term_id;
+            }
         }
     }
 
