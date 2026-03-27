@@ -12,6 +12,31 @@ import ReadingView from './components/ReadingView.jsx'
 import PublicReader from './components/PublicReader.jsx'
 import ChordLibrary from './components/ChordLibrary.jsx'
 
+const normalizeLoadedTag = (tag) => {
+  if (tag === null || typeof tag === 'undefined') return null
+
+  if (typeof tag === 'object') {
+    const id = Number(tag?.id ?? tag?.term_id ?? tag?.termId)
+    const name = String(tag?.name || tag?.nombre || tag?.label || tag?.slug || '').trim()
+    if (!name && !Number.isInteger(id)) {
+      return null
+    }
+    return {
+      id: Number.isInteger(id) ? id : null,
+      name: name || `Tag ${id}`,
+      slug: String(tag?.slug || name || '').trim().toLowerCase(),
+    }
+  }
+
+  const raw = String(tag).trim()
+  if (!raw) return null
+  const id = Number(raw)
+  if (Number.isInteger(id) && id > 0) {
+    return { id, name: `Tag ${id}`, slug: '' }
+  }
+  return { id: null, name: raw, slug: raw.toLowerCase() }
+}
+
 export default function AppShell() {
   const { state, dispatch, api, wpData } = useAppState()
   const [showSongList, setShowSongList] = useState(true)
@@ -51,7 +76,7 @@ export default function AppShell() {
           const songFromList = Array.isArray(state.songs)
             ? state.songs.find((item) => Number(item?.id) === Number(selectedSongId))
             : null
-          const resolvedTags = Array.isArray(song?.tags) && song.tags.length
+          const resolvedTagsRaw = Array.isArray(song?.tags) && song.tags.length
             ? song.tags
             : Array.isArray(song?.item?.tags) && song.item.tags.length
               ? song.item.tags
@@ -60,6 +85,9 @@ export default function AppShell() {
             : Array.isArray(songFromList?.tags)
               ? songFromList.tags
               : []
+          const resolvedTags = resolvedTagsRaw
+            .map((tag) => normalizeLoadedTag(tag))
+            .filter(Boolean)
           const bpmDefault = Number.isInteger(parseInt(song.bpm, 10)) ? parseInt(song.bpm, 10) : 120
           const secciones = normalizeSectionsFromApi(song.secciones, bpmDefault)
           const estructura = normalizeStructureFromApi(song.estructura || [], secciones)

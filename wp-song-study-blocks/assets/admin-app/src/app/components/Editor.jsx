@@ -73,13 +73,20 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
   }
 
   if (typeof candidate === 'object') {
-    const fallbackName = String(candidate?.name || candidate?.slug || '').trim()
-    if (!fallbackName && !Number.isInteger(Number(candidate?.id))) {
+    const fallbackName = String(
+      candidate?.name
+      || candidate?.nombre
+      || candidate?.label
+      || candidate?.slug
+      || '',
+    ).trim()
+    const candidateId = Number(candidate?.id ?? candidate?.term_id ?? candidate?.termId)
+    if (!fallbackName && !Number.isInteger(candidateId)) {
       return null
     }
     return {
-      id: Number.isInteger(Number(candidate?.id)) ? Number(candidate.id) : null,
-      name: fallbackName || `Tag ${candidate?.id}`,
+      id: Number.isInteger(candidateId) ? candidateId : null,
+      name: fallbackName || `Tag ${candidateId}`,
       slug: String(candidate?.slug || fallbackName || '').trim().toLowerCase(),
     }
   }
@@ -93,11 +100,14 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
   const hasNumericId = Number.isInteger(numericId) && numericId > 0
   const lowered = rawValue.toLowerCase()
   const existing = availableTags.find((tag) => {
-    const tagId = Number(tag?.id)
+    const tagId = Number(tag?.id ?? tag?.term_id ?? tag?.termId)
     if (hasNumericId && Number.isInteger(tagId) && tagId === numericId) {
       return true
     }
-    return String(tag?.slug || '').toLowerCase() === lowered || String(tag?.name || '').toLowerCase() === lowered
+    return (
+      String(tag?.slug || '').toLowerCase() === lowered
+      || String(tag?.name || tag?.nombre || '').toLowerCase() === lowered
+    )
   })
 
   if (existing) {
@@ -112,6 +122,8 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
     ? { id: numericId, name: `Tag ${numericId}`, slug: '' }
     : { id: null, name: rawValue, slug: lowered }
 }
+
+const getTagLabel = (tag) => String(tag?.name || tag?.nombre || tag?.slug || '').trim()
 
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
@@ -286,7 +298,12 @@ export default function Editor({ onShowList }) {
   }
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
-  const availableTags = Array.isArray(state.songTags) ? state.songTags : []
+  const availableTags = useMemo(
+    () => (Array.isArray(state.songTags) ? state.songTags : [])
+      .map((tag) => normalizeTagCandidate(tag, []))
+      .filter(Boolean),
+    [state.songTags],
+  )
   const selectedTags = useMemo(() => {
     const rawTags = Array.isArray(editingSong.tags) ? editingSong.tags : []
     const normalized = []
@@ -406,7 +423,7 @@ export default function Editor({ onShowList }) {
   }
 
   const handleSelectSuggestedTag = (tag) => {
-    if (commitTags(tag?.name || '')) {
+    if (commitTags(getTagLabel(tag))) {
       setTagInputValue('')
     }
   }
@@ -645,9 +662,15 @@ export default function Editor({ onShowList }) {
       : null
     const currentSongTags = Array.isArray(currentSong.tags) ? currentSong.tags : []
     const fallbackSongTags = Array.isArray(songFromList?.tags) ? songFromList.tags : []
-    const resolvedTagsForPayload = (currentSongTags.length ? currentSongTags : fallbackSongTags)
+    const normalizedCurrentTags = currentSongTags
       .map((item) => normalizeTagCandidate(item, availableTags))
       .filter(Boolean)
+    const normalizedFallbackTags = fallbackSongTags
+      .map((item) => normalizeTagCandidate(item, availableTags))
+      .filter(Boolean)
+    const resolvedTagsForPayload = normalizedCurrentTags.length
+      ? normalizedCurrentTags
+      : normalizedFallbackTags
 
     const payload = {
         id: currentSong.id || null,
@@ -713,6 +736,9 @@ export default function Editor({ onShowList }) {
           : currentSong.bpm
         const secciones = normalizeSectionsFromApi(body.secciones || currentSong.secciones, bpmDefault)
         const estructura = normalizeStructureFromApi(body.estructura || [], secciones)
+        const normalizedBodyTags = Array.isArray(body.tags)
+          ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
+          : []
         const normalizedSong = {
           ...editingSong,
           id: body.id,
@@ -736,9 +762,7 @@ export default function Editor({ onShowList }) {
           estado_ensayo_label:
             body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
-          tags: Array.isArray(body.tags)
-            ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
-            : selectedTags,
+          tags: normalizedBodyTags.length ? normalizedBodyTags : resolvedTagsForPayload,
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -1896,8 +1920,8 @@ export default function Editor({ onShowList }) {
                 >
                   <option value="">Agregar tag existente…</option>
                   {filteredTagSuggestions.map((tag) => (
-                    <option key={tag.id || tag.slug || tag.name} value={tag.name}>
-                      {tag.name}
+                    <option key={tag.id || tag.slug || tag.name} value={getTagLabel(tag)}>
+                      {getTagLabel(tag)}
                     </option>
                   ))}
                 </select>
@@ -1905,15 +1929,16 @@ export default function Editor({ onShowList }) {
               <div className="wpss-tags-input">
                 {selectedTags.map((tag) => {
                   const key = tag?.id || tag?.slug || tag?.name
+                  const label = getTagLabel(tag)
                   return (
                     <button
                       key={key}
                       type="button"
                       className="wpss-tag-chip"
                       onClick={() => handleRemoveTag(tag)}
-                      aria-label={`Quitar tag ${tag?.name || ''}`}
+                      aria-label={`Quitar tag ${label}`}
                     >
-                      <span>{tag?.name || 'Sin nombre'}</span>
+                      <span>{label || 'Sin nombre'}</span>
                       <span aria-hidden="true">×</span>
                     </button>
                   )
@@ -1939,7 +1964,7 @@ export default function Editor({ onShowList }) {
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleSelectSuggestedTag(tag)}
                     >
-                      {tag.name}
+                      {getTagLabel(tag)}
                     </button>
                   ))}
                 </div>
@@ -2877,7 +2902,7 @@ export default function Editor({ onShowList }) {
 
         <datalist id="wpss-song-tags">
           {availableTags.map((tag) => (
-            <option key={tag.id || tag.slug || tag.name} value={tag.name} />
+            <option key={tag.id || tag.slug || tag.name} value={getTagLabel(tag)} />
           ))}
         </datalist>
         <datalist id="wpss-tonicas">
