@@ -2130,8 +2130,17 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     $previas = array_map( 'intval', $previas );
 
+    $prev_tags = wp_get_post_terms( $post_id, 'cancion_tag', [ 'fields' => 'ids' ] );
+    if ( is_wp_error( $prev_tags ) ) {
+        $prev_tags = [];
+    }
+
+    $prev_tags = array_map( 'intval', $prev_tags );
+
     wp_set_post_terms( $post_id, $colecciones_ids, 'coleccion', false );
     wp_set_post_terms( $post_id, $tags_ids, 'cancion_tag', false );
+
+    wpss_cleanup_unused_cancion_tags( $prev_tags );
 
     $current_user_id = get_current_user_id();
 
@@ -2305,6 +2314,12 @@ function wpss_rest_delete_cancion( WP_REST_Request $request ) {
         );
     }
 
+    $tag_ids = wp_get_post_terms( $post_id, 'cancion_tag', [ 'fields' => 'ids' ] );
+    if ( is_wp_error( $tag_ids ) ) {
+        $tag_ids = [];
+    }
+    $tag_ids = array_map( 'intval', $tag_ids );
+
     $deleted = wp_delete_post( $post_id, true );
     if ( ! $deleted ) {
         return new WP_Error(
@@ -2313,6 +2328,8 @@ function wpss_rest_delete_cancion( WP_REST_Request $request ) {
             [ 'status' => 500 ]
         );
     }
+
+    wpss_cleanup_unused_cancion_tags( $tag_ids );
 
     return rest_ensure_response(
         [
@@ -3566,6 +3583,34 @@ function wpss_sanitize_cancion_tag_ids( $tags ) {
     }
 
     return $ids;
+}
+
+/**
+ * Elimina etiquetas de canciones que ya no están asignadas.
+ *
+ * @param int[] $tag_ids IDs de etiquetas a verificar.
+ * @return void
+ */
+function wpss_cleanup_unused_cancion_tags( $tag_ids ) {
+    $ids = array_filter( array_map( 'absint', is_array( $tag_ids ) ? $tag_ids : [] ) );
+    if ( empty( $ids ) ) {
+        return;
+    }
+
+    if ( function_exists( 'wp_update_term_count' ) ) {
+        wp_update_term_count( $ids, 'cancion_tag' );
+    }
+
+    foreach ( $ids as $term_id ) {
+        $term = get_term( $term_id, 'cancion_tag' );
+        if ( ! $term || is_wp_error( $term ) ) {
+            continue;
+        }
+
+        if ( (int) $term->count <= 0 ) {
+            wp_delete_term( $term_id, 'cancion_tag' );
+        }
+    }
 }
 
 /**

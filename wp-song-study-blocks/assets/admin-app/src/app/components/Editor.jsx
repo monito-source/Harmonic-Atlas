@@ -25,6 +25,8 @@ const MOBILE_EDITOR_PREVIEW_QUERY = '(max-width: 840px)'
 const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
 const TAG_SUGGESTIONS_PAGE_SIZE = 10
 
+const normalizeTagValue = (value) => String(value || '').trim().replace(/\s+/g, ' ')
+
 const getNearestPreviewScaleIndex = (value) => {
   if (!Number.isFinite(value)) {
     return PREVIEW_SCALE_LEVELS.length - 1
@@ -74,6 +76,7 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
   }
 
   if (typeof candidate === 'object') {
+    const candidateCount = Number.isFinite(Number(candidate?.count)) ? Number(candidate.count) : null
     const fallbackName = String(
       candidate?.name
       || candidate?.nombre
@@ -89,10 +92,11 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
       id: Number.isInteger(candidateId) ? candidateId : null,
       name: fallbackName || `Tag ${candidateId}`,
       slug: String(candidate?.slug || fallbackName || '').trim().toLowerCase(),
+      count: candidateCount,
     }
   }
 
-  const rawValue = String(candidate).trim()
+  const rawValue = normalizeTagValue(candidate)
   if (!rawValue) {
     return null
   }
@@ -116,15 +120,27 @@ const normalizeTagCandidate = (candidate, availableTags = []) => {
       id: Number.isInteger(Number(existing?.id)) ? Number(existing.id) : null,
       name: String(existing?.name || rawValue).trim(),
       slug: String(existing?.slug || existing?.name || rawValue).trim().toLowerCase(),
+      count: Number.isFinite(Number(existing?.count)) ? Number(existing.count) : null,
     }
   }
 
   return hasNumericId
-    ? { id: numericId, name: `Tag ${numericId}`, slug: '' }
-    : { id: null, name: rawValue, slug: lowered }
+    ? { id: numericId, name: `Tag ${numericId}`, slug: '', count: 0 }
+    : { id: null, name: rawValue, slug: lowered, count: 0 }
 }
 
 const getTagLabel = (tag) => String(tag?.name || tag?.nombre || tag?.slug || '').trim()
+const getTagKey = (tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()
+
+const areTagSetsEqual = (first, second) => {
+  const left = new Set((Array.isArray(first) ? first : []).map((tag) => getTagKey(tag)).filter(Boolean))
+  const right = new Set((Array.isArray(second) ? second : []).map((tag) => getTagKey(tag)).filter(Boolean))
+  if (left.size !== right.size) return false
+  for (const key of left) {
+    if (!right.has(key)) return false
+  }
+  return true
+}
 
 export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
@@ -319,7 +335,7 @@ export default function Editor({ onShowList }) {
       if (!normalizedTag) {
         return
       }
-      const key = String(normalizedTag.slug || normalizedTag.name || normalizedTag.id || '').toLowerCase()
+      const key = getTagKey(normalizedTag)
       if (!key || seen.has(key)) {
         return
       }
@@ -330,18 +346,35 @@ export default function Editor({ onShowList }) {
     return normalized
   }, [availableTags, editingSong.tags])
   const selectedTagKeys = useMemo(
-    () => new Set(selectedTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean)),
+    () => new Set(selectedTags.map((tag) => getTagKey(tag)).filter(Boolean)),
     [selectedTags],
   )
+  const tagInputNormalized = useMemo(() => normalizeTagValue(tagInputValue), [tagInputValue])
+  const tagInputKey = tagInputNormalized.toLowerCase()
+  const tagInputMatchesExisting = useMemo(
+    () => !!tagInputKey && availableTags.some((tag) => getTagKey(tag) === tagInputKey),
+    [availableTags, tagInputKey],
+  )
+  const canCreateTag = !!tagInputKey && !tagInputMatchesExisting && !selectedTagKeys.has(tagInputKey)
   const filteredTagSuggestions = useMemo(() => {
-    const query = tagInputValue.trim().toLowerCase()
-    return availableTags.filter((tag) => {
-      const key = String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()
-      if (!key || selectedTagKeys.has(key)) return false
-      if (!query) return true
-      return String(tag?.name || '').toLowerCase().includes(query)
-    })
-  }, [availableTags, selectedTagKeys, tagInputValue])
+    const query = tagInputNormalized.toLowerCase()
+    return availableTags
+      .filter((tag) => {
+        const key = getTagKey(tag)
+        if (!key || selectedTagKeys.has(key)) return false
+        if (!query) return true
+        return (
+          String(tag?.name || '').toLowerCase().includes(query)
+          || String(tag?.slug || '').toLowerCase().includes(query)
+        )
+      })
+      .sort((a, b) => {
+        const countA = Number.isFinite(Number(a?.count)) ? Number(a.count) : 0
+        const countB = Number.isFinite(Number(b?.count)) ? Number(b.count) : 0
+        if (countA !== countB) return countB - countA
+        return String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+      })
+  }, [availableTags, selectedTagKeys, tagInputNormalized])
   const totalTagSuggestionPages = useMemo(
     () => Math.max(1, Math.ceil(filteredTagSuggestions.length / TAG_SUGGESTIONS_PAGE_SIZE)),
     [filteredTagSuggestions.length],
@@ -353,7 +386,7 @@ export default function Editor({ onShowList }) {
   }, [filteredTagSuggestions, tagSuggestionsPage, totalTagSuggestionPages])
 
   const buildTagOption = useCallback((value) => {
-    const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ')
+    const normalizedValue = normalizeTagValue(value)
     if (!normalizedValue) return null
     return normalizeTagCandidate(normalizedValue, availableTags)
   }, [availableTags])
@@ -362,7 +395,7 @@ export default function Editor({ onShowList }) {
     const list = Array.isArray(values) ? values : [values]
     return list
       .flatMap((value) => String(value || '').split(','))
-      .map((value) => value.trim().replace(/\s+/g, ' '))
+      .map((value) => normalizeTagValue(value))
       .filter(Boolean)
   }, [])
 
@@ -382,12 +415,12 @@ export default function Editor({ onShowList }) {
         .map((tag) => normalizeTagCandidate(tag, availableTags))
         .filter(Boolean)
       const seen = new Set(
-        currentTags.map((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()).filter(Boolean),
+        currentTags.map((tag) => getTagKey(tag)).filter(Boolean),
       )
       const merged = [...currentTags]
 
       nextItems.forEach((tag) => {
-        const key = String(tag?.slug || tag?.name || tag?.id || '').toLowerCase()
+        const key = getTagKey(tag)
         if (!key || seen.has(key)) {
           return
         }
@@ -424,6 +457,15 @@ export default function Editor({ onShowList }) {
       return
     }
 
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setShowTagSuggestions(false)
+      if (tagInputValue) {
+        setTagInputValue('')
+      }
+      return
+    }
+
     if (event.key === 'Backspace' && !tagInputValue.trim() && selectedTags.length) {
       event.preventDefault()
       const lastTag = selectedTags[selectedTags.length - 1]
@@ -451,15 +493,29 @@ export default function Editor({ onShowList }) {
     }
   }
 
+  const handleCreateTagFromInput = () => {
+    if (commitTags(tagInputValue)) {
+      setTagInputValue('')
+      setTagSuggestionsPage(1)
+      setShowTagSuggestions(true)
+    }
+  }
+
+  const handleClearTags = () => {
+    if (!selectedTags.length) return
+    updateSong((current) => ({ ...current, tags: [] }))
+    scheduleAutosave()
+  }
+
   const handleRemoveTag = (tagToRemove) => {
-    const removeKey = String(tagToRemove?.slug || tagToRemove?.name || tagToRemove?.id || '').toLowerCase()
+    const removeKey = getTagKey(tagToRemove)
     if (!removeKey) return
 
     updateSong((current) => {
       const currentTags = (Array.isArray(current.tags) ? current.tags : [])
         .map((tag) => normalizeTagCandidate(tag, availableTags))
         .filter(Boolean)
-      const nextTags = currentTags.filter((tag) => String(tag?.slug || tag?.name || tag?.id || '').toLowerCase() !== removeKey)
+      const nextTags = currentTags.filter((tag) => getTagKey(tag) !== removeKey)
       if (nextTags.length === currentTags.length) {
         return current
       }
@@ -759,9 +815,9 @@ export default function Editor({ onShowList }) {
           : currentSong.bpm
         const secciones = normalizeSectionsFromApi(body.secciones || currentSong.secciones, bpmDefault)
         const estructura = normalizeStructureFromApi(body.estructura || [], secciones)
-        const normalizedBodyTags = Array.isArray(body.tags)
-          ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
-          : []
+    const normalizedBodyTags = Array.isArray(body.tags)
+      ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
+      : []
         const normalizedSong = {
           ...editingSong,
           id: body.id,
@@ -837,6 +893,19 @@ export default function Editor({ onShowList }) {
               error: null,
             },
           })
+        }
+
+        const tagsChanged = !areTagSetsEqual(normalizedBodyTags, normalizedFallbackTags)
+        if (tagsChanged) {
+          api
+            .listSongTags()
+            .then((listResponse) => {
+              dispatch({
+                type: 'SET_STATE',
+                payload: { songTags: Array.isArray(listResponse?.data) ? listResponse.data : [] },
+              })
+            })
+            .catch(() => {})
         }
       })
       .catch((error) => {
@@ -1931,26 +2000,23 @@ export default function Editor({ onShowList }) {
             </label>
             <label className="wpss-tags-field">
               <span>Tags</span>
-              <div className="wpss-tags-toolbar">
-                <select
-                  value=""
-                  onChange={(event) => {
-                    if (event.target.value) {
-                      commitTags(event.target.value)
-                      setTagInputValue('')
-                    }
-                  }}
+              <div className="wpss-tags-meta">
+                <span className="wpss-tags-count">
+                  {selectedTags.length
+                    ? `${selectedTags.length} tag${selectedTags.length === 1 ? '' : 's'} asignada${selectedTags.length === 1 ? '' : 's'}`
+                    : 'Sin tags asignadas'}
+                </span>
+                <button
+                  type="button"
+                  className="button button-small wpss-tags-clear"
+                  onClick={handleClearTags}
+                  disabled={!selectedTags.length}
                 >
-                  <option value="">Agregar tag existente…</option>
-                  {filteredTagSuggestions.map((tag) => (
-                    <option key={tag.id || tag.slug || tag.name} value={getTagLabel(tag)}>
-                      {getTagLabel(tag)}
-                    </option>
-                  ))}
-                </select>
+                  Limpiar
+                </button>
               </div>
               <div className="wpss-tags-input">
-                {selectedTags.map((tag) => {
+                {selectedTags.length ? selectedTags.map((tag) => {
                   const key = tag?.id || tag?.slug || tag?.name
                   const label = getTagLabel(tag)
                   return (
@@ -1965,7 +2031,9 @@ export default function Editor({ onShowList }) {
                       <span aria-hidden="true">×</span>
                     </button>
                   )
-                })}
+                }) : (
+                  <span className="wpss-tags-empty">Agregá la primera tag para categorizar la canción.</span>
+                )}
                 <input
                   type="text"
                   value={tagInputValue}
@@ -1973,13 +2041,42 @@ export default function Editor({ onShowList }) {
                   onKeyDown={handleTagInputKeyDown}
                   onFocus={handleTagInputFocus}
                   onBlur={handleTagInputBlur}
-                  placeholder="Escribí una tag nueva y confirmá con Enter o coma"
+                  list="wpss-song-tags"
+                  placeholder="Buscar o crear tag (Enter o coma)"
                 />
+                <button
+                  type="button"
+                  className="button button-secondary wpss-tags-add"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={handleCreateTagFromInput}
+                  disabled={!tagInputNormalized}
+                >
+                  Agregar
+                </button>
               </div>
-              <small>Mostramos tags ya asignadas. Podés quitar, elegir una existente o crear una nueva.</small>
-              {showTagSuggestions && filteredTagSuggestions.length ? (
+              <small className="wpss-tags-help">Enter agrega, Backspace quita la última. Escape limpia la búsqueda.</small>
+              {(showTagSuggestions && (filteredTagSuggestions.length || tagInputNormalized)) ? (
                 <div className="wpss-tag-suggestions" role="listbox" aria-label="Tags sugeridas">
+                  <div className="wpss-tag-suggestions__header">
+                    <span>
+                      {tagInputNormalized ? `Coincidencias para "${tagInputNormalized}"` : 'Sugerencias'}
+                    </span>
+                    <span className="wpss-tag-suggestions__count">
+                      {filteredTagSuggestions.length} disponibles
+                    </span>
+                  </div>
                   <div className="wpss-tag-suggestions__list">
+                    {canCreateTag ? (
+                      <button
+                        type="button"
+                        className="wpss-tag-suggestion wpss-tag-suggestion--create"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={handleCreateTagFromInput}
+                      >
+                        <span className="wpss-tag-suggestion__icon">+</span>
+                        <span className="wpss-tag-suggestion__name">Crear "{tagInputNormalized}"</span>
+                      </button>
+                    ) : null}
                     {paginatedTagSuggestions.map((tag) => (
                       <button
                         key={tag.id || tag.slug || tag.name}
@@ -1988,33 +2085,41 @@ export default function Editor({ onShowList }) {
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleSelectSuggestedTag(tag)}
                       >
-                        {getTagLabel(tag)}
+                        <span className="wpss-tag-suggestion__name">{getTagLabel(tag)}</span>
+                        {Number.isInteger(Number(tag?.count)) ? (
+                          <span className="wpss-tag-suggestion__count">{Number(tag.count)}</span>
+                        ) : null}
                       </button>
                     ))}
+                    {!paginatedTagSuggestions.length && !canCreateTag ? (
+                      <div className="wpss-tag-suggestions__empty">No hay tags que coincidan.</div>
+                    ) : null}
                   </div>
-                  <div className="wpss-tag-suggestions__pagination">
-                    <button
-                      type="button"
-                      className="button button-small"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => setTagSuggestionsPage((page) => Math.max(1, page - 1))}
-                      disabled={tagSuggestionsPage <= 1}
-                    >
-                      ← Anterior
-                    </button>
-                    <span>
-                      Página {Math.min(tagSuggestionsPage, totalTagSuggestionPages)} de {totalTagSuggestionPages}
-                    </span>
-                    <button
-                      type="button"
-                      className="button button-small"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => setTagSuggestionsPage((page) => Math.min(totalTagSuggestionPages, page + 1))}
-                      disabled={tagSuggestionsPage >= totalTagSuggestionPages}
-                    >
-                      Siguiente →
-                    </button>
-                  </div>
+                  {filteredTagSuggestions.length > TAG_SUGGESTIONS_PAGE_SIZE ? (
+                    <div className="wpss-tag-suggestions__pagination">
+                      <button
+                        type="button"
+                        className="button button-small"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setTagSuggestionsPage((page) => Math.max(1, page - 1))}
+                        disabled={tagSuggestionsPage <= 1}
+                      >
+                        ← Anterior
+                      </button>
+                      <span>
+                        Página {Math.min(tagSuggestionsPage, totalTagSuggestionPages)} de {totalTagSuggestionPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="button button-small"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setTagSuggestionsPage((page) => Math.min(totalTagSuggestionPages, page + 1))}
+                        disabled={tagSuggestionsPage >= totalTagSuggestionPages}
+                      >
+                        Siguiente →
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </label>

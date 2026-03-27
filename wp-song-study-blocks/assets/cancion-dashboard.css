@@ -247,7 +247,21 @@
 .wpss-tags-field {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+}
+
+.wpss-tags-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.wpss-tags-count {
+    font-weight: 600;
+    color: #374151;
 }
 
 .wpss-tags-input {
@@ -255,15 +269,11 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    min-height: 42px;
-    padding: 8px;
+    min-height: 46px;
+    padding: 10px;
     border: 1px solid #8c8f94;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #fff;
-}
-
-.wpss-tags-toolbar select {
-    width: 100%;
 }
 
 .wpss-tags-input:focus-within {
@@ -272,12 +282,13 @@
 }
 
 .wpss-tags-input input {
-    flex: 1 1 180px;
+    flex: 1 1 200px;
     min-width: 160px;
     border: 0;
     box-shadow: none;
     padding: 0;
     margin: 0;
+    background: transparent;
 }
 
 .wpss-tags-input input:focus {
@@ -285,25 +296,51 @@
     box-shadow: none;
 }
 
+.wpss-tags-add {
+    white-space: nowrap;
+}
+
+.wpss-tags-empty {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.wpss-tags-help {
+    color: #6b7280;
+}
+
 .wpss-tag-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    border: 0;
+    border: 1px solid #c5ddff;
     border-radius: 999px;
     padding: 4px 10px;
-    background: #e7f1ff;
+    background: #eef5ff;
     color: #0a4b78;
     cursor: pointer;
 }
 
 .wpss-tag-chip:hover {
-    background: #d7e8ff;
+    background: #e2efff;
 }
 
 .wpss-tag-suggestions {
     display: grid;
     gap: 8px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.wpss-tag-suggestions__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: #4b5563;
 }
 
 .wpss-tag-suggestions__list {
@@ -322,16 +359,49 @@
 }
 
 .wpss-tag-suggestion {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     border: 1px solid #c3c4c7;
     border-radius: 999px;
-    padding: 4px 10px;
-    background: #f6f7f7;
+    padding: 4px 12px;
+    background: #fff;
     cursor: pointer;
+    font-size: 13px;
+}
+
+.wpss-tag-suggestion__icon {
+    font-weight: 700;
+}
+
+.wpss-tag-suggestion__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 11px;
+}
+
+.wpss-tag-suggestion--create {
+    border-color: #2271b1;
+    background: #e7f1ff;
+    color: #0a4b78;
 }
 
 .wpss-tag-suggestion:hover {
     background: #eef2f6;
     border-color: #8c8f94;
+}
+
+.wpss-tag-suggestions__empty {
+    font-size: 12px;
+    color: #6b7280;
+    padding: 4px 0;
 }
 
 .wpss-collections-field {
