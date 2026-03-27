@@ -41,7 +41,7 @@ add_action(
 );
 
 /**
- * Determina si la página actual es descendiente de la página "musica".
+ * Determina si la página actual es hija directa de la página "musica".
  */
 function pd_is_child_of_musica_page(): bool {
     if ( ! is_page() ) {
@@ -69,9 +69,9 @@ function pd_is_child_of_musica_page(): bool {
         return false;
     }
 
-    $ancestors = get_post_ancestors( $current_page_id );
+    $parent_id = (int) wp_get_post_parent_id( $current_page_id );
 
-    return in_array( $musica_page_id, $ancestors, true );
+    return $musica_page_id === $parent_id;
 }
 
 /**
