@@ -245,9 +245,23 @@
       "area": "header"
     },
     {
+      "name": "header-musica-hijas",
+      "title": "Header música (hijas)",
+      "area": "header"
+    },
+    {
       "name": "footer",
       "title": "Footer",
       "area": "footer"
+    }
+  ],
+  "customTemplates": [
+    {
+      "name": "presskit",
+      "title": "Press Kit",
+      "postTypes": [
+        "page"
+      ]
     }
   ]
 }

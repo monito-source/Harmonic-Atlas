@@ -40,6 +40,71 @@ add_action(
     }
 );
 
+/**
+ * Determina si la página actual es descendiente de la página "musica".
+ */
+function pd_is_child_of_musica_page(): bool {
+    if ( ! is_page() ) {
+        return false;
+    }
+
+    $current_page_id = get_queried_object_id();
+
+    if ( ! $current_page_id ) {
+        return false;
+    }
+
+    static $musica_page_id = null;
+
+    if ( null === $musica_page_id ) {
+        $musica_page_id = 0;
+        $musica_page    = get_page_by_path( 'musica' );
+
+        if ( $musica_page instanceof WP_Post ) {
+            $musica_page_id = (int) $musica_page->ID;
+        }
+    }
+
+    if ( ! $musica_page_id ) {
+        return false;
+    }
+
+    $ancestors = get_post_ancestors( $current_page_id );
+
+    return in_array( $musica_page_id, $ancestors, true );
+}
+
+/**
+ * Usa una cabecera reducida para páginas hijas de "música".
+ */
+add_filter(
+    'render_block_data',
+    function ( array $parsed_block ): array {
+        if ( is_admin() || wp_is_json_request() ) {
+            return $parsed_block;
+        }
+
+        if ( ! pd_is_child_of_musica_page() ) {
+            return $parsed_block;
+        }
+
+        if ( 'core/template-part' !== ( $parsed_block['blockName'] ?? '' ) ) {
+            return $parsed_block;
+        }
+
+        $slug = $parsed_block['attrs']['slug'] ?? '';
+
+        if ( 'header' !== $slug ) {
+            return $parsed_block;
+        }
+
+        $parsed_block['attrs']['slug'] = 'header-musica-hijas';
+
+        return $parsed_block;
+    },
+    10,
+    1
+);
 
 add_action(
     'after_switch_theme',
