@@ -117,6 +117,7 @@ export default function PublicReader() {
   const [collections, setCollections] = useState([])
   const [tags, setTags] = useState([])
   const [listTab, setListTab] = useState('songs')
+  const [listReloadTick, setListReloadTick] = useState(0)
   const [colleagues, setColleagues] = useState([])
   const [colleaguesLoading, setColleaguesLoading] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -274,7 +275,7 @@ export default function PublicReader() {
     return () => {
       mounted = false
     }
-  }, [api, dispatch, filters, wpData])
+  }, [api, dispatch, filters, listReloadTick, wpData])
 
   useEffect(() => {
     loadCollections()
@@ -555,12 +556,13 @@ export default function PublicReader() {
             <p className="wpss-loading">Cargando canción…</p>
           ) : (
             <Editor
-              onShowList={() =>
+              onShowList={() => {
                 dispatch({
                   type: 'SET_STATE',
                   payload: { activeTab: 'reading', selectedSongId: null },
                 })
-              }
+                setListReloadTick((value) => value + 1)
+              }}
             />
           )}
         </section>

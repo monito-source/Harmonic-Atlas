@@ -23,6 +23,7 @@ import MidiClipList from './MidiClipList.jsx'
 const AUTOSAVE_DELAY = 800
 const MOBILE_EDITOR_PREVIEW_QUERY = '(max-width: 840px)'
 const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
+const TAG_SUGGESTIONS_PAGE_SIZE = 10
 
 const getNearestPreviewScaleIndex = (value) => {
   if (!Number.isFinite(value)) {
@@ -145,6 +146,8 @@ export default function Editor({ onShowList }) {
   const [expandedSectionId, setExpandedSectionId] = useState(null)
   const [verseFocusRequest, setVerseFocusRequest] = useState(null)
   const [tagInputValue, setTagInputValue] = useState('')
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false)
+  const [tagSuggestionsPage, setTagSuggestionsPage] = useState(1)
   const editingSongRef = useRef(state.editingSong)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
@@ -186,6 +189,8 @@ export default function Editor({ onShowList }) {
 
   useEffect(() => {
     setTagInputValue('')
+    setTagSuggestionsPage(1)
+    setShowTagSuggestions(false)
   }, [editingSong.id])
 
   useEffect(() => {
@@ -335,8 +340,17 @@ export default function Editor({ onShowList }) {
       if (!key || selectedTagKeys.has(key)) return false
       if (!query) return true
       return String(tag?.name || '').toLowerCase().includes(query)
-    }).slice(0, 8)
+    })
   }, [availableTags, selectedTagKeys, tagInputValue])
+  const totalTagSuggestionPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredTagSuggestions.length / TAG_SUGGESTIONS_PAGE_SIZE)),
+    [filteredTagSuggestions.length],
+  )
+  const paginatedTagSuggestions = useMemo(() => {
+    const currentPage = Math.min(tagSuggestionsPage, totalTagSuggestionPages)
+    const start = (currentPage - 1) * TAG_SUGGESTIONS_PAGE_SIZE
+    return filteredTagSuggestions.slice(start, start + TAG_SUGGESTIONS_PAGE_SIZE)
+  }, [filteredTagSuggestions, tagSuggestionsPage, totalTagSuggestionPages])
 
   const buildTagOption = useCallback((value) => {
     const normalizedValue = String(value || '').trim().replace(/\s+/g, ' ')
@@ -394,6 +408,11 @@ export default function Editor({ onShowList }) {
 
   const handleTagInputChange = (event) => {
     setTagInputValue(event.target.value || '')
+    setTagSuggestionsPage(1)
+    setShowTagSuggestions(true)
+  }
+  const handleTagInputFocus = () => {
+    setShowTagSuggestions(true)
   }
 
   const handleTagInputKeyDown = (event) => {
@@ -413,6 +432,9 @@ export default function Editor({ onShowList }) {
   }
 
   const handleTagInputBlur = () => {
+    window.setTimeout(() => {
+      setShowTagSuggestions(false)
+    }, 120)
     if (commitTags(tagInputValue)) {
       setTagInputValue('')
       return
@@ -425,6 +447,7 @@ export default function Editor({ onShowList }) {
   const handleSelectSuggestedTag = (tag) => {
     if (commitTags(getTagLabel(tag))) {
       setTagInputValue('')
+      setTagSuggestionsPage(1)
     }
   }
 
@@ -1948,25 +1971,50 @@ export default function Editor({ onShowList }) {
                   value={tagInputValue}
                   onChange={handleTagInputChange}
                   onKeyDown={handleTagInputKeyDown}
+                  onFocus={handleTagInputFocus}
                   onBlur={handleTagInputBlur}
                   placeholder="Escribí una tag nueva y confirmá con Enter o coma"
-                  list="wpss-song-tags"
                 />
               </div>
               <small>Mostramos tags ya asignadas. Podés quitar, elegir una existente o crear una nueva.</small>
-              {filteredTagSuggestions.length ? (
+              {showTagSuggestions && filteredTagSuggestions.length ? (
                 <div className="wpss-tag-suggestions" role="listbox" aria-label="Tags sugeridas">
-                  {filteredTagSuggestions.map((tag) => (
+                  <div className="wpss-tag-suggestions__list">
+                    {paginatedTagSuggestions.map((tag) => (
+                      <button
+                        key={tag.id || tag.slug || tag.name}
+                        type="button"
+                        className="wpss-tag-suggestion"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleSelectSuggestedTag(tag)}
+                      >
+                        {getTagLabel(tag)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="wpss-tag-suggestions__pagination">
                     <button
-                      key={tag.id || tag.slug || tag.name}
                       type="button"
-                      className="wpss-tag-suggestion"
+                      className="button button-small"
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => handleSelectSuggestedTag(tag)}
+                      onClick={() => setTagSuggestionsPage((page) => Math.max(1, page - 1))}
+                      disabled={tagSuggestionsPage <= 1}
                     >
-                      {getTagLabel(tag)}
+                      ← Anterior
                     </button>
-                  ))}
+                    <span>
+                      Página {Math.min(tagSuggestionsPage, totalTagSuggestionPages)} de {totalTagSuggestionPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="button button-small"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setTagSuggestionsPage((page) => Math.min(totalTagSuggestionPages, page + 1))}
+                      disabled={tagSuggestionsPage >= totalTagSuggestionPages}
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </label>

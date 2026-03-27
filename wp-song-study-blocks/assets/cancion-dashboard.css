@@ -302,9 +302,23 @@
 }
 
 .wpss-tag-suggestions {
+    display: grid;
+    gap: 8px;
+}
+
+.wpss-tag-suggestions__list {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.wpss-tag-suggestions__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: #4b5563;
 }
 
 .wpss-tag-suggestion {
@@ -3533,6 +3547,16 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     overflow: auto;
 }
 
+.wpss-public-reader__reading {
+    max-height: min(100dvh, 100vh);
+    overflow: hidden;
+}
+
+.wpss-public-reader__reading .wpss-panel {
+    max-height: inherit;
+    overflow-y: auto;
+}
+
 .wpss-public-reader__tabs {
     margin-bottom: 12px;
 }
@@ -3777,6 +3801,10 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 
     .wpss-public-reader__song-actions {
         margin-left: 0;
+    }
+
+    .wpss-public-reader__reading {
+        max-height: 100dvh;
     }
 }
 
