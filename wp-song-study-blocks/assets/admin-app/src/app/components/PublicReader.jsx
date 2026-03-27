@@ -285,12 +285,15 @@ export default function PublicReader() {
     api
       .listSongTags()
       .then((response) => {
-        setTags(Array.isArray(response.data) ? response.data : [])
+        const items = Array.isArray(response.data) ? response.data : []
+        setTags(items)
+        dispatch({ type: 'SET_STATE', payload: { songTags: items } })
       })
       .catch(() => {
         setTags([])
+        dispatch({ type: 'SET_STATE', payload: { songTags: [] } })
       })
-  }, [api])
+  }, [api, dispatch])
 
   useEffect(() => {
     if (!canViewSongbook) return undefined
