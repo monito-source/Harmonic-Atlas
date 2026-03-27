@@ -73,10 +73,50 @@
           "name": "XL"
         }
       ],
-      "lineHeight": true
+      "lineHeight": true,
+      "fluid": true
     },
     "spacing": {
-      "units": ["px", "rem", "em", "%", "vw", "vh"]
+      "units": [
+        "px",
+        "rem",
+        "em",
+        "%",
+        "vw",
+        "vh"
+      ],
+      "spacingSizes": [
+        {
+          "slug": "20",
+          "name": "XS",
+          "size": "0.5rem"
+        },
+        {
+          "slug": "30",
+          "name": "S",
+          "size": "0.75rem"
+        },
+        {
+          "slug": "40",
+          "name": "M",
+          "size": "1rem"
+        },
+        {
+          "slug": "50",
+          "name": "L",
+          "size": "1.5rem"
+        },
+        {
+          "slug": "60",
+          "name": "XL",
+          "size": "2.25rem"
+        },
+        {
+          "slug": "70",
+          "name": "2XL",
+          "size": "3rem"
+        }
+      ]
     },
     "blocks": {
       "core/button": {
@@ -98,6 +138,21 @@
           "fontSize": "1.9rem",
           "fontWeight": "700"
         }
+      }
+    },
+    "custom": {
+      "layout": {
+        "sectionPadding": "clamp(2rem, 5vw, 3rem)",
+        "contentPadding": "clamp(0.95rem, 4vw, 2.5rem)"
+      },
+      "radius": {
+        "card": "24px",
+        "hero": "28px"
+      },
+      "shadow": {
+        "header": "0 18px 40px rgba(15, 23, 42, 0.16)",
+        "card": "0 18px 45px rgba(30, 58, 138, 0.12)",
+        "hero": "0 18px 45px rgba(15, 23, 42, 0.18)"
       }
     }
   },
@@ -148,19 +203,39 @@
     "blocks": {
       "core/post-content": {
         "spacing": {
-          "blockGap": "1.2rem"
+          "blockGap": "var:preset|spacing|50"
         }
       },
       "core/group": {
         "spacing": {
-          "blockGap": "1.2rem"
+          "blockGap": "var:preset|spacing|50",
+          "padding": {
+            "left": "var(--wp--custom--layout--content-padding)",
+            "right": "var(--wp--custom--layout--content-padding)"
+          }
         }
       },
       "core/query-title": {
         "typography": {
           "fontSize": "2rem"
         }
+      },
+      "core/button": {
+        "border": {
+          "radius": "var(--wp--preset--spacing--20)"
+        },
+        "spacing": {
+          "padding": {
+            "top": "var:preset|spacing|30",
+            "right": "var:preset|spacing|40",
+            "bottom": "var:preset|spacing|30",
+            "left": "var:preset|spacing|40"
+          }
+        }
       }
+    },
+    "spacing": {
+      "blockGap": "var:preset|spacing|50"
     }
   },
   "templateParts": [

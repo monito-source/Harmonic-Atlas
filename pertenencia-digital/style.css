@@ -13,6 +13,28 @@ Tags: full-site-editing, block-patterns, block-styles, editor-style
 
 @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
 
+
+:root {
+  --pd-color-bg: var(--wp--preset--color--fondo, #ecf0f1);
+  --pd-color-text: var(--wp--preset--color--texto, #2c3e50);
+  --pd-color-primary: var(--wp--preset--color--azul-principal, #1e3a8a);
+  --pd-color-primary-hover: var(--wp--preset--color--azul-hover, #1e40af);
+  --pd-color-heading: var(--wp--preset--color--oscuro, #1f2937);
+  --pd-color-white: var(--wp--preset--color--blanco, #ffffff);
+  --pd-color-header-overlay: color-mix(in srgb, var(--pd-color-heading) 72%, transparent);
+  --pd-color-surface: var(--wp--preset--color--blanco, #ffffff);
+  --pd-color-header-link-hover: #8fd3ff;
+  --pd-space-content-inline: clamp(0.95rem, 4vw, 2.5rem);
+  --pd-space-section: clamp(2rem, 5vw, 3rem);
+  --pd-radius-md: 10px;
+  --pd-radius-lg: 24px;
+  --pd-radius-xl: 28px;
+  --pd-shadow-header: 0 18px 40px rgba(15, 23, 42, 0.16);
+  --pd-shadow-card: 0 18px 45px rgba(30, 58, 138, 0.12);
+  --pd-shadow-hero: 0 18px 45px rgba(15, 23, 42, 0.18);
+  --pd-button-min-width: clamp(12rem, 42vw, 14rem);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -29,8 +51,8 @@ body {
   font-family: 'Libre Baskerville', serif;
   font-size: 1.05rem;
   line-height: 1.7;
-  color: #2c3e50;
-  background-color: #ecf0f1;
+  color: var(--pd-color-text);
+  background-color: var(--pd-color-bg);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -64,7 +86,7 @@ button,
 input[type='submit'],
 input[type='button'],
 input[type='reset'] {
-  border-radius: 10px;
+  border-radius: var(--pd-radius-md);
 }
 
 .is-style-outline > .wp-block-button__link,
@@ -74,8 +96,8 @@ input[type='reset'] {
 
 .wp-block-navigation__responsive-container.is-menu-open {
   padding: 2rem;
-  background: #2c3e50;
-  color: #ecf0f1;
+  background: var(--pd-color-text);
+  color: var(--pd-color-bg);
 }
 
 .pd-header-musica-tecnologia__nav {
@@ -99,7 +121,7 @@ input[type='reset'] {
 
 .pd-header-musica-tecnologia__nav .wp-block-navigation-item__content:hover,
 .pd-header-musica-tecnologia__nav .wp-block-navigation-item__content:focus-visible {
-  color: #8fd3ff;
+  color: var(--pd-color-header-link-hover);
 }
 
 .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content {
@@ -273,8 +295,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   }
 
   body main.wp-block-group {
-    padding-left: clamp(0.9rem, 4vw, 1.25rem) !important;
-    padding-right: clamp(0.9rem, 4vw, 1.25rem) !important;
+    padding-left: var(--pd-space-content-inline) !important;
+    padding-right: var(--pd-space-content-inline) !important;
   }
 
   body .wpss-public-reader .wpss-reading,
@@ -304,13 +326,13 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 .pd-header-musica-tecnologia {
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--pd-shadow-header);
 }
 
 .pd-header-musica-tecnologia__top,
 .pd-header-musica-tecnologia__actions,
 .pd-home__hero {
-  gap: 1.5rem;
+  gap: var(--wp--preset--spacing--50, 1.5rem);
 }
 
 .pd-header-musica-tecnologia__top {
@@ -350,7 +372,7 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
 .pd-header-musica-tecnologia__button .wp-block-button__link,
 .pd-home__cta .wp-block-button__link {
-  min-width: 220px;
+  min-width: var(--pd-button-min-width);
   text-align: center;
 }
 
@@ -365,10 +387,10 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 .pd-home__cta-panel {
-  padding: clamp(1.5rem, 3vw, 2.25rem);
-  background: #ffffff;
-  border-radius: 24px;
-  box-shadow: 0 18px 45px rgba(30, 58, 138, 0.12);
+  padding: var(--wp--preset--spacing--60, clamp(1.5rem, 3vw, 2.25rem));
+  background: var(--pd-color-surface);
+  border-radius: var(--pd-radius-lg);
+  box-shadow: var(--pd-shadow-card);
 }
 
 .pd-home__cta-panel .wp-block-buttons {
@@ -381,7 +403,7 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
 .pd-home__cta .wp-block-button__link {
   width: 100%;
-  padding: 1rem 1.4rem;
+  padding: var(--wp--preset--spacing--40, 1rem) var(--wp--preset--spacing--50, 1.5rem);
   font-size: 1.15rem;
 }
 
@@ -394,8 +416,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 28px;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+  border-radius: var(--pd-radius-xl);
+  box-shadow: var(--pd-shadow-hero);
 }
 
 @media (max-width: 781px) {
