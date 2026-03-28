@@ -1078,6 +1078,7 @@ export default function VersesPanel({
                         const chordValue = getChordPreviewValue(segment?.acorde)
                         const segmentChordLabel = (chordValue ? String(chordValue).trim() : '') || '?'
                         const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
+                        const chordInputSize = Math.max(2, String(segment?.acorde || '').length + 1)
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
 
@@ -1159,6 +1160,7 @@ export default function VersesPanel({
                                 <span>Acorde</span>
                                 <input
                                   type="text"
+                                  size={chordInputSize}
                                   value={segment.acorde || ''}
                                   onChange={(event) =>
                                     handleSegmentChange(verseIndex, segmentIndex, 'acorde', event.target.value)
