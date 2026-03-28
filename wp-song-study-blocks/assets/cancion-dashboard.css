@@ -3655,7 +3655,9 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 
 .wpss-public-reader__reading {
     max-height: min(100dvh, 100vh);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: visible;
+    -webkit-overflow-scrolling: touch;
 }
 
 .wpss-public-reader__reading .wpss-panel {
