@@ -260,6 +260,59 @@ body .wpss-public-reader {
   overflow: visible;
 }
 
+.pd-colaboradores-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.pd-colaborador-card {
+  background: var(--pd-color-surface);
+  border-radius: var(--pd-radius-lg);
+  padding: 1.4rem;
+  box-shadow: var(--pd-shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pd-colaborador-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.pd-colaborador-card__avatar img {
+  border-radius: 16px;
+}
+
+.pd-colaborador-card__name {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.pd-colaborador-card__bio {
+  margin: 0;
+}
+
+.pd-colaborador-card__link {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.pd-proyecto-galeria {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.pd-proyecto-galeria__item {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--pd-shadow-card);
+}
+
 body .wpss-public-reader__layout {
   max-width: none;
   min-height: calc(100vh - 120px);
