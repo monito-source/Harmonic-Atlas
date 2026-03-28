@@ -3560,6 +3560,19 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     width: 100%;
 }
 
+.wpss-public-editor .wpss-segment__summary {
+    width: max-content;
+    min-width: 0;
+    max-width: none;
+}
+
+.wpss-public-editor .wpss-segment__summary span {
+    max-width: none;
+    overflow: visible;
+    text-overflow: initial;
+    white-space: nowrap;
+}
+
 .wpss-public-editor .wpss-segment.is-editing {
     min-width: 0;
     width: max-content;
@@ -3572,6 +3585,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 
 .wpss-public-editor .wpss-segment__fields input,
 .wpss-public-editor .wpss-segment__text {
+    min-width: 0;
     width: max-content;
 }
 
