@@ -262,6 +262,20 @@
       "postTypes": [
         "page"
       ]
+    },
+    {
+      "name": "proyectos-musica",
+      "title": "Proyectos (Música)",
+      "postTypes": [
+        "page"
+      ]
+    },
+    {
+      "name": "proyectos-tecnologias",
+      "title": "Proyectos (Tecnologías y web)",
+      "postTypes": [
+        "page"
+      ]
     }
   ]
 }

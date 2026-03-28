@@ -4,14 +4,14 @@
   <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1.2rem"}},"layout":{"type":"constrained"}} -->
   <div class="wp-block-group alignwide">
     <!-- wp:paragraph {"style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em","fontSize":"0.85rem"},"color":{"text":"#1e3a8a"}}} -->
-    <p style="color:#1e3a8a;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase">Proyectos</p>
+    <p style="color:#1e3a8a;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase">Tecnologías y web · Proyectos</p>
     <!-- /wp:paragraph -->
     <!-- wp:post-title {"level":1,"fontSize":"x-large"} /-->
     <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:query {"query":{"perPage":9,"postType":"proyecto","order":"desc","orderBy":"date"},"displayLayout":{"type":"flex","columns":3}} -->
+  <!-- wp:query {"query":{"perPage":9,"postType":"proyecto","order":"desc","orderBy":"date","taxQuery":{"area_proyecto":["tecnologias-web"]}},"displayLayout":{"type":"flex","columns":3}} -->
   <div class="wp-block-query pd-proyectos-grid">
     <!-- wp:post-template -->
     <!-- wp:group {"style":{"spacing":{"blockGap":"0.9rem","padding":{"top":"1.2rem","right":"1.2rem","bottom":"1.4rem","left":"1.2rem"}},"border":{"radius":"16px"},"color":{"background":"#ffffff"},"shadow":"var(--pd-shadow-card)"},"layout":{"type":"constrained"}} -->
@@ -24,7 +24,7 @@
     <!-- /wp:post-template -->
     <!-- wp:query-no-results -->
     <!-- wp:paragraph -->
-    <p>No hay proyectos publicados todavía.</p>
+    <p>No hay proyectos de tecnologías y web publicados todavía.</p>
     <!-- /wp:paragraph -->
     <!-- /wp:query-no-results -->
   </div>
