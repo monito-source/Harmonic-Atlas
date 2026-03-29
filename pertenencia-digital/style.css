@@ -497,6 +497,27 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   width: 100%;
 }
 
+.pd-header-musica-hijas .pd-header-musica-tecnologia__top {
+  flex-wrap: wrap;
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__branding {
+  min-width: 0;
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__nav-shell {
+  flex: 1 1 16rem;
+  min-width: min(100%, 16rem);
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__nav {
+  width: 100%;
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open {
+  margin-inline-start: auto;
+}
+
 .pd-header-musica-tecnologia__button .wp-block-button__link,
 .pd-home__cta .wp-block-button__link {
   min-width: var(--pd-button-min-width);
@@ -560,5 +581,26 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   .pd-home__cta .wp-block-button__link,
   .pd-header-musica-tecnologia__button .wp-block-button__link {
     width: 100%;
+  }
+}
+
+@media (max-width: 960px) {
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__branding {
+    width: 100%;
+  }
+
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__nav-shell {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open {
+    margin-inline: auto;
   }
 }
