@@ -807,6 +807,39 @@ export default function PublicReader() {
                       transcriptionStatus === 'verificada'
                         ? `★ ${transcriptionLabel}`
                         : transcriptionLabel
+                    const hasSongActions =
+                      canManageSong(song) || canReversionSong(song) || canDeleteSong(song)
+                    const renderSongActionButtons = () => (
+                      <>
+                        {canManageSong(song) ? (
+                          <button
+                            type="button"
+                            className="button button-small"
+                            onClick={() => handleEditSong(song.id)}
+                          >
+                            {wpData?.strings?.editorView || 'Editar'}
+                          </button>
+                        ) : null}
+                        {canReversionSong(song) ? (
+                          <button
+                            type="button"
+                            className="button button-small button-secondary"
+                            onClick={() => handleReversionSong(song)}
+                          >
+                            Reversionar
+                          </button>
+                        ) : null}
+                        {canDeleteSong(song) ? (
+                          <button
+                            type="button"
+                            className="button button-small button-danger"
+                            onClick={() => handleDeleteSong(song)}
+                          >
+                            Eliminar
+                          </button>
+                        ) : null}
+                      </>
+                    )
 
                     return (
                       <li key={song.id}>
@@ -863,35 +896,21 @@ export default function PublicReader() {
                               </span>
                             ) : null}
                           </button>
-                          <div className="wpss-public-reader__song-actions">
-                            {canManageSong(song) ? (
-                              <button
-                                type="button"
-                                className="button button-small"
-                                onClick={() => handleEditSong(song.id)}
-                              >
-                                {wpData?.strings?.editorView || 'Editar'}
-                              </button>
-                            ) : null}
-                            {canReversionSong(song) ? (
-                              <button
-                                type="button"
-                                className="button button-small button-secondary"
-                                onClick={() => handleReversionSong(song)}
-                              >
-                                Reversionar
-                              </button>
-                            ) : null}
-                            {canDeleteSong(song) ? (
-                              <button
-                                type="button"
-                                className="button button-small button-danger"
-                                onClick={() => handleDeleteSong(song)}
-                              >
-                                Eliminar
-                              </button>
-                            ) : null}
-                          </div>
+                          {hasSongActions ? (
+                            <>
+                              <div className="wpss-public-reader__song-actions">
+                                {renderSongActionButtons()}
+                              </div>
+                              <details className="wpss-action-menu wpss-public-reader__song-actions-menu">
+                                <summary aria-label={`Acciones para ${song.titulo}`}>
+                                  <span aria-hidden="true">⋯</span>
+                                </summary>
+                                <div className="wpss-public-reader__song-actions-menu-panel">
+                                  {renderSongActionButtons()}
+                                </div>
+                              </details>
+                            </>
+                          ) : null}
                           {canViewSongbook ? (
                             <div className="wpss-public-reader__song-status-controls">
                               {isOwnSong(song) ? (

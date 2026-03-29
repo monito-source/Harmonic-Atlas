@@ -21,11 +21,21 @@ import CommentEditor from './CommentEditor.jsx'
 import MidiClipList from './MidiClipList.jsx'
 
 const AUTOSAVE_DELAY = 800
+const UNDO_HISTORY_LIMIT = 10
 const MOBILE_EDITOR_PREVIEW_QUERY = '(max-width: 840px)'
 const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
 const TAG_SUGGESTIONS_PAGE_SIZE = 10
 
 const normalizeTagValue = (value) => String(value || '').trim().replace(/\s+/g, ' ')
+
+const cloneSongSnapshot = (song) => {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(song)
+  }
+  return JSON.parse(JSON.stringify(song))
+}
+
+const serializeSongSnapshot = (song) => JSON.stringify(song ?? null)
 
 const getNearestPreviewScaleIndex = (value) => {
   if (!Number.isFinite(value)) {
@@ -165,16 +175,20 @@ export default function Editor({ onShowList }) {
   const [showTagSuggestions, setShowTagSuggestions] = useState(false)
   const [tagSuggestionsPage, setTagSuggestionsPage] = useState(1)
   const editingSongRef = useRef(state.editingSong)
+  const editorRef = useRef(null)
   const layoutRef = useRef(null)
   const sidebarRef = useRef(null)
   const previewScrollRef = useRef(null)
   const previewSectionRefs = useRef(new Map())
   const autosaveRef = useRef(null)
+  const undoHistoryRef = useRef([])
   const selectionRef = useRef({ verse: null, segment: null, start: null, end: null, element: null })
   const lastSilentErrorRef = useRef(null)
+  const editingSongSignatureRef = useRef(serializeSongSnapshot(state.editingSong))
   const previewScaleRef = useRef(previewScale)
   const previewPinchRef = useRef({ active: false, startDistance: 0, startScale: 100 })
   const verseFocusRequestIdRef = useRef(0)
+  const loadedSongKeyRef = useRef(state.editingSong?.id ?? '__new__')
   const currentUserId = wpData?.currentUserId || 0
   const preferCompactMidiRows = !!wpData?.isPublicReader
   const midiRangePresets = Array.isArray(wpData?.midiRanges) ? wpData.midiRanges : []
@@ -196,7 +210,16 @@ export default function Editor({ onShowList }) {
   )
 
   useEffect(() => {
+    const nextSongKey = state.editingSong?.id ?? '__new__'
+    const shouldResetUndoHistory = nextSongKey !== loadedSongKeyRef.current
+
     setEditingSong(state.editingSong)
+    editingSongRef.current = state.editingSong
+    editingSongSignatureRef.current = serializeSongSnapshot(state.editingSong)
+    if (shouldResetUndoHistory) {
+      undoHistoryRef.current = []
+    }
+    loadedSongKeyRef.current = nextSongKey
   }, [state.editingSong])
 
   useEffect(() => {
@@ -313,8 +336,23 @@ export default function Editor({ onShowList }) {
   const updateSong = (updater) => {
     setEditingSong((prev) => {
       const next = typeof updater === 'function' ? updater({ ...prev }) : updater
-      editingSongRef.current = next
-      return next
+      const nextSnapshot = cloneSongSnapshot(next)
+      const nextSignature = serializeSongSnapshot(nextSnapshot)
+
+      if (nextSignature === editingSongSignatureRef.current) {
+        editingSongRef.current = prev
+        return prev
+      }
+
+      const history = undoHistoryRef.current
+      history.push(cloneSongSnapshot(prev))
+      if (history.length > UNDO_HISTORY_LIMIT) {
+        history.splice(0, history.length - UNDO_HISTORY_LIMIT)
+      }
+
+      editingSongRef.current = nextSnapshot
+      editingSongSignatureRef.current = nextSignature
+      return nextSnapshot
     })
   }
 
@@ -684,6 +722,60 @@ export default function Editor({ onShowList }) {
       saveSong(true)
     }, AUTOSAVE_DELAY)
   }
+
+  const undoLastEdit = () => {
+    const previousSnapshot = undoHistoryRef.current.pop()
+    if (!previousSnapshot) {
+      return false
+    }
+
+    if (autosaveRef.current) {
+      clearTimeout(autosaveRef.current)
+      autosaveRef.current = null
+    }
+
+    const restoredSnapshot = cloneSongSnapshot(previousSnapshot)
+    const restoredSignature = serializeSongSnapshot(restoredSnapshot)
+
+    setEditingSong(restoredSnapshot)
+    editingSongRef.current = restoredSnapshot
+    editingSongSignatureRef.current = restoredSignature
+    scheduleAutosave()
+
+    return true
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+
+    const handleUndoKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+        return
+      }
+
+      if (String(event.key || '').toLowerCase() !== 'z') {
+        return
+      }
+
+      const target = event.target
+      if (editorRef.current && target instanceof Node && !editorRef.current.contains(target)) {
+        return
+      }
+
+      if (!undoHistoryRef.current.length) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      undoLastEdit()
+    }
+
+    window.addEventListener('keydown', handleUndoKeyDown, true)
+    return () => window.removeEventListener('keydown', handleUndoKeyDown, true)
+  })
 
   const saveSong = (silent = false) => {
     const currentSong = editingSongRef.current
@@ -1874,7 +1966,7 @@ export default function Editor({ onShowList }) {
   }
 
   return (
-    <section className="wpss-panel wpss-panel--editor">
+    <section ref={editorRef} className="wpss-panel wpss-panel--editor">
       <header className="wpss-panel__header">
         <div>
           <h2>{editingSong.id ? editingSong.titulo || 'Canción' : wpData?.strings?.newSong || 'Nueva canción'}</h2>

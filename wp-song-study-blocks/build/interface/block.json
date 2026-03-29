@@ -13,6 +13,46 @@
     "compactMode": {
       "type": "boolean",
       "default": false
+    },
+    "panelBackgroundColor": {
+      "type": "string",
+      "default": "#ffffff"
+    },
+    "panelBackgroundOpacity": {
+      "type": "number",
+      "default": 80
+    },
+    "textColor": {
+      "type": "string",
+      "default": "#4b5563"
+    },
+    "headingColor": {
+      "type": "string",
+      "default": "#1f2937"
+    },
+    "buttonColor": {
+      "type": "string",
+      "default": "#1e3a8a"
+    },
+    "buttonTextColor": {
+      "type": "string",
+      "default": "#ffffff"
+    },
+    "buttonEmphasisColor": {
+      "type": "string",
+      "default": "#e7ecf6"
+    },
+    "buttonEmphasisTextColor": {
+      "type": "string",
+      "default": "#1e3a8a"
+    },
+    "buttonDangerColor": {
+      "type": "string",
+      "default": "#7f1d1d"
+    },
+    "buttonDangerTextColor": {
+      "type": "string",
+      "default": "#ffffff"
     }
   },
   "supports": {

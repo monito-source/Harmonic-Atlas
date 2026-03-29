@@ -2149,6 +2149,21 @@
     gap: 8px;
 }
 
+.wpss-segment__fields > label {
+    justify-self: start;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.wpss-segment__fields > label input[type="text"] {
+    min-width: 3ch;
+    width: auto;
+    inline-size: max-content;
+    max-width: 100%;
+    display: inline-block;
+    field-sizing: content;
+}
+
 .wpss-segment__fields textarea {
     min-height: 60px;
 }
@@ -3648,8 +3663,130 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     border-color: #991b1b;
 }
 
+.wpssb-interface {
+    --wpssb-panel-bg: rgba(255, 255, 255, 0.8);
+    --wpssb-text-color: #4b5563;
+    --wpssb-heading-color: #1f2937;
+    --wpssb-button-bg: #1e3a8a;
+    --wpssb-button-text: #ffffff;
+    --wpssb-button-emphasis-bg: #e7ecf6;
+    --wpssb-button-emphasis-text: #1e3a8a;
+    --wpssb-button-danger-bg: #7f1d1d;
+    --wpssb-button-danger-text: #ffffff;
+}
+
+.wpssb-interface .wpss-public-reader,
+.wpssb-interface .wpss-public-reader .wpss-panel {
+    color: var(--wpssb-text-color);
+}
+
+.wpssb-interface .wpss-public-reader .wpss-panel,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__assign,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song-actions-menu-panel {
+    background: var(--wpssb-panel-bg);
+}
+
+.wpssb-interface .wpss-public-reader h1,
+.wpssb-interface .wpss-public-reader h2,
+.wpssb-interface .wpss-public-reader h3,
+.wpssb-interface .wpss-public-reader h4,
+.wpssb-interface .wpss-public-reader h5,
+.wpssb-interface .wpss-public-reader h6,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song strong {
+    color: var(--wpssb-heading-color);
+}
+
+.wpssb-interface .wpss-public-reader .wpss-panel__meta,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song span,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song-meta,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song-status-controls label span,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__assign-row label span,
+.wpssb-interface .wpss-public-reader .wpss-filters label span,
+.wpssb-interface .wpss-public-reader .wpss-reading__meta,
+.wpssb-interface .wpss-public-reader .wpss-reading__notes,
+.wpssb-interface .wpss-public-reader .wpss-reading__transpose-origin,
+.wpssb-interface .wpss-public-reader .wpss-reading__group-label,
+.wpssb-interface .wpss-public-reader .wpss-reading__status-field span,
+.wpssb-interface .wpss-public-reader .wpss-reading__status-label,
+.wpssb-interface .wpss-public-reader .wpss-reading__repeat,
+.wpssb-interface .wpss-public-reader .wpss-reading__section-toggle {
+    color: var(--wpssb-text-color);
+}
+
+.wpssb-interface .wpss-public-reader .wpss-reading__meta-block h3,
+.wpssb-interface .wpss-public-reader .wpss-section-title {
+    color: var(--wpssb-heading-color);
+}
+
+.wpssb-interface .wpss-public-reader .button.button-primary,
+.wpssb-interface .wpss-public-reader .button:not(.button-secondary):not(.button-link):not(.button-danger) {
+    background: var(--wpssb-button-bg);
+    border-color: var(--wpssb-button-bg);
+    color: var(--wpssb-button-text);
+    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+}
+
+.wpssb-interface .wpss-public-reader .button.button-secondary,
+.wpssb-interface .wpss-public-reader .button.button-link,
+.wpssb-interface .wpss-public-reader .wpss-public-reader__song-actions-menu summary {
+    background: var(--wpssb-button-emphasis-bg);
+    border-color: var(--wpssb-button-emphasis-bg);
+    color: var(--wpssb-button-emphasis-text);
+    box-shadow: none;
+}
+
+.wpssb-interface .wpss-public-reader .button.button-danger {
+    background: var(--wpssb-button-danger-bg);
+    border-color: var(--wpssb-button-danger-bg);
+    color: var(--wpssb-button-danger-text);
+    box-shadow: none;
+}
+
+.wpssb-interface .wpss-public-reader .button:not(.button-danger):focus {
+    outline: 2px solid var(--wpssb-button-bg);
+    outline-offset: 2px;
+}
+
+.wpssb-interface .wpss-public-reader .button.button-danger:focus {
+    outline: 2px solid var(--wpssb-button-danger-bg);
+    outline-offset: 2px;
+}
+
+.wpssb-interface .wpss-public-reader .button:not(.button-danger):hover {
+    opacity: 0.96;
+}
+
+.wpssb-interface .wpss-public-reader .wpss-tab-nav .button.is-active {
+    box-shadow: inset 0 0 0 2px var(--wpssb-button-bg);
+}
+
+.wpssb-interface .wpss-public-reader .wpss-reading__section-pill.is-active {
+    box-shadow: inset 0 0 0 2px var(--wpssb-button-bg);
+    border-color: var(--wpssb-button-emphasis-bg);
+    background: var(--wpssb-button-emphasis-bg);
+    color: var(--wpssb-button-emphasis-text);
+}
+
 .wpss-public-reader__list {
-    max-height: 80vh;
+    --wpss-public-list-height: min(calc(100dvh - 2rem), calc(100vh - 2rem));
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: var(--wpss-public-list-height);
+    max-height: var(--wpss-public-list-height);
+    min-height: 24rem;
+    overflow: hidden;
+}
+
+.wpss-public-reader__list > .wpss-panel__header,
+.wpss-public-reader__list > .wpss-public-reader__tabs,
+.wpss-public-reader__list > .wpss-filters {
+    flex: 0 0 auto;
+}
+
+.wpss-public-reader__list > .wpss-public-reader__assign,
+.wpss-public-reader__list > .wpss-collections {
+    min-height: 0;
     overflow: auto;
 }
 
@@ -3658,6 +3795,8 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     overflow-y: auto;
     overflow-x: visible;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
 }
 
 .wpss-public-reader__reading .wpss-panel {
@@ -3719,7 +3858,22 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 8px;
+    gap: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    align-content: start;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+}
+
+.wpss-public-reader__songs > li {
+    display: flex;
+    min-width: 0;
 }
 
 .wpss-public-reader__song {
@@ -3747,16 +3901,18 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 .wpss-public-reader__song-row {
     --wpss-song-accent: #6b7280;
     --wpss-song-bg: #f3f4f6;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: flex-start;
-    gap: 8px;
-    flex-wrap: wrap;
+    gap: 10px 12px;
     border: 1px solid #d8dde5;
     border-left: 6px solid var(--wpss-song-accent);
     border-radius: 10px;
     padding: 10px 12px;
     background: var(--wpss-song-bg);
     transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    width: 100%;
+    height: 100%;
 }
 
 .wpss-public-reader__song-row:hover {
@@ -3795,6 +3951,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 
 .wpss-public-reader__song-row .wpss-public-reader__song {
     flex: 1 1 240px;
+    min-width: 0;
 }
 
 .wpss-public-reader__song.is-active {
@@ -3853,10 +4010,74 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 }
 
 .wpss-public-reader__song-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-left: auto;
+    display: grid;
+    grid-auto-flow: row;
+    gap: 8px;
+    margin-left: 0;
+    justify-items: stretch;
+    align-self: start;
+    min-width: clamp(8.5rem, 12vw, 10rem);
+}
+
+.wpss-public-reader__song-actions .button {
+    width: 100%;
+    justify-content: center;
+}
+
+.wpss-public-reader__song-actions-menu {
+    display: none;
+    position: relative;
+    align-self: start;
+}
+
+.wpss-public-reader__song-actions-menu summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid #d6dff2;
+    border-radius: 999px;
+    background: #fff;
+    color: #1e3a8a;
+    box-shadow: 0 8px 18px rgba(30, 58, 138, 0.14);
+    cursor: pointer;
+}
+
+.wpss-public-reader__song-actions-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.wpss-public-reader__song-actions-menu[open] summary {
+    background: #e7ecf6;
+}
+
+.wpss-public-reader__song-actions-menu summary span {
+    font-size: 1.4rem;
+    line-height: 1;
+    transform: translateY(-1px);
+}
+
+.wpss-public-reader__song-actions-menu-panel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 12;
+    display: grid;
+    gap: 0.5rem;
+    min-width: 10rem;
+    padding: 0.75rem;
+    border: 1px solid #d8dde5;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(10px);
+}
+
+.wpss-public-reader__song-actions-menu-panel .button {
+    width: 100%;
+    justify-content: center;
 }
 
 .wpss-public-reader__song-status-controls {
@@ -3867,6 +4088,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     margin-top: 4px;
     padding-top: 8px;
     border-top: 1px dashed rgba(100, 116, 139, 0.35);
+    grid-column: 1 / -1;
 }
 
 .wpss-public-reader__song-status-controls label {
@@ -3889,10 +4111,25 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
 @media (max-width: 1024px) {
     .wpss-public-reader__layout {
         grid-template-columns: 1fr;
+        min-height: 0;
     }
 
     .wpss-public-reader__list {
-        max-height: none;
+        --wpss-public-list-height: min(calc(100dvh - 1rem), calc(100vh - 1rem));
+        height: var(--wpss-public-list-height);
+        max-height: var(--wpss-public-list-height);
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        overscroll-behavior-y: contain;
+    }
+
+    .wpss-public-reader__songs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        flex: 0 0 auto;
+        overflow: visible;
     }
 
     .wpss-public-reader__assign-row {
@@ -3908,11 +4145,29 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-strip {
     }
 
     .wpss-public-reader__song-actions {
-        margin-left: 0;
+        display: none;
+    }
+
+    .wpss-public-reader__song-actions-menu {
+        display: block;
     }
 
     .wpss-public-reader__reading {
-        max-height: 100dvh;
+        max-height: none;
+        overflow: visible;
+    }
+
+    .wpss-public-reader__reading .wpss-panel,
+    .wpss-public-reader__assign,
+    .wpss-public-reader__list > .wpss-collections {
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+@media (max-width: 420px) {
+    .wpss-public-reader__songs {
+        grid-template-columns: 1fr;
     }
 }
 

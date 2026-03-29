@@ -10,6 +10,136 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Valores por defecto para la apariencia del lector blocks.
+ *
+ * @return array
+ */
+function wpssb_get_interface_style_defaults() {
+    return [
+        'panelBackgroundColor'     => '#ffffff',
+        'panelBackgroundOpacity'   => 80,
+        'textColor'                => '#4b5563',
+        'headingColor'             => '#1f2937',
+        'buttonColor'              => '#1e3a8a',
+        'buttonTextColor'          => '#ffffff',
+        'buttonEmphasisColor'      => '#e7ecf6',
+        'buttonEmphasisTextColor'  => '#1e3a8a',
+        'buttonDangerColor'        => '#7f1d1d',
+        'buttonDangerTextColor'    => '#ffffff',
+    ];
+}
+
+/**
+ * Convierte un color hexadecimal a rgba.
+ *
+ * @param string $hex_color Color hexadecimal.
+ * @param float  $opacity   Opacidad entre 0 y 1.
+ * @return string
+ */
+function wpssb_hex_to_rgba( $hex_color, $opacity ) {
+    $hex_color = sanitize_hex_color( (string) $hex_color );
+    if ( empty( $hex_color ) ) {
+        return '';
+    }
+
+    $hex = ltrim( $hex_color, '#' );
+    if ( 3 === strlen( $hex ) ) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+
+    if ( 6 !== strlen( $hex ) ) {
+        return '';
+    }
+
+    $opacity = max( 0, min( 1, (float) $opacity ) );
+
+    $red   = hexdec( substr( $hex, 0, 2 ) );
+    $green = hexdec( substr( $hex, 2, 2 ) );
+    $blue  = hexdec( substr( $hex, 4, 2 ) );
+
+    return sprintf( 'rgba(%1$d, %2$d, %3$d, %4$s)', $red, $green, $blue, rtrim( rtrim( number_format( $opacity, 3, '.', '' ), '0' ), '.' ) );
+}
+
+/**
+ * Construye el atributo style del contenedor del bloque.
+ *
+ * @param array $attributes Atributos del bloque.
+ * @return string
+ */
+function wpssb_get_interface_style_attribute( $attributes = [] ) {
+    $defaults = wpssb_get_interface_style_defaults();
+
+    $panel_background_color = sanitize_hex_color( isset( $attributes['panelBackgroundColor'] ) ? (string) $attributes['panelBackgroundColor'] : '' );
+    if ( empty( $panel_background_color ) ) {
+        $panel_background_color = $defaults['panelBackgroundColor'];
+    }
+
+    $text_color = sanitize_hex_color( isset( $attributes['textColor'] ) ? (string) $attributes['textColor'] : '' );
+    if ( empty( $text_color ) ) {
+        $text_color = $defaults['textColor'];
+    }
+
+    $heading_color = sanitize_hex_color( isset( $attributes['headingColor'] ) ? (string) $attributes['headingColor'] : '' );
+    if ( empty( $heading_color ) ) {
+        $heading_color = $defaults['headingColor'];
+    }
+
+    $button_color = sanitize_hex_color( isset( $attributes['buttonColor'] ) ? (string) $attributes['buttonColor'] : '' );
+    if ( empty( $button_color ) ) {
+        $button_color = $defaults['buttonColor'];
+    }
+
+    $button_text_color = sanitize_hex_color( isset( $attributes['buttonTextColor'] ) ? (string) $attributes['buttonTextColor'] : '' );
+    if ( empty( $button_text_color ) ) {
+        $button_text_color = $defaults['buttonTextColor'];
+    }
+
+    $button_emphasis_color = sanitize_hex_color( isset( $attributes['buttonEmphasisColor'] ) ? (string) $attributes['buttonEmphasisColor'] : '' );
+    if ( empty( $button_emphasis_color ) ) {
+        $button_emphasis_color = $defaults['buttonEmphasisColor'];
+    }
+
+    $button_emphasis_text_color = sanitize_hex_color( isset( $attributes['buttonEmphasisTextColor'] ) ? (string) $attributes['buttonEmphasisTextColor'] : '' );
+    if ( empty( $button_emphasis_text_color ) ) {
+        $button_emphasis_text_color = $defaults['buttonEmphasisTextColor'];
+    }
+
+    $button_danger_color = sanitize_hex_color( isset( $attributes['buttonDangerColor'] ) ? (string) $attributes['buttonDangerColor'] : '' );
+    if ( empty( $button_danger_color ) ) {
+        $button_danger_color = $defaults['buttonDangerColor'];
+    }
+
+    $button_danger_text_color = sanitize_hex_color( isset( $attributes['buttonDangerTextColor'] ) ? (string) $attributes['buttonDangerTextColor'] : '' );
+    if ( empty( $button_danger_text_color ) ) {
+        $button_danger_text_color = $defaults['buttonDangerTextColor'];
+    }
+
+    $panel_background_opacity = isset( $attributes['panelBackgroundOpacity'] ) ? intval( $attributes['panelBackgroundOpacity'] ) : $defaults['panelBackgroundOpacity'];
+    $panel_background_opacity = max( 0, min( 100, $panel_background_opacity ) );
+
+    $style_rules = [
+        '--wpssb-panel-bg'                => wpssb_hex_to_rgba( $panel_background_color, $panel_background_opacity / 100 ),
+        '--wpssb-text-color'              => $text_color,
+        '--wpssb-heading-color'           => $heading_color,
+        '--wpssb-button-bg'               => $button_color,
+        '--wpssb-button-text'             => $button_text_color,
+        '--wpssb-button-emphasis-bg'      => $button_emphasis_color,
+        '--wpssb-button-emphasis-text'    => $button_emphasis_text_color,
+        '--wpssb-button-danger-bg'        => $button_danger_color,
+        '--wpssb-button-danger-text'      => $button_danger_text_color,
+    ];
+
+    $style_fragments = [];
+    foreach ( $style_rules as $property => $value ) {
+        if ( '' !== $value ) {
+            $style_fragments[] = $property . ': ' . $value;
+        }
+    }
+
+    return implode( '; ', $style_fragments );
+}
+
+/**
  * Determina si el usuario actual puede ver el cancionero blocks.
  *
  * @return bool
@@ -135,9 +265,12 @@ function wpssb_render_interface_markup( $attributes = [], $content = '' ) {
         }
     }
 
+    $style_attribute = wpssb_get_interface_style_attribute( is_array( $attributes ) ? $attributes : [] );
+
     return sprintf(
-        '<div class="%1$s"><div id="wpss-cancion-app" class="wpss-cancion-app wpss-public-reader" data-view="public"></div></div>',
-        esc_attr( $class_name )
+        '<div class="%1$s"%2$s><div id="wpss-cancion-app" class="wpss-cancion-app wpss-public-reader" data-view="public"></div></div>',
+        esc_attr( $class_name ),
+        '' !== $style_attribute ? ' style="' . esc_attr( $style_attribute ) . '"' : ''
     );
 }
 
