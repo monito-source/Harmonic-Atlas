@@ -3,7 +3,7 @@ Theme Name: Pertenencia Digital
 Theme URI: https://tusitio.local/
 Author: Sergio Mendoza
 Description: Tema de bloques inspirado en Laboratorio Digital, reconstruido para funcionar principalmente con bloques.
-Version: 1.0
+Version: 1.2
 License: GPL-2.0+
 Text Domain: pertenencia-digital
 Requires at least: 6.5
@@ -100,14 +100,6 @@ input[type='reset'] {
   color: var(--pd-color-bg);
 }
 
-.pd-header-musica-tecnologia__nav {
-  width: 100%;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation__container {
-  gap: 1rem;
-}
-
 .pd-header-musica-tecnologia__nav .wp-block-navigation-item__content,
 .pd-header-musica-tecnologia__nav .wp-block-pages-list__item__link,
 .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content,
@@ -143,16 +135,6 @@ input[type='reset'] {
 }
 
 @media (max-width: 781px) {
-  .pd-header-musica-tecnologia__nav-shell,
-  .pd-header-musica-tecnologia__nav {
-    width: 100%;
-  }
-
-  .pd-header-musica-tecnologia__top {
-    flex-wrap: wrap !important;
-    gap: 1rem;
-  }
-
   .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content {
     align-items: flex-start;
     text-align: left;
@@ -453,72 +435,15 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 .pd-header-musica-tecnologia {
+  --pd-header-padding-inline: var(--wp--custom--layout--content-padding, clamp(0.95rem, 4vw, 2.5rem));
+  --pd-header-padding-block: var(--wp--preset--spacing--50, 1.5rem);
   box-shadow: var(--pd-shadow-header);
 }
 
-.pd-header-musica-tecnologia__top,
-.pd-header-musica-tecnologia__actions,
 .pd-home__hero {
   gap: var(--wp--preset--spacing--50, 1.5rem);
 }
 
-.pd-header-musica-tecnologia__top {
-  align-items: flex-start;
-}
-
-.pd-header-musica-tecnologia__branding {
-  flex: 1 1 320px;
-}
-
-.pd-header-musica-tecnologia__nav-shell {
-  display: flex;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-}
-
-.pd-header-musica-tecnologia__nav {
-  width: auto;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content,
-.pd-header-musica-tecnologia__nav .wp-block-navigation__container {
-  align-items: flex-start;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation__container {
-  gap: 0.75rem;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item {
-  width: 100%;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content {
-  width: 100%;
-}
-
-.pd-header-musica-hijas .pd-header-musica-tecnologia__top {
-  flex-wrap: wrap;
-}
-
-.pd-header-musica-hijas .pd-header-musica-tecnologia__branding {
-  min-width: 0;
-}
-
-.pd-header-musica-hijas .pd-header-musica-tecnologia__nav-shell {
-  flex: 1 1 16rem;
-  min-width: min(100%, 16rem);
-}
-
-.pd-header-musica-hijas .pd-header-musica-tecnologia__nav {
-  width: 100%;
-}
-
-.pd-header-musica-hijas .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open {
-  margin-inline-start: auto;
-}
-
-.pd-header-musica-tecnologia__button .wp-block-button__link,
 .pd-home__cta .wp-block-button__link {
   min-width: var(--pd-button-min-width);
   text-align: center;
@@ -569,38 +494,28 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 @media (max-width: 781px) {
-  .pd-header-musica-tecnologia__top,
-  .pd-header-musica-tecnologia__actions,
+  .wp-block-navigation__responsive-container.is-menu-open {
+    padding: 1.25rem;
+  }
+
+  .pd-header-musica-tecnologia {
+    --pd-header-padding-inline: 0.75rem;
+    --pd-header-padding-block: 1rem;
+  }
+
   .pd-home__hero {
     flex-direction: column;
   }
 
-  .pd-header-musica-tecnologia__nav-shell,
-  .pd-header-musica-tecnologia__actions,
   .pd-home__cta-panel,
-  .pd-home__cta .wp-block-button__link,
-  .pd-header-musica-tecnologia__button .wp-block-button__link {
+  .pd-home__cta .wp-block-button__link {
     width: 100%;
   }
 }
 
 @media (max-width: 960px) {
-  .pd-header-musica-hijas .pd-header-musica-tecnologia__top {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pd-header-musica-hijas .pd-header-musica-tecnologia__branding {
-    width: 100%;
-  }
-
-  .pd-header-musica-hijas .pd-header-musica-tecnologia__nav-shell {
-    width: 100%;
-    min-width: 0;
-    justify-content: center;
-  }
-
-  .pd-header-musica-hijas .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open {
-    margin-inline: auto;
+  .pd-header-musica-tecnologia {
+    --pd-header-padding-inline: clamp(0.85rem, 3vw, 1.1rem);
+    --pd-header-padding-block: clamp(1rem, 3vw, 1.25rem);
   }
 }

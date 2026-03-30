@@ -3,7 +3,7 @@
  * Plugin Name: WP Song Study Blocks
  * Plugin URI:  https://example.com/wp-song-study-blocks
  * Description: Versión basada en bloques de WP Song Study con bloques dinámicos SSR para listado y lector de canciones.
- * Version:     0.1.0
+ * Version:     1.2.0
  * Author:      Sergio Mendoza
  * Text Domain: wp-song-study-blocks
  * Domain Path: /languages
@@ -22,7 +22,7 @@ if ( ! defined( 'WPSSB_URL' ) ) {
 }
 
 if ( ! defined( 'WPSSB_VERSION' ) ) {
-    define( 'WPSSB_VERSION', '0.1.0' );
+    define( 'WPSSB_VERSION', '1.2.0' );
 }
 
 /**

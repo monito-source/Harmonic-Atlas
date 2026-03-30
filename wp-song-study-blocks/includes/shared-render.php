@@ -217,7 +217,7 @@ function wpssb_enqueue_interface_assets() {
 
     wp_register_style(
         'wpssb-public-reader-vite-style',
-        WPSSB_URL . 'assets/admin-build/assets/index-DyABIkx9.css',
+        WPSSB_URL . 'assets/admin-build/assets/index-DFEdcGfY.css',
         [ $style_handle ],
         WPSSB_VERSION
     );
@@ -225,7 +225,7 @@ function wpssb_enqueue_interface_assets() {
 
     wp_register_script(
         $script_handle,
-        WPSSB_URL . 'assets/admin-build/assets/index-BgR-wIHi.js',
+        WPSSB_URL . 'assets/admin-build/assets/index-C1Zt1nGe.js',
         [],
         WPSSB_VERSION,
         true

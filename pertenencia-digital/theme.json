@@ -208,11 +208,7 @@
       },
       "core/group": {
         "spacing": {
-          "blockGap": "var:preset|spacing|50",
-          "padding": {
-            "left": "var(--wp--custom--layout--content-padding)",
-            "right": "var(--wp--custom--layout--content-padding)"
-          }
+          "blockGap": "var:preset|spacing|50"
         }
       },
       "core/query-title": {
