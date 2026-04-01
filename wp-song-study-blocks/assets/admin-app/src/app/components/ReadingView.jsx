@@ -20,6 +20,12 @@ import {
 } from '../songStatus.js'
 import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from './MidiSketch.jsx'
 import MidiClipList from './MidiClipList.jsx'
+import ReadingMediaAttachments, {
+  getSectionLevelAttachments,
+  getSegmentLevelAttachments,
+  getSongLevelAttachments,
+  getVerseLevelAttachments,
+} from './ReadingMediaAttachments.jsx'
 
 const formatCollectionAssignment = (collection) => {
   if (!collection || typeof collection !== 'object') return ''
@@ -101,9 +107,12 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const transposeSemitones = transposeTarget.semitones
   const tonicBase = song.tonica || ''
   const tonicLabel = tonicBase ? transposeChordSymbol(tonicBase, transposeSemitones) : '—'
+  const songVerses = useMemo(() => (Array.isArray(song?.versos) ? song.versos : []), [song?.versos])
+  const songLevelAttachments = useMemo(() => getSongLevelAttachments(song), [song])
   const [repeatsEnabled, setRepeatsEnabled] = useState(true)
   const [linkedPlayback, setLinkedPlayback] = useState(true)
   const [showMidi, setShowMidi] = useState(true)
+  const [showAttachments, setShowAttachments] = useState(true)
   const [showSectionTitles, setShowSectionTitles] = useState(true)
   const [statusSaving, setStatusSaving] = useState({ transcription: false, rehearsal: false })
   const [activePlaybackKey, setActivePlaybackKey] = useState(null)
@@ -337,6 +346,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
       { id: 'vista', label: 'Vista' },
       { id: 'orden', label: 'Orden' },
       { id: 'midi', label: 'MIDI' },
+      { id: 'adjuntos', label: 'Adjuntos' },
       { id: 'notas', label: 'Notas' },
       { id: 'secciones', label: 'Secciones' },
       { id: 'transposicion', label: 'Trasponer' },
@@ -784,6 +794,17 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                 </button>
               </div>
             ) : null}
+            {activeReadingToolTab === 'adjuntos' ? (
+              <div className="wpss-reading__group-controls">
+                <button
+                  type="button"
+                  className={`button button-secondary ${showAttachments ? 'is-active' : ''}`}
+                  onClick={() => setShowAttachments((prev) => !prev)}
+                >
+                  {showAttachments ? 'Ocultar adjuntos' : 'Mostrar adjuntos'}
+                </button>
+              </div>
+            ) : null}
             {activeReadingToolTab === 'notas' ? (
               <div className="wpss-reading__group-controls">
                 <button
@@ -904,6 +925,12 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
           </nav>
         ) : null}
       </div>
+      {showAttachments && songLevelAttachments.length ? (
+        <ReadingMediaAttachments
+          attachments={songLevelAttachments}
+          title="Adjuntos de la canción"
+        />
+      ) : null}
       <div className="wpss-reading__sections-frame">
         <div className="wpss-reading__sections-scroll" ref={sectionsScrollRef}>
           <div
@@ -919,8 +946,9 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             const heading = getGroupHeading(group, index)
             const canPlaySection = showMidi && hasMidiInGroup(group)
             const sectionNotes = Array.isArray(group.section?.comentarios) ? group.section.comentarios : []
+            const sectionAttachments = getSectionLevelAttachments(song, group.section?.id)
             return (
-              <details
+              <section
                 key={`reading-${index}`}
                 id={`wpss-reading-section-${index}`}
                 className={`wpss-reading__section ${
@@ -934,21 +962,39 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   }
                   sectionRefs.current.delete(index)
                 }}
-                open
               >
-                <summary className="wpss-reading__section-summary">
-                  {showSectionTitles ? (
-                    <h4 className="wpss-section-title">
-                      {heading}
-                      {group.repeat > 1 ? <span className="wpss-reading__repeat">{`x${group.repeat}`}</span> : null}
-                    </h4>
-                  ) : (
-                    <>
-                      <span className="wpss-reading__section-toggle" aria-hidden="true">▾</span>
-                      <span className="wpss-reading__section-sr">Sección</span>
-                    </>
-                  )}
-                </summary>
+                <div className="wpss-reading__section-header">
+                  <div className="wpss-reading__section-heading">
+                    {showSectionTitles ? (
+                      <h4 className="wpss-section-title">
+                        {heading}
+                        {group.repeat > 1 ? <span className="wpss-reading__repeat">{`x${group.repeat}`}</span> : null}
+                      </h4>
+                    ) : (
+                      <span className="wpss-reading__section-heading-fallback">{`Sección ${index + 1}`}</span>
+                    )}
+                  </div>
+                  {canPlaySection ? (
+                    <div className="wpss-reading__section-tools" aria-label="Acciones de la sección">
+                      <span className="wpss-reading__section-tools-label">Acciones de la sección</span>
+                      <div className="wpss-reading__section-actions">
+                        <button
+                          type="button"
+                          className="button button-small"
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            const key = `section-${index}`
+                            const steps = buildSectionSteps(group, index)
+                            handlePlaySteps(key, steps)
+                          }}
+                        >
+                          {activePlaybackKey === `section-${index}` ? 'Detener sección' : 'Reproducir sección'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <div className="wpss-reading__section-body">
                   <SectionNotes
                     notes={state.readingShowNotes ? sectionNotes : []}
@@ -962,24 +1008,14 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                         : undefined
                       return (
                         <div className={sectionClass} style={sectionStyle}>
-                          {canPlaySection ? (
-                            <div className="wpss-reading__section-actions">
-                              <button
-                                type="button"
-                                className="button button-small"
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  const key = `section-${index}`
-                                  const steps = buildSectionSteps(group, index)
-                                  handlePlaySteps(key, steps)
-                                }}
-                              >
-                                {activePlaybackKey === `section-${index}` ? 'Detener sección' : 'Reproducir sección'}
-                              </button>
-                            </div>
-                          ) : null}
                           {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
+                          {showAttachments && sectionAttachments.length ? (
+                            <ReadingMediaAttachments
+                              attachments={sectionAttachments}
+                              title="Adjuntos de la sección"
+                              compact
+                            />
+                          ) : null}
                           {showMidi
                             ? renderReadingMidiClips(
                               group.section?.midi_clips,
@@ -994,11 +1030,13 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                                   <ReadingVerse
                                     key={`verse-${index}-${verseIndex}`}
                                     verse={verse}
+                                    song={song}
                                     mode={state.readingMode}
                                     defaultTempo={bpmDefault}
                                     repeatsEnabled={repeatsEnabled}
                                     linkedPlayback={linkedPlayback}
                                     showMidi={showMidi}
+                                    showAttachments={showAttachments}
                                     showNotes={state.readingShowNotes}
                                     sectionIndex={index}
                                     verseIndex={verseIndex}
@@ -1008,6 +1046,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                                     chordInstrument={readingInstrument}
                                     camposLookup={camposLookup}
                                     transposeSemitones={transposeSemitones}
+                                    globalVerseIndex={songVerses.indexOf(verse)}
                                   />
                                 ))
                               : null}
@@ -1017,7 +1056,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                     }}
                   </SectionNotes>
                 </div>
-              </details>
+              </section>
               )
             })
           )}
@@ -1029,12 +1068,14 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
 }
 
 function ReadingVerse({
+  song,
   verse,
   mode,
   defaultTempo,
   repeatsEnabled,
   linkedPlayback,
   showMidi,
+  showAttachments,
   showNotes,
   sectionIndex,
   verseIndex,
@@ -1044,6 +1085,7 @@ function ReadingVerse({
   chordInstrument,
   camposLookup,
   transposeSemitones,
+  globalVerseIndex,
 }) {
   const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
   const instrumental = verse.instrumental ? <span className="wpss-reading__instrumental">Instrumental</span> : null
@@ -1062,6 +1104,35 @@ function ReadingVerse({
   const segmentMidis = segmentMidiItems.length ? (
     <div className="wpss-reading__midis">{segmentMidiItems}</div>
   ) : null
+  const verseAttachments = useMemo(
+    () => getVerseLevelAttachments(song, globalVerseIndex),
+    [song, globalVerseIndex],
+  )
+  const segmentAttachments = useMemo(
+    () => getSegmentLevelAttachments(song, globalVerseIndex),
+    [song, globalVerseIndex],
+  )
+  const segmentAudioAttachments = useMemo(
+    () => segmentAttachments.filter((attachment) => attachment?.type === 'audio'),
+    [segmentAttachments],
+  )
+  const segmentVisualAttachments = useMemo(
+    () => segmentAttachments.filter((attachment) => attachment?.type !== 'audio'),
+    [segmentAttachments],
+  )
+  const segmentAudioByIndex = useMemo(() => {
+    const map = new Map()
+    segmentAudioAttachments.forEach((attachment) => {
+      const key = Number(attachment?.segment_index) || 0
+      if (!map.has(key)) {
+        map.set(key, [])
+      }
+      map.get(key).push(attachment)
+    })
+    return map
+  }, [segmentAudioAttachments])
+  const segmentAudioRefs = useRef(new Map())
+  const [activeSegmentAudioId, setActiveSegmentAudioId] = useState(null)
 
   const isActive =
     activePlaybackMeta?.sectionIndex === sectionIndex
@@ -1072,6 +1143,65 @@ function ReadingVerse({
 
   const targetIndex = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
   const joiners = segmentos.map((segmento) => endsWithJoiner(segmento?.texto || ''))
+
+  useEffect(() => {
+    return () => {
+      segmentAudioRefs.current.forEach((audio) => {
+        if (audio && typeof audio.pause === 'function') {
+          audio.pause()
+        }
+      })
+      segmentAudioRefs.current.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showAttachments) {
+      return
+    }
+    segmentAudioRefs.current.forEach((audio) => {
+      if (audio && typeof audio.pause === 'function') {
+        audio.pause()
+      }
+    })
+    setActiveSegmentAudioId(null)
+  }, [showAttachments])
+
+  const setSegmentAudioRef = (attachmentId, node) => {
+    if (!attachmentId) return
+    if (node) {
+      segmentAudioRefs.current.set(attachmentId, node)
+      return
+    }
+    segmentAudioRefs.current.delete(attachmentId)
+  }
+
+  const handleToggleSegmentAudio = async (attachment) => {
+    const attachmentId = attachment?.id
+    if (!attachmentId) return
+    const targetAudio = segmentAudioRefs.current.get(attachmentId)
+    if (!targetAudio) return
+
+    if (activeSegmentAudioId === attachmentId && !targetAudio.paused) {
+      targetAudio.pause()
+      setActiveSegmentAudioId(null)
+      return
+    }
+
+    segmentAudioRefs.current.forEach((audio, candidateId) => {
+      if (candidateId !== attachmentId && audio && typeof audio.pause === 'function') {
+        audio.pause()
+      }
+    })
+
+    try {
+      await targetAudio.play()
+      setActiveSegmentAudioId(attachmentId)
+    } catch (_error) {
+      setActiveSegmentAudioId(null)
+    }
+  }
+
   const parts = segmentos
     .map((segmento, index) => {
       const chordToken = segmento?.acorde || ''
@@ -1121,9 +1251,33 @@ function ReadingVerse({
         textPlain,
         joiner: joiners[index] && index < segmentos.length - 1,
         noteColor: segmentNoteColor || '#3b82f6',
+        audioAttachments: segmentAudioByIndex.get(index) || [],
       }
     })
     .filter(Boolean)
+
+  const segmentAudioElements = segmentAudioAttachments.length ? (
+    <div className="wpss-reading__segment-audio-cache" aria-hidden="true">
+      {segmentAudioAttachments.map((attachment) => (
+        <audio
+          key={`segment-audio-${attachment.id}`}
+          ref={(node) => setSegmentAudioRef(attachment.id, node)}
+          preload="none"
+          src={attachment?.stream_url || ''}
+          onPause={() => {
+            if (activeSegmentAudioId === attachment.id) {
+              setActiveSegmentAudioId(null)
+            }
+          }}
+          onEnded={() => {
+            if (activeSegmentAudioId === attachment.id) {
+              setActiveSegmentAudioId(null)
+            }
+          }}
+        />
+      ))}
+    </div>
+  ) : null
 
   if (mode === 'stacked') {
     const cells = buildStackedCells(parts)
@@ -1143,6 +1297,13 @@ function ReadingVerse({
                     style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
                   >
                     {renderChordLabel(cell, chordLookup, chordInstrument, camposLookup, true)}
+                    {showAttachments && cell.audioAttachments?.length ? (
+                      <SegmentInlineAudioButtons
+                        attachments={cell.audioAttachments}
+                        activeAttachmentId={activeSegmentAudioId}
+                        onToggle={handleToggleSegmentAudio}
+                      />
+                    ) : null}
                     {cell.chordSpacer ? <span className="wpss-reading__stack-spacer">{cell.chordSpacer}</span> : null}
                   </span>
                 ))}
@@ -1162,9 +1323,25 @@ function ReadingVerse({
               </span>
             </pre>
           </div>
+          {segmentAudioElements}
           {meta}
           {verseMidi}
           {segmentMidis}
+          {showAttachments && segmentVisualAttachments.length ? (
+            <ReadingMediaAttachments
+              attachments={segmentVisualAttachments}
+              title="Fotos por fragmento"
+              compact
+              groupedBySegment
+            />
+          ) : null}
+          {showAttachments && verseAttachments.length ? (
+            <ReadingMediaAttachments
+              attachments={verseAttachments}
+              title="Adjuntos del verso"
+              compact
+            />
+          ) : null}
         </div>
       </li>
     )
@@ -1184,16 +1361,71 @@ function ReadingVerse({
               style={part.classes.includes('has-note') ? { '--note-color': part.noteColor } : undefined}
             >
               {renderChordLabel(part, chordLookup, chordInstrument, camposLookup, false)}
+              {showAttachments && part.audioAttachments?.length ? (
+                <SegmentInlineAudioButtons
+                  attachments={part.audioAttachments}
+                  activeAttachmentId={activeSegmentAudioId}
+                  onToggle={handleToggleSegmentAudio}
+                />
+              ) : null}
               {part.texto ? <span dangerouslySetInnerHTML={{ __html: part.texto }} /> : null}
               {!part.joiner && index < parts.length - 1 ? <span className="wpss-reading__gap"> </span> : null}
             </span>
           ))}
         </div>
+        {segmentAudioElements}
         {meta}
         {verseMidi}
         {segmentMidis}
+        {showAttachments && segmentVisualAttachments.length ? (
+          <ReadingMediaAttachments
+            attachments={segmentVisualAttachments}
+            title="Fotos por fragmento"
+            compact
+            groupedBySegment
+          />
+        ) : null}
+        {showAttachments && verseAttachments.length ? (
+          <ReadingMediaAttachments
+            attachments={verseAttachments}
+            title="Adjuntos del verso"
+            compact
+          />
+        ) : null}
       </div>
     </li>
+  )
+}
+
+function SegmentInlineAudioButtons({ attachments = [], activeAttachmentId = null, onToggle }) {
+  if (!Array.isArray(attachments) || !attachments.length) {
+    return null
+  }
+
+  return (
+    <span className="wpss-reading__segment-audio-buttons">
+      {attachments.map((attachment, index) => {
+        const attachmentId = attachment?.id
+        const isActive = attachmentId && activeAttachmentId === attachmentId
+        const label = attachment?.title || attachment?.file_name || `Audio ${index + 1}`
+        return (
+          <button
+            key={`segment-audio-button-${attachmentId || index}`}
+            type="button"
+            className={`wpss-reading__segment-audio-button ${isActive ? 'is-active' : ''}`}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onToggle?.(attachment)
+            }}
+            aria-label={`${isActive ? 'Pausar' : 'Reproducir'} ${label}`}
+            title={label}
+          >
+            {isActive ? '❚❚' : '▶'}
+          </button>
+        )
+      })}
+    </span>
   )
 }
 

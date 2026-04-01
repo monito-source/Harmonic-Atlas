@@ -3,7 +3,7 @@ Theme Name: Pertenencia Digital
 Theme URI: https://tusitio.local/
 Author: Sergio Mendoza
 Description: Tema de bloques inspirado en Laboratorio Digital, reconstruido para funcionar principalmente con bloques.
-Version: 1.2
+Version: 1.3.0
 License: GPL-2.0+
 Text Domain: pertenencia-digital
 Requires at least: 6.5
@@ -176,6 +176,19 @@ header .wp-block-site-title a {
   text-decoration: none;
 }
 
+.pd-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+}
+
+.pd-legal-links a {
+  color: inherit;
+}
+
 body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)),
 body .wp-block-post-content.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
   width: min(100%, var(--wp--style--global--content-size));
@@ -204,7 +217,28 @@ body .wp-block-post-content > .wp-block-cover.alignfull {
 
 body .wp-block-post-content:has(#wpss-cancion-app),
 body .wp-block-group:has(#wpss-cancion-app),
+body main:has(#wpss-cancion-app),
+body .is-layout-constrained:has(#wpss-cancion-app),
 body .entry-content:has(#wpss-cancion-app) {
+  width: 100%;
+  max-width: 100%;
+}
+
+body main:has(#wpss-cancion-app),
+body .wp-block-group:has(#wpss-cancion-app) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)):has(#wpss-cancion-app),
+body .wp-block-post-content.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)):has(#wpss-cancion-app) {
+  width: 100%;
+  max-width: 100%;
+}
+
+body .home .wp-block-post-content:has(#wpss-cancion-app),
+body .home .entry-content:has(#wpss-cancion-app),
+body .home main:has(#wpss-cancion-app) {
   width: 100%;
   max-width: 100%;
 }

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { generateSectionId, getDefaultSectionName } from '../utils.js'
 import MidiClipList from './MidiClipList.jsx'
+import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
 
 export default function SectionsPanel({
   sections,
@@ -16,6 +17,7 @@ export default function SectionsPanel({
   midiRangePresets = [],
   midiRangeDefault = '',
   lockMidiRange = false,
+  onQuickUploadAttachment,
 }) {
   const safeSections = Array.isArray(sections) ? sections : []
   const visibleSections = filterSectionId
@@ -212,21 +214,30 @@ export default function SectionsPanel({
               </button>
               <span className="wpss-section-row__count">{counts.get(section.id) || 0} versos</span>
               <div className="wpss-section-row__actions">
-                <button
-                  type="button"
-                  className="button button-small"
-                  onClick={() => handleDuplicate(index)}
-                >
-                  Duplicar
-                </button>
-                <button
-                  type="button"
-                  className="button button-link-delete"
-                  onClick={() => handleRemove(index)}
-                  disabled={safeSections.length <= 1}
-                >
-                  Eliminar
-                </button>
+                <details className="wpss-action-menu">
+                  <summary aria-label="Acciones de la sección" title="Acciones de la sección">⋯</summary>
+                  <div className="wpss-action-menu__panel">
+                    <InlineMediaQuickActions
+                      target={{ anchor_type: 'section', section_id: section.id }}
+                      onUpload={onQuickUploadAttachment}
+                    />
+                    <button
+                      type="button"
+                      className="button button-small"
+                      onClick={() => handleDuplicate(index)}
+                    >
+                      Duplicar
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-link-delete"
+                      onClick={() => handleRemove(index)}
+                      disabled={safeSections.length <= 1}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </details>
               </div>
             </div>
             {isCollapsed ? null : (

@@ -22,6 +22,8 @@ export default function SongList({ onSelectSong, onNewSong }) {
   const filters = state.filters || {}
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
+  const driveStatus = wpData?.googleDriveStatus || {}
+  const driveReady = !!driveStatus?.configured && !!driveStatus?.connected
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const canDeleteSong = (song) => isOwnSong(song)
   const handleOpen = (song, targetTab) => {
@@ -38,8 +40,22 @@ export default function SongList({ onSelectSong, onNewSong }) {
     event.stopPropagation()
     if (!song?.id) return
 
+    let preserveMedia = false
+    if (driveReady) {
+      preserveMedia = window.confirm(
+        'Tienes Google Drive vinculado. ¿Quieres conservar y copiar los audios/fotos a tu propio Drive en esta reversión?',
+      )
+    } else {
+      const proceedWithoutMedia = window.confirm(
+        'No tienes Google Drive vinculado. Esta reversión se creará sin adjuntos de audio o foto. ¿Quieres continuar?',
+      )
+      if (!proceedWithoutMedia) {
+        return
+      }
+    }
+
     api
-      .reversionSong(song.id)
+      .reversionSong(song.id, { preserve_media: preserveMedia })
       .then((response) => {
         const body = response?.data || {}
         const clonedSong = body.song && typeof body.song === 'object' ? body.song : null

@@ -59,7 +59,7 @@ export default function StructurePanel({ structure, sections, onChange }) {
   return (
     <div className="wpss-structure">
       <header className="wpss-structure__header">
-        <h3>Estructura</h3>
+        <h3>Estructura completa</h3>
         <button type="button" className="button button-secondary" onClick={handleAddCall}>
           Añadir llamada
         </button>

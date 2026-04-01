@@ -11,6 +11,8 @@ import Editor from './components/Editor.jsx'
 import ReadingView from './components/ReadingView.jsx'
 import PublicReader from './components/PublicReader.jsx'
 import ChordLibrary from './components/ChordLibrary.jsx'
+import GroupsManager from './components/GroupsManager.jsx'
+import DriveSettings from './components/DriveSettings.jsx'
 
 const normalizeLoadedTag = (tag) => {
   if (tag === null || typeof tag === 'undefined') return null
@@ -130,6 +132,7 @@ export default function AppShell() {
             tiene_modulaciones: !!song.tiene_modulaciones,
             colecciones: Array.isArray(song.colecciones) ? song.colecciones : [],
             tags: resolvedTags,
+            adjuntos: Array.isArray(song.adjuntos) ? song.adjuntos : [],
             estructuraPersonalizada: true,
           }
 
@@ -201,6 +204,10 @@ export default function AppShell() {
         <PublicReader />
       ) : state.view === 'chords' ? (
         <ChordLibrary />
+      ) : state.view === 'groups' ? (
+        <GroupsManager />
+      ) : state.view === 'drive' ? (
+        <DriveSettings />
       ) : (
         <>
           {showSongList ? (

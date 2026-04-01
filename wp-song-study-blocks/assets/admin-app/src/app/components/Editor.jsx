@@ -19,6 +19,16 @@ import VersesPanel from './VersesPanel.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 import CommentEditor from './CommentEditor.jsx'
 import MidiClipList from './MidiClipList.jsx'
+import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
+import SongMediaPermissionsFields from './SongMediaPermissionsFields.jsx'
+import EditorPreviewMediaAttachments from './EditorPreviewMediaAttachments.jsx'
+import SongMediaManager from './SongMediaManager.jsx'
+import {
+  getSectionLevelAttachments,
+  getSegmentLevelAttachments,
+  getSongLevelAttachments,
+  getVerseLevelAttachments,
+} from './ReadingMediaAttachments.jsx'
 
 const AUTOSAVE_DELAY = 800
 const UNDO_HISTORY_LIMIT = 10
@@ -174,6 +184,7 @@ export default function Editor({ onShowList }) {
   const [tagInputValue, setTagInputValue] = useState('')
   const [showTagSuggestions, setShowTagSuggestions] = useState(false)
   const [tagSuggestionsPage, setTagSuggestionsPage] = useState(1)
+  const [pendingAttachmentActions, setPendingAttachmentActions] = useState({})
   const editingSongRef = useRef(state.editingSong)
   const editorRef = useRef(null)
   const layoutRef = useRef(null)
@@ -887,6 +898,8 @@ export default function Editor({ onShowList }) {
       }),
       colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones.map((item) => item.id) : [],
       tags: resolvedTagsForPayload.map((item) => item.id || item.name || item.slug),
+      adjuntos: Array.isArray(currentSong.adjuntos) ? currentSong.adjuntos : [],
+      adjuntos_permisos: currentSong.adjuntos_permisos || { visibility_mode: 'private', visibility_group_ids: [], visibility_user_ids: [] },
       estructura: estructuraPayload,
       estructura_personalizada: true,
     }
@@ -934,6 +947,8 @@ export default function Editor({ onShowList }) {
             body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
           tags: normalizedBodyTags.length ? normalizedBodyTags : resolvedTagsForPayload,
+          adjuntos: Array.isArray(body.adjuntos) ? body.adjuntos : (Array.isArray(editingSong.adjuntos) ? editingSong.adjuntos : []),
+          adjuntos_permisos: body.adjuntos_permisos || editingSong.adjuntos_permisos || { visibility_mode: 'private', visibility_group_ids: [], visibility_user_ids: [] },
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -1046,6 +1061,240 @@ export default function Editor({ onShowList }) {
   const handleVerseFocusHandled = useCallback((requestId) => {
     setVerseFocusRequest((prev) => (prev?.requestId === requestId ? null : prev))
   }, [])
+
+  const handleQuickUploadAttachment = useCallback(async (target, mode, file) => {
+    if (!target || typeof target !== 'object') {
+      return
+    }
+    if (!file) {
+      return
+    }
+
+    const currentSong = editingSongRef.current
+    if (!currentSong?.id) {
+      const message = 'Primero guarda la canción para poder adjuntar audios o fotos.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+      return
+    }
+
+    let resolvedTarget = {
+      anchor_type: String(target.anchor_type || 'song'),
+      section_id: String(target.section_id || ''),
+      verse_index: Number(target.verse_index) || 0,
+      segment_index: Number(target.segment_index) || 0,
+    }
+
+    if (resolvedTarget.anchor_type === 'segment' && !resolvedTarget.section_id) {
+      const verse = Array.isArray(currentSong?.versos)
+        ? currentSong.versos[resolvedTarget.verse_index]
+        : null
+      resolvedTarget = {
+        ...resolvedTarget,
+        section_id: String(verse?.section_id || selectedSectionId || ''),
+      }
+    }
+
+    if (resolvedTarget.anchor_type === 'section' && !resolvedTarget.section_id) {
+      resolvedTarget = {
+        ...resolvedTarget,
+        section_id: String(selectedSectionId || ''),
+      }
+    }
+
+    const type = mode === 'importPhoto' || mode === 'capturePhoto' ? 'photo' : 'audio'
+    const sourceKind = mode === 'recordAudio'
+      ? 'recording'
+      : mode === 'capturePhoto'
+        ? 'capture'
+        : 'import'
+    const mediaPermissions = currentSong?.adjuntos_permisos || {}
+
+    const formData = new FormData()
+    formData.append('song_id', String(currentSong.id))
+    formData.append('title', String(file.name || `${type}-${Date.now()}`))
+    formData.append('type', type)
+    formData.append('source_kind', sourceKind)
+    formData.append('anchor_type', resolvedTarget.anchor_type)
+    formData.append(
+      'section_id',
+      resolvedTarget.anchor_type === 'section' || resolvedTarget.anchor_type === 'segment'
+        ? (resolvedTarget.section_id || '')
+        : '',
+    )
+    formData.append(
+      'verse_index',
+      String(
+        resolvedTarget.anchor_type === 'verse' || resolvedTarget.anchor_type === 'segment'
+          ? resolvedTarget.verse_index
+          : 0,
+      ),
+    )
+    formData.append(
+      'segment_index',
+      String(resolvedTarget.anchor_type === 'segment' ? resolvedTarget.segment_index : 0),
+    )
+    formData.append('visibility_mode', String(mediaPermissions.visibility_mode || 'private'))
+    formData.append(
+      'visibility_group_ids',
+      JSON.stringify(Array.isArray(mediaPermissions.visibility_group_ids) ? mediaPermissions.visibility_group_ids : []),
+    )
+    formData.append(
+      'visibility_user_ids',
+      JSON.stringify(Array.isArray(mediaPermissions.visibility_user_ids) ? mediaPermissions.visibility_user_ids : []),
+    )
+    formData.append('duration_seconds', '0')
+    formData.append('file', file)
+
+    try {
+      const busyKey = `upload-${Date.now()}`
+      setPendingAttachmentActions((prev) => ({
+        ...prev,
+        [busyKey]: 'Subiendo a Drive…',
+      }))
+      const response = await api.uploadSongAttachment(formData)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto subido a Google Drive.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (requestError) {
+      const message = requestError?.payload?.message || 'No fue posible subir el adjunto.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+      throw requestError
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        Object.keys(next).forEach((key) => {
+          if (key.startsWith('upload-')) {
+            delete next[key]
+          }
+        })
+        return next
+      })
+    }
+  }, [api, dispatch, selectedSectionId])
+
+  const handlePreviewUnlinkAttachment = useCallback(async (attachment) => {
+    const attachmentId = attachment?.id
+    const songId = editingSongRef.current?.id
+    if (!songId || !attachmentId) return
+
+    try {
+      setPendingAttachmentActions((prev) => ({ ...prev, [attachmentId]: 'Quitando de la canción…' }))
+      const response = await api.unlinkSongAttachment(songId, attachmentId)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto quitado de la canción.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (requestError) {
+      const message = requestError?.payload?.message || 'No fue posible quitar el adjunto.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        delete next[attachmentId]
+        return next
+      })
+    }
+  }, [api, dispatch])
+
+  const handlePreviewRenameAttachment = useCallback(async (attachment) => {
+    const attachmentId = attachment?.id
+    const songId = editingSongRef.current?.id
+    if (!songId || !attachmentId) return
+
+    const currentTitle = String(attachment?.title || attachment?.file_name || '').trim()
+    const nextTitle = window.prompt('Nuevo nombre del adjunto', currentTitle)
+    if (nextTitle === null) return
+
+    const normalizedTitle = String(nextTitle).trim()
+    if (!normalizedTitle) {
+      dispatch({ type: 'SET_STATE', payload: { error: 'El adjunto necesita un nombre.' } })
+      return
+    }
+    if (normalizedTitle === currentTitle) return
+
+    try {
+      setPendingAttachmentActions((prev) => ({ ...prev, [attachmentId]: 'Renombrando en Drive…' }))
+      const response = await api.updateSongAttachment(songId, attachmentId, {
+        title: normalizedTitle,
+        type: attachment?.type || 'audio',
+        source_kind: attachment?.source_kind || 'import',
+        anchor_type: attachment?.anchor_type || 'song',
+        section_id:
+          attachment?.anchor_type === 'section' || attachment?.anchor_type === 'segment'
+            ? (attachment?.section_id || '')
+            : '',
+        verse_index:
+          attachment?.anchor_type === 'verse' || attachment?.anchor_type === 'segment'
+            ? Number(attachment?.verse_index) || 0
+            : 0,
+        segment_index: attachment?.anchor_type === 'segment' ? Number(attachment?.segment_index) || 0 : 0,
+        duration_seconds: Number(attachment?.duration_seconds) || 0,
+      })
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto renombrado.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (requestError) {
+      const message = requestError?.payload?.message || 'No fue posible renombrar el adjunto.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        delete next[attachmentId]
+        return next
+      })
+    }
+  }, [api, dispatch])
+
+  const handlePreviewDeleteAttachment = useCallback(async (attachment) => {
+    const attachmentId = attachment?.id
+    const songId = editingSongRef.current?.id
+    if (!songId || !attachmentId) return
+
+    const confirmed = window.confirm(
+      `¿Eliminar definitivamente "${attachment.title || attachment.file_name || attachment.id}" del Google Drive?`,
+    )
+    if (!confirmed) return
+
+    try {
+      setPendingAttachmentActions((prev) => ({ ...prev, [attachmentId]: 'Eliminando de Drive…' }))
+      const response = await api.deleteSongAttachment(songId, attachmentId)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto eliminado del Drive.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (requestError) {
+      const message = requestError?.payload?.message || 'No fue posible eliminar el adjunto del Drive.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        delete next[attachmentId]
+        return next
+      })
+    }
+  }, [api, dispatch])
 
   const splitSegment = (verseIndex, segmentIndex, textarea) => {
     if (!textarea?.isContentEditable) {
@@ -1333,6 +1582,7 @@ export default function Editor({ onShowList }) {
     })
     return map
   }, [allVerses])
+  const songLevelAttachments = useMemo(() => getSongLevelAttachments(editingSong), [editingSong])
 
   const getVerseSummary = (verse) => {
     const summary = formatSegmentsForStackedMode(Array.isArray(verse?.segmentos) ? verse.segmentos : [])
@@ -2240,6 +2490,11 @@ export default function Editor({ onShowList }) {
               </div>
             </label>
           </div>
+          <SongMediaPermissionsFields
+            song={editingSong}
+            onChangeSong={(nextSong) => updateSong(nextSong)}
+            onRequestAutosave={scheduleAutosave}
+          />
           <details className="wpss-section wpss-section--collapsible wpss-section--nested">
             <summary>
               <span>Ficha técnica y metadatos</span>
@@ -2473,6 +2728,10 @@ export default function Editor({ onShowList }) {
                               ⋯
                             </summary>
                             <div className="wpss-action-menu__panel">
+                              <InlineMediaQuickActions
+                                target={{ anchor_type: 'section', section_id: section.id }}
+                                onUpload={handleQuickUploadAttachment}
+                              />
                               <button
                                 type="button"
                                 className="button button-small"
@@ -2641,6 +2900,7 @@ export default function Editor({ onShowList }) {
                     midiRangeDefault={midiRangeDefault}
                     lockMidiRange={lockMidiRange}
                     filterSectionId={activeSectionId}
+                    onQuickUploadAttachment={handleQuickUploadAttachment}
                   />
                   <CommentEditor
                     label="Notas de sección"
@@ -2740,6 +3000,7 @@ export default function Editor({ onShowList }) {
                                               showHeader={false}
                                               showPreview={false}
                                               visibleVerseIndexes={new Set([index])}
+                                              onQuickUploadAttachment={handleQuickUploadAttachment}
                                             />
                                           </div>
                                         )
@@ -2862,6 +3123,7 @@ export default function Editor({ onShowList }) {
                   showHeader={false}
                   showPreview={false}
                   visibleVerseIndexes={hasVerseFilter ? selectedVerseIndexes : null}
+                  onQuickUploadAttachment={handleQuickUploadAttachment}
                 />
               )}
             </div>
@@ -2924,6 +3186,17 @@ export default function Editor({ onShowList }) {
                     ) : null}
                   </div>
                 </div>
+                {songLevelAttachments.length ? (
+                  <EditorPreviewMediaAttachments
+                    attachments={songLevelAttachments}
+                    title="Adjuntos de la canción"
+                    compact
+                    pendingActionById={pendingAttachmentActions}
+                    onRename={handlePreviewRenameAttachment}
+                    onUnlink={handlePreviewUnlinkAttachment}
+                    onDelete={handlePreviewDeleteAttachment}
+                  />
+                ) : null}
                 <div ref={previewScrollRef} className="wpss-section-preview__scroll-shell">
                   <div
                     className="wpss-section-preview__all wpss-section-preview__all--interactive"
@@ -2934,6 +3207,7 @@ export default function Editor({ onShowList }) {
                       const verses = versesBySection.get(section.id) || []
                       const isActiveSection = section.id === activeSectionId
                       const isExpandedSection = expandedSectionId === section.id
+                      const sectionAttachments = getSectionLevelAttachments(editingSong, section.id)
                       return (
                         <div
                           key={`preview-section-${section.id}`}
@@ -2960,28 +3234,43 @@ export default function Editor({ onShowList }) {
                             <span>{verses.length} versos</span>
                           </button>
                           {isExpandedSection ? (
-                            <details className="wpss-preview-section-menu">
-                              <summary>Opciones de sección</summary>
-                              <div className="wpss-preview-section-menu__body">
-                                <MidiClipList
-                                  clips={section?.midi_clips}
-                                  onChange={(clips) => handleSectionMidiChange(section.id, clips)}
-                                  emptyLabel="Añadir MIDI a la sección"
-                                  defaultTempo={editingSong.bpm}
-                                  compactRows={preferCompactMidiRows}
-                                  allowRowToggle={preferCompactMidiRows}
-                                  rangePresets={midiRangePresets}
-                                  defaultRange={midiRangeDefault}
-                                  lockRange={lockMidiRange}
-                                />
-                                <CommentEditor
-                                  label="Notas de sección"
-                                  comments={section?.comentarios || []}
-                                  defaultTitle={section?.nombre || getDefaultSectionName(index)}
-                                  onChange={(next) => handleSectionCommentsChange(section.id, next)}
+                            <div className="wpss-section-preview__tools">
+                              <div className="wpss-section-preview__tools-bar">
+                                <span className="wpss-section-preview__tools-label">Acciones de la sección</span>
+                                <InlineMediaQuickActions
+                                  target={{ anchor_type: 'section', section_id: section.id }}
+                                  onUpload={handleQuickUploadAttachment}
                                 />
                               </div>
-                            </details>
+                              {sectionAttachments.length ? (
+                                <EditorPreviewMediaAttachments
+                                  attachments={sectionAttachments}
+                                  title="Adjuntos de la sección"
+                                  compact
+                                  pendingActionById={pendingAttachmentActions}
+                                  onRename={handlePreviewRenameAttachment}
+                                  onUnlink={handlePreviewUnlinkAttachment}
+                                  onDelete={handlePreviewDeleteAttachment}
+                                />
+                              ) : null}
+                              <MidiClipList
+                                clips={section?.midi_clips}
+                                onChange={(clips) => handleSectionMidiChange(section.id, clips)}
+                                emptyLabel="Añadir MIDI a la sección"
+                                defaultTempo={editingSong.bpm}
+                                compactRows={preferCompactMidiRows}
+                                allowRowToggle={preferCompactMidiRows}
+                                rangePresets={midiRangePresets}
+                                defaultRange={midiRangeDefault}
+                                lockRange={lockMidiRange}
+                              />
+                              <CommentEditor
+                                label="Notas de sección"
+                                comments={section?.comentarios || []}
+                                defaultTitle={section?.nombre || getDefaultSectionName(index)}
+                                onChange={(next) => handleSectionCommentsChange(section.id, next)}
+                              />
+                            </div>
                           ) : null}
                           {verses.length ? (
                             <div className="wpss-preview-verse-list">
@@ -2993,6 +3282,8 @@ export default function Editor({ onShowList }) {
                                   : verse?.instrumental
                                     ? `Instrumental ${verseId + 1}`
                                     : `Verso ${verseId + 1}`
+                                const verseAttachments = getVerseLevelAttachments(editingSong, verseId)
+                                const segmentAttachments = getSegmentLevelAttachments(editingSong, verseId)
                                 if (isActiveVerse) {
                                   return (
                                     <div
@@ -3045,8 +3336,36 @@ export default function Editor({ onShowList }) {
                                           showHeader={false}
                                           showPreview={false}
                                           visibleVerseIndexes={new Set([verseId])}
+                                          onQuickUploadAttachment={handleQuickUploadAttachment}
                                         />
                                       </div>
+                                      {(verseAttachments.length || segmentAttachments.length) ? (
+                                        <>
+                                          {verseAttachments.length ? (
+                                            <EditorPreviewMediaAttachments
+                                              attachments={verseAttachments}
+                                              title="Adjuntos del verso"
+                                              compact
+                                              pendingActionById={pendingAttachmentActions}
+                                              onRename={handlePreviewRenameAttachment}
+                                              onUnlink={handlePreviewUnlinkAttachment}
+                                              onDelete={handlePreviewDeleteAttachment}
+                                            />
+                                          ) : null}
+                                          {segmentAttachments.length ? (
+                                            <EditorPreviewMediaAttachments
+                                              attachments={segmentAttachments}
+                                              title="Adjuntos por fragmento"
+                                              compact
+                                              groupedBySegment
+                                              pendingActionById={pendingAttachmentActions}
+                                              onRename={handlePreviewRenameAttachment}
+                                              onUnlink={handlePreviewUnlinkAttachment}
+                                              onDelete={handlePreviewDeleteAttachment}
+                                            />
+                                          ) : null}
+                                        </>
+                                      ) : null}
                                     </div>
                                   )
                                 }
@@ -3086,6 +3405,33 @@ export default function Editor({ onShowList }) {
                                       <strong className="wpss-preview-verse-card__title">{verseTitle}</strong>
                                     </div>
                                     <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
+                                    {(verseAttachments.length || segmentAttachments.length) ? (
+                                      <>
+                                        {verseAttachments.length ? (
+                                          <EditorPreviewMediaAttachments
+                                            attachments={verseAttachments}
+                                            title="Adjuntos del verso"
+                                            compact
+                                            pendingActionById={pendingAttachmentActions}
+                                            onRename={handlePreviewRenameAttachment}
+                                            onUnlink={handlePreviewUnlinkAttachment}
+                                            onDelete={handlePreviewDeleteAttachment}
+                                          />
+                                        ) : null}
+                                        {segmentAttachments.length ? (
+                                          <EditorPreviewMediaAttachments
+                                            attachments={segmentAttachments}
+                                            title="Adjuntos por fragmento"
+                                            compact
+                                            groupedBySegment
+                                            pendingActionById={pendingAttachmentActions}
+                                            onRename={handlePreviewRenameAttachment}
+                                            onUnlink={handlePreviewUnlinkAttachment}
+                                            onDelete={handlePreviewDeleteAttachment}
+                                          />
+                                        ) : null}
+                                      </>
+                                    ) : null}
                                   </div>
                                 )
                               })}
@@ -3136,7 +3482,7 @@ export default function Editor({ onShowList }) {
 
         <details className="wpss-section wpss-section--collapsible">
           <summary>
-            <span>Estructura personalizada</span>
+            <span>Estructura completa</span>
           </summary>
           <StructurePanel
             structure={editingSong.estructura}
@@ -3144,6 +3490,13 @@ export default function Editor({ onShowList }) {
             onChange={handleStructureChange}
           />
         </details>
+
+        <SongMediaManager
+          song={editingSong}
+          onChangeSong={(nextSong) => updateSong(nextSong)}
+          onRequestAutosave={scheduleAutosave}
+          showPermissions={false}
+        />
 
         <datalist id="wpss-song-tags">
           {availableTags.map((tag) => (

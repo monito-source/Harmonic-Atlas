@@ -12,6 +12,7 @@ import {
 import MidiClipList from './MidiClipList.jsx'
 import CommentEditor from './CommentEditor.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
+import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
 
 export default function VersesPanel({
   verses,
@@ -37,6 +38,7 @@ export default function VersesPanel({
   showHeader = true,
   showPreview = true,
   visibleVerseIndexes = null,
+  onQuickUploadAttachment,
 }) {
   const { wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
@@ -817,6 +819,7 @@ export default function VersesPanel({
                 midiRangePresets={midiRangePresets}
                 midiRangeDefault={midiRangeDefault}
                 lockMidiRange={lockMidiRange}
+                onQuickUploadAttachment={onQuickUploadAttachment}
               />
             </details>
           </div>
@@ -977,6 +980,10 @@ export default function VersesPanel({
                       <details className="wpss-action-menu">
                         <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
                         <div className="wpss-action-menu__panel">
+                          <InlineMediaQuickActions
+                            target={{ anchor_type: 'verse', verse_index: verseIndex }}
+                            onUpload={onQuickUploadAttachment}
+                          />
                           <label>
                             <span>Mover a sección</span>
                             <select
@@ -1232,6 +1239,15 @@ export default function VersesPanel({
                               <details className="wpss-action-menu">
                                 <summary aria-label="Acciones del segmento" title="Acciones del segmento">⋯</summary>
                                 <div className="wpss-action-menu__panel">
+                                  <InlineMediaQuickActions
+                                    target={{
+                                      anchor_type: 'segment',
+                                      section_id: verse.section_id || activeSectionId || '',
+                                      verse_index: verseIndex,
+                                      segment_index: segmentIndex,
+                                    }}
+                                    onUpload={onQuickUploadAttachment}
+                                  />
                                   <button
                                     type="button"
                                     className="button button-small"

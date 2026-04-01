@@ -975,140 +975,253 @@ function pd_shortcode_colaborador_proyectos( array $atts = [] ): string {
 
 add_shortcode( 'pd_colaborador_proyectos', 'pd_shortcode_colaborador_proyectos' );
 
-add_action(
-    'after_switch_theme',
-    function () {
-        $parent_pages = [
-            'musica' => [
-                'title'   => 'Música',
-                'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, recursos y recorridos dedicados a la música.</p><!-- /wp:paragraph -->',
+/**
+ * Renderiza enlaces legales públicos para el footer y la portada.
+ *
+ * @return string
+ */
+function pd_shortcode_legal_links(): string {
+    $items = [];
+
+    $privacy_page = get_page_by_path( 'politica-de-privacidad' );
+    if ( $privacy_page instanceof WP_Post ) {
+        $items[] = sprintf(
+            '<a href="%s">%s</a>',
+            esc_url( get_permalink( $privacy_page ) ),
+            esc_html__( 'Política de privacidad', 'pertenencia-digital' )
+        );
+    }
+
+    $terms_page = get_page_by_path( 'terminos-y-condiciones' );
+    if ( $terms_page instanceof WP_Post ) {
+        $items[] = sprintf(
+            '<a href="%s">%s</a>',
+            esc_url( get_permalink( $terms_page ) ),
+            esc_html__( 'Términos y condiciones', 'pertenencia-digital' )
+        );
+    }
+
+    if ( empty( $items ) ) {
+        return '';
+    }
+
+    return '<nav class="pd-legal-links" aria-label="' . esc_attr__( 'Enlaces legales', 'pertenencia-digital' ) . '">' . implode( '<span aria-hidden="true"> · </span>', $items ) . '</nav>';
+}
+
+add_shortcode( 'pd_legal_links', 'pd_shortcode_legal_links' );
+
+/**
+ * Crea o actualiza páginas base del tema cuando hacen falta.
+ *
+ * @return void
+ */
+function pd_ensure_theme_pages(): void {
+    $parent_pages = [
+        'musica' => [
+            'title'   => 'Música',
+            'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, recursos y recorridos dedicados a la música.</p><!-- /wp:paragraph -->',
+        ],
+        'tecnologias-web' => [
+            'title'   => 'Tecnologías y web',
+            'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, herramientas y publicaciones sobre tecnologías y web.</p><!-- /wp:paragraph -->',
+        ],
+    ];
+
+    $parent_ids = [];
+
+    foreach ( $parent_pages as $slug => $page ) {
+        $existing = get_page_by_path( $slug );
+
+        if ( $existing instanceof WP_Post ) {
+            $parent_ids[ $slug ] = (int) $existing->ID;
+            continue;
+        }
+
+        $parent_ids[ $slug ] = (int) wp_insert_post(
+            [
+                'post_type'    => 'page',
+                'post_status'  => 'publish',
+                'post_title'   => $page['title'],
+                'post_name'    => $slug,
+                'post_content' => $page['content'],
+            ]
+        );
+    }
+
+    $child_pages = [
+        'musica' => [
+            [
+                'title'    => 'Press Kit',
+                'slug'     => 'presskit',
+                'content'  => '<!-- wp:paragraph --><p>Press kit y materiales oficiales.</p><!-- /wp:paragraph -->',
+                'template' => 'presskit',
             ],
-            'tecnologias-web' => [
-                'title'   => 'Tecnologías y web',
-                'content' => '<!-- wp:paragraph --><p>Próximamente encontrarás aquí contenidos, herramientas y publicaciones sobre tecnologías y web.</p><!-- /wp:paragraph -->',
+            [
+                'title'   => 'Estudiar repertorio',
+                'slug'    => 'estudiar-repertorio',
+                'content' => '<!-- wp:paragraph --><p>Espacio para estudiar y trabajar el repertorio armónico.</p><!-- /wp:paragraph -->',
             ],
-        ];
+            [
+                'title'    => 'Proyectos',
+                'slug'     => 'proyectos',
+                'content'  => '<!-- wp:paragraph --><p>Explora proyectos musicales y sus colaboradores.</p><!-- /wp:paragraph -->',
+                'template' => 'proyectos-musica',
+            ],
+        ],
+        'tecnologias-web' => [
+            [
+                'title'   => 'Enfoque tecnológico',
+                'slug'    => 'enfoque-tecnologico',
+                'content' => '<!-- wp:paragraph --><p>Conoce nuestro enfoque tecnológico y cómo acompañamos procesos digitales.</p><!-- /wp:paragraph -->',
+            ],
+            [
+                'title'   => '¿Quieres tu propio espacio digital?',
+                'slug'    => 'quieres-tu-propio-espacio-digital',
+                'content' => '<!-- wp:paragraph --><p>Descubre por qué contar con un espacio digital propio potencia tu presencia.</p><!-- /wp:paragraph -->',
+            ],
+            [
+                'title'   => 'Auxilio WordPress',
+                'slug'    => 'auxilio-wordpress',
+                'content' => '<!-- wp:paragraph --><p>Servicios y apoyo para sitios WordPress.</p><!-- /wp:paragraph -->',
+            ],
+            [
+                'title'   => 'Necesito un trabajo multimedia por comisión',
+                'slug'    => 'necesito-trabajo-multimedia-por-comision',
+                'content' => '<!-- wp:paragraph --><p>Video, foto, audio o canciones: conoce nuestras opciones.</p><!-- /wp:paragraph -->',
+            ],
+            [
+                'title'    => 'Proyectos',
+                'slug'     => 'proyectos',
+                'content'  => '<!-- wp:paragraph --><p>Explora proyectos tecnológicos y sus colaboradores.</p><!-- /wp:paragraph -->',
+                'template' => 'proyectos-tecnologias',
+            ],
+        ],
+    ];
 
-        $parent_ids = [];
+    $has_cancionero = get_page_by_path( 'cancionero' ) instanceof WP_Post;
+    $has_ensayar    = get_page_by_path( 'ensayar' ) instanceof WP_Post;
+    $has_estudiar   = get_page_by_path( 'estudiar-repertorio' ) instanceof WP_Post;
 
-        foreach ( $parent_pages as $slug => $page ) {
-            $existing = get_page_by_path( $slug );
+    foreach ( $child_pages as $parent_slug => $pages ) {
+        $parent_id = $parent_ids[ $parent_slug ] ?? 0;
 
-            if ( $existing instanceof WP_Post ) {
-                $parent_ids[ $slug ] = (int) $existing->ID;
+        foreach ( $pages as $page ) {
+            if ( 'estudiar-repertorio' === $page['slug'] && ( $has_cancionero || $has_ensayar || $has_estudiar ) ) {
                 continue;
             }
 
-            $parent_ids[ $slug ] = (int) wp_insert_post(
+            $full_path = $parent_slug . '/' . $page['slug'];
+            $existing  = get_page_by_path( $full_path );
+
+            if ( ! $existing instanceof WP_Post && $parent_id > 0 ) {
+                $children = get_pages(
+                    [
+                        'post_type'   => 'page',
+                        'post_status' => [ 'publish', 'draft', 'pending', 'private' ],
+                        'child_of'    => $parent_id,
+                        'parent'      => $parent_id,
+                    ]
+                );
+
+                foreach ( $children as $child_page ) {
+                    if ( $child_page instanceof WP_Post && $page['slug'] === $child_page->post_name ) {
+                        $existing = $child_page;
+                        break;
+                    }
+                }
+            }
+
+            if ( $existing instanceof WP_Post ) {
+                if ( ! empty( $page['template'] ) ) {
+                    $current_template = get_post_meta( $existing->ID, '_wp_page_template', true );
+                    if ( ! $current_template || 'default' === $current_template ) {
+                        update_post_meta( $existing->ID, '_wp_page_template', $page['template'] );
+                    }
+                }
+                continue;
+            }
+
+            $page_id = wp_insert_post(
                 [
                     'post_type'    => 'page',
                     'post_status'  => 'publish',
                     'post_title'   => $page['title'],
-                    'post_name'    => $slug,
+                    'post_name'    => $page['slug'],
+                    'post_content' => $page['content'],
+                    'post_parent'  => $parent_id,
+                ]
+            );
+
+            if ( ! empty( $page['template'] ) ) {
+                update_post_meta( $page_id, '_wp_page_template', $page['template'] );
+            }
+        }
+    }
+
+    $legal_pages = [
+        [
+            'title'   => 'Política de privacidad',
+            'slug'    => 'politica-de-privacidad',
+            'content' => '<!-- wp:paragraph --><p>Esta página resume cómo se recopilan, usan y protegen los datos personales dentro de este sitio. Sustituye este texto por la política final de tu proyecto.</p><!-- /wp:paragraph --><!-- wp:heading {"level":2} --><h2>Datos que recopilamos</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Detalla aquí formularios, comentarios, cuentas de usuario, archivos y cualquier dato adicional que procese el sitio.</p><!-- /wp:paragraph --><!-- wp:heading {"level":2} --><h2>Uso y conservación</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Describe para qué se usan los datos, quién puede acceder a ellos y cuánto tiempo se conservan.</p><!-- /wp:paragraph -->',
+        ],
+        [
+            'title'   => 'Términos y condiciones',
+            'slug'    => 'terminos-y-condiciones',
+            'content' => '<!-- wp:paragraph --><p>Estos términos regulan el uso público de este sitio y sus servicios. Sustituye este texto por las condiciones finales de tu proyecto.</p><!-- /wp:paragraph --><!-- wp:heading {"level":2} --><h2>Uso permitido</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Explica aquí qué usos están permitidos, límites de responsabilidad y condiciones de acceso a contenidos o herramientas.</p><!-- /wp:paragraph --><!-- wp:heading {"level":2} --><h2>Propiedad intelectual</h2><!-- /wp:heading --><!-- wp:paragraph --><p>Indica la titularidad del contenido, licencias aplicables y la forma correcta de solicitar permisos.</p><!-- /wp:paragraph -->',
+        ],
+    ];
+
+    $privacy_page_id = 0;
+
+    foreach ( $legal_pages as $page ) {
+        $existing = get_page_by_path( $page['slug'] );
+
+        if ( $existing instanceof WP_Post ) {
+            $page_id = (int) $existing->ID;
+        } else {
+            $page_id = (int) wp_insert_post(
+                [
+                    'post_type'    => 'page',
+                    'post_status'  => 'publish',
+                    'post_title'   => $page['title'],
+                    'post_name'    => $page['slug'],
                     'post_content' => $page['content'],
                 ]
             );
         }
 
-        $child_pages = [
-            'musica' => [
-                [
-                    'title'   => 'Press Kit',
-                    'slug'    => 'presskit',
-                    'content' => '<!-- wp:paragraph --><p>Press kit y materiales oficiales.</p><!-- /wp:paragraph -->',
-                    'template'=> 'presskit',
-                ],
-                [
-                    'title'   => 'Estudiar repertorio',
-                    'slug'    => 'estudiar-repertorio',
-                    'content' => '<!-- wp:paragraph --><p>Espacio para estudiar y trabajar el repertorio armónico.</p><!-- /wp:paragraph -->',
-                ],
-                [
-                    'title'   => 'Proyectos',
-                    'slug'    => 'proyectos',
-                    'content' => '<!-- wp:paragraph --><p>Explora proyectos musicales y sus colaboradores.</p><!-- /wp:paragraph -->',
-                    'template'=> 'proyectos-musica',
-                ],
-            ],
-            'tecnologias-web' => [
-                [
-                    'title'   => 'Enfoque tecnológico',
-                    'slug'    => 'enfoque-tecnologico',
-                    'content' => '<!-- wp:paragraph --><p>Conoce nuestro enfoque tecnológico y cómo acompañamos procesos digitales.</p><!-- /wp:paragraph -->',
-                ],
-                [
-                    'title'   => '¿Quieres tu propio espacio digital?',
-                    'slug'    => 'quieres-tu-propio-espacio-digital',
-                    'content' => '<!-- wp:paragraph --><p>Descubre por qué contar con un espacio digital propio potencia tu presencia.</p><!-- /wp:paragraph -->',
-                ],
-                [
-                    'title'   => 'Auxilio WordPress',
-                    'slug'    => 'auxilio-wordpress',
-                    'content' => '<!-- wp:paragraph --><p>Servicios y apoyo para sitios WordPress.</p><!-- /wp:paragraph -->',
-                ],
-                [
-                    'title'   => 'Necesito un trabajo multimedia por comisión',
-                    'slug'    => 'necesito-trabajo-multimedia-por-comision',
-                    'content' => '<!-- wp:paragraph --><p>Video, foto, audio o canciones: conoce nuestras opciones.</p><!-- /wp:paragraph -->',
-                ],
-                [
-                    'title'   => 'Proyectos',
-                    'slug'    => 'proyectos',
-                    'content' => '<!-- wp:paragraph --><p>Explora proyectos tecnológicos y sus colaboradores.</p><!-- /wp:paragraph -->',
-                    'template'=> 'proyectos-tecnologias',
-                ],
-            ],
-        ];
+        if ( 'politica-de-privacidad' === $page['slug'] ) {
+            $privacy_page_id = $page_id;
+        }
+    }
 
-        $has_cancionero = get_page_by_path( 'cancionero' ) instanceof WP_Post;
-        $has_ensayar = get_page_by_path( 'ensayar' ) instanceof WP_Post;
-        $has_estudiar = get_page_by_path( 'estudiar-repertorio' ) instanceof WP_Post;
+    if ( $privacy_page_id > 0 ) {
+        $configured_privacy_page = absint( get_option( 'wp_page_for_privacy_policy', 0 ) );
+        if ( $configured_privacy_page <= 0 || ! get_post( $configured_privacy_page ) ) {
+            update_option( 'wp_page_for_privacy_policy', $privacy_page_id );
+        }
+    }
 
-        foreach ( $child_pages as $parent_slug => $pages ) {
-            $parent_id = $parent_ids[ $parent_slug ] ?? 0;
+    pd_register_proyecto_area_taxonomy();
 
-            foreach ( $pages as $page ) {
-                if ( 'estudiar-repertorio' === $page['slug'] && ( $has_cancionero || $has_ensayar || $has_estudiar ) ) {
-                    continue;
-                }
+    if ( ! term_exists( 'musica', PD_PROJECT_AREA_TAX ) ) {
+        wp_insert_term( 'Música', PD_PROJECT_AREA_TAX, [ 'slug' => 'musica' ] );
+    }
 
-                $existing = get_page_by_path( $page['slug'] );
+    if ( ! term_exists( 'tecnologias-web', PD_PROJECT_AREA_TAX ) ) {
+        wp_insert_term( 'Tecnologías y web', PD_PROJECT_AREA_TAX, [ 'slug' => 'tecnologias-web' ] );
+    }
+}
 
-                if ( $existing instanceof WP_Post ) {
-                    if ( ! empty( $page['template'] ) ) {
-                        $current_template = get_post_meta( $existing->ID, '_wp_page_template', true );
-                        if ( ! $current_template || 'default' === $current_template ) {
-                            update_post_meta( $existing->ID, '_wp_page_template', $page['template'] );
-                        }
-                    }
-                    continue;
-                }
+add_action( 'after_switch_theme', 'pd_ensure_theme_pages' );
 
-                $page_id = wp_insert_post(
-                    [
-                        'post_type'    => 'page',
-                        'post_status'  => 'publish',
-                        'post_title'   => $page['title'],
-                        'post_name'    => $page['slug'],
-                        'post_content' => $page['content'],
-                        'post_parent'  => $parent_id,
-                    ]
-                );
-
-                if ( ! empty( $page['template'] ) ) {
-                    update_post_meta( $page_id, '_wp_page_template', $page['template'] );
-                }
-            }
+add_action(
+    'admin_init',
+    function () {
+        if ( ! current_user_can( 'edit_pages' ) ) {
+            return;
         }
 
-        pd_register_proyecto_area_taxonomy();
-
-        if ( ! term_exists( 'musica', PD_PROJECT_AREA_TAX ) ) {
-            wp_insert_term( 'Música', PD_PROJECT_AREA_TAX, [ 'slug' => 'musica' ] );
-        }
-
-        if ( ! term_exists( 'tecnologias-web', PD_PROJECT_AREA_TAX ) ) {
-            wp_insert_term( 'Tecnologías y web', PD_PROJECT_AREA_TAX, [ 'slug' => 'tecnologias-web' ] );
-        }
+        pd_ensure_theme_pages();
     }
 );

@@ -130,8 +130,8 @@ export function createApi(wpData) {
     deleteSong(id) {
       return request(`cancion/${id}`, { method: 'DELETE' })
     },
-    reversionSong(id) {
-      return request(`cancion/${id}/reversion`, { method: 'POST' })
+    reversionSong(id, payload = {}) {
+      return request(`cancion/${id}/reversion`, { method: 'POST', body: payload })
     },
     setSongTranscriptionStatus(id, estado) {
       return request(`cancion/${id}/estado-transcripcion`, {
@@ -192,6 +192,39 @@ export function createApi(wpData) {
     },
     listSongTags() {
       return request('tags-cancion')
+    },
+    listGroups() {
+      return request('agrupaciones-musicales')
+    },
+    getGroup(id) {
+      return request(`agrupacion-musical/${id}`)
+    },
+    saveGroup(payload) {
+      return request('agrupacion-musical', { method: 'POST', body: payload })
+    },
+    deleteGroup(id) {
+      return request(`agrupacion-musical/${id}`, { method: 'DELETE' })
+    },
+    getGoogleDriveStatus() {
+      return request('mi/google-drive')
+    },
+    saveGoogleDriveSettings(payload) {
+      return request('mi/google-drive', { method: 'POST', body: payload })
+    },
+    disconnectGoogleDrive() {
+      return request('mi/google-drive/disconnect', { method: 'POST', body: {} })
+    },
+    uploadSongAttachment(formData) {
+      return request('google-drive/upload', { method: 'POST', body: formData, asJson: false })
+    },
+    updateSongAttachment(songId, attachmentId, payload) {
+      return request(`media/attachment/${songId}/${attachmentId}`, { method: 'POST', body: payload })
+    },
+    unlinkSongAttachment(songId, attachmentId) {
+      return request(`media/attachment/${songId}/${attachmentId}/unlink`, { method: 'POST', body: {} })
+    },
+    deleteSongAttachment(songId, attachmentId) {
+      return request(`media/attachment/${songId}/${attachmentId}`, { method: 'DELETE' })
     },
   }
 }

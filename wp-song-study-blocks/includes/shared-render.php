@@ -174,6 +174,20 @@ function wpssb_get_public_reader_data() {
         $data['canRead']      = $can_read;
         $data['isAdmin']      = ! empty( $data['isAdmin'] ) || $is_admin;
         $data['currentUserId'] = isset( $data['currentUserId'] ) ? (int) $data['currentUserId'] : get_current_user_id();
+        $data['adminUrls'] = isset( $data['adminUrls'] ) && is_array( $data['adminUrls'] ) ? $data['adminUrls'] : [];
+        $data['adminUrls'] = array_merge(
+            [
+                'drivePage'   => admin_url( 'admin.php?page=wpss-mi-drive' ),
+                'profilePage' => admin_url( 'profile.php' ),
+            ],
+            $data['adminUrls']
+        );
+        $data['googleDriveStatus'] = function_exists( 'wpss_get_google_drive_status_payload' )
+            ? wpss_get_google_drive_status_payload( get_current_user_id() )
+            : [
+                'configured' => false,
+                'connected'  => false,
+            ];
 
         return $data;
     }
@@ -188,6 +202,16 @@ function wpssb_get_public_reader_data() {
         'isAdmin'       => $is_admin,
         'isPublicReader' => true,
         'currentUserId' => get_current_user_id(),
+        'googleDriveStatus' => function_exists( 'wpss_get_google_drive_status_payload' )
+            ? wpss_get_google_drive_status_payload( get_current_user_id() )
+            : [
+                'configured' => false,
+                'connected'  => false,
+            ],
+        'adminUrls'     => [
+            'drivePage'   => admin_url( 'admin.php?page=wpss-mi-drive' ),
+            'profilePage' => admin_url( 'profile.php' ),
+        ],
         'tonicas'       => [ 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B' ],
         'camposArmonicos' => [],
         'camposArmonicosNombres' => [],
@@ -215,9 +239,15 @@ function wpssb_enqueue_interface_assets() {
 
     wp_enqueue_style( $style_handle );
 
+    $manifest_path = WPSSB_PATH . 'assets/admin-build/.vite/manifest.json';
+    $manifest      = file_exists( $manifest_path ) ? json_decode( file_get_contents( $manifest_path ), true ) : [];
+    $entry         = is_array( $manifest ) && isset( $manifest['index.html'] ) ? $manifest['index.html'] : [];
+    $style_file    = ! empty( $entry['css'][0] ) ? $entry['css'][0] : 'assets/index-DFEdcGfY.css';
+    $script_file   = ! empty( $entry['file'] ) ? $entry['file'] : 'assets/index-SvmnOcNt.js';
+
     wp_register_style(
         'wpssb-public-reader-vite-style',
-        WPSSB_URL . 'assets/admin-build/assets/index-DFEdcGfY.css',
+        WPSSB_URL . 'assets/admin-build/' . ltrim( $style_file, '/' ),
         [ $style_handle ],
         WPSSB_VERSION
     );
@@ -225,7 +255,7 @@ function wpssb_enqueue_interface_assets() {
 
     wp_register_script(
         $script_handle,
-        WPSSB_URL . 'assets/admin-build/assets/index-C1Zt1nGe.js',
+        WPSSB_URL . 'assets/admin-build/' . ltrim( $script_file, '/' ),
         [],
         WPSSB_VERSION,
         true

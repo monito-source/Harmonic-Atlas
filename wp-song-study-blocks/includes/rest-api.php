@@ -1775,6 +1775,8 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
             'tiene_modulaciones'         => (bool) get_post_meta( $post_id, '_tiene_modulaciones', true ),
             'colecciones'                => wpss_get_song_colecciones( $post_id ),
             'tags'                       => wpss_get_song_tags( $post_id ),
+            'adjuntos'                   => function_exists( 'wpss_get_song_media_attachments' ) ? wpss_get_song_media_attachments( $post_id ) : [],
+            'adjuntos_permisos'         => function_exists( 'wpss_get_song_media_access_settings' ) ? wpss_get_song_media_access_settings( $post_id ) : [],
             'estructura'                 => $estructura,
             'estructura_personalizada'   => $estructura_personalizada,
             'estado_transcripcion'       => $estado_transcripcion,
@@ -1884,6 +1886,20 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 
     $prestamos    = wpss_sanitize_prestamos_array( $prestamos_raw );
     $modulaciones = wpss_sanitize_modulaciones_array( $modulaciones_raw );
+    $adjuntos_raw = [];
+    if ( array_key_exists( 'adjuntos', $params ) && function_exists( 'wpss_sanitize_song_media_attachments' ) ) {
+        $adjuntos_raw = wpss_sanitize_song_media_attachments( (array) $params['adjuntos'] );
+    } elseif ( $id > 0 && function_exists( 'wpss_get_song_media_attachments_raw' ) ) {
+        $adjuntos_raw = wpss_get_song_media_attachments_raw( $id );
+    }
+    $adjuntos_permisos = [];
+    if ( array_key_exists( 'adjuntos_permisos', $params ) && function_exists( 'wpss_sanitize_song_media_access_settings' ) ) {
+        $adjuntos_permisos = wpss_sanitize_song_media_access_settings( (array) $params['adjuntos_permisos'] );
+    } elseif ( $id > 0 && function_exists( 'wpss_get_song_media_access_settings' ) ) {
+        $adjuntos_permisos = wpss_get_song_media_access_settings( $id );
+    } elseif ( function_exists( 'wpss_sanitize_song_media_access_settings' ) ) {
+        $adjuntos_permisos = wpss_sanitize_song_media_access_settings( [] );
+    }
 
     $secciones_input = isset( $params['secciones'] ) ? (array) $params['secciones'] : [];
     $secciones       = wpss_sanitize_secciones_array( $secciones_input );
@@ -2055,6 +2071,10 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_bpm', $bpm );
     update_post_meta( $post_id, '_prestamos_tonales_json', wp_json_encode( $prestamos ) );
     update_post_meta( $post_id, '_modulaciones_json', wp_json_encode( $modulaciones ) );
+    update_post_meta( $post_id, '_adjuntos_multimedia_json', wp_json_encode( $adjuntos_raw, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+    if ( function_exists( 'wpss_set_song_media_access_settings' ) ) {
+        wpss_set_song_media_access_settings( $post_id, $adjuntos_permisos );
+    }
     if ( ! metadata_exists( 'post', $post_id, '_estado_transcripcion' ) ) {
         update_post_meta( $post_id, '_estado_transcripcion', 'sin_iniciar' );
     } else {
@@ -2095,6 +2115,10 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     }
 
     update_post_meta( $post_id, '_secciones_json', $secciones_json );
+
+    if ( function_exists( 'wpss_google_drive_sync_song_media_folder_names' ) ) {
+        wpss_google_drive_sync_song_media_folder_names( $post_id );
+    }
 
     if ( $estructura_personalizada_flag ) {
         $estructura_json = wp_json_encode( $estructura_sanitizada, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
@@ -2180,6 +2204,8 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             'estructura_personalizada' => (bool) $estructura_personalizada_flag,
             'colecciones'        => wpss_get_song_colecciones( $post_id ),
             'tags'               => wpss_get_song_tags( $post_id ),
+            'adjuntos'           => function_exists( 'wpss_get_song_media_attachments' ) ? wpss_get_song_media_attachments( $post_id ) : [],
+            'adjuntos_permisos'  => function_exists( 'wpss_get_song_media_access_settings' ) ? wpss_get_song_media_access_settings( $post_id ) : [],
             'item'               => wpss_prepare_cancion_list_item( $post_id ),
         ],
         wpss_get_song_reversion_data( $post_id )
@@ -2197,6 +2223,7 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
 function wpss_rest_reversionar_cancion( WP_REST_Request $request ) {
     $source_id = (int) $request->get_param( 'id' );
     $source    = get_post( $source_id );
+    $preserve_media = filter_var( $request->get_param( 'preserve_media' ), FILTER_VALIDATE_BOOLEAN );
 
     if ( ! $source || 'cancion' !== $source->post_type ) {
         return new WP_Error(
@@ -2258,6 +2285,9 @@ function wpss_rest_reversionar_cancion( WP_REST_Request $request ) {
         'tags'                        => isset( $source_data['tags'] ) && is_array( $source_data['tags'] )
             ? wp_list_pluck( $source_data['tags'], 'id' )
             : [],
+        'adjuntos_permisos'           => isset( $source_data['adjuntos_permisos'] ) && is_array( $source_data['adjuntos_permisos'] )
+            ? $source_data['adjuntos_permisos']
+            : [],
         'reversion_origen_id'         => $source_id,
     ];
 
@@ -2277,13 +2307,50 @@ function wpss_rest_reversionar_cancion( WP_REST_Request $request ) {
         );
     }
 
+    $copied_media       = [];
+    $visible_attachments = isset( $source_data['adjuntos'] ) && is_array( $source_data['adjuntos'] ) ? $source_data['adjuntos'] : [];
+    $media_message      = '';
+
+    if ( $preserve_media ) {
+        $target_user_id = get_current_user_id();
+        $target_config  = function_exists( 'wpss_get_google_drive_user_config' )
+            ? wpss_get_google_drive_user_config( $target_user_id )
+            : [];
+        $drive_ready    = function_exists( 'wpss_google_drive_is_configured_for_user' )
+            && wpss_google_drive_is_configured_for_user( $target_user_id )
+            && ! empty( $target_config['connected'] );
+
+        if ( ! $drive_ready ) {
+            $media_message = __( 'La reversión se creó sin adjuntos porque tu Google Drive no está vinculado.', 'wp-song-study' );
+        } elseif ( ! $visible_attachments ) {
+            $media_message = __( 'La reversión se creó sin adjuntos porque la canción origen no tiene medios visibles para copiar.', 'wp-song-study' );
+        } elseif ( function_exists( 'wpss_copy_song_media_attachments_to_user' ) ) {
+            $copied_media = wpss_copy_song_media_attachments_to_user( $source_id, $new_id, $target_user_id, $visible_attachments );
+            if ( count( $copied_media ) > 0 ) {
+                /* translators: %d cantidad de adjuntos copiados. */
+                $media_message = sprintf( __( 'Se copiaron %d adjuntos multimedia a tu Google Drive.', 'wp-song-study' ), count( $copied_media ) );
+            } else {
+                $media_message = __( 'La reversión se creó, pero no fue posible copiar los adjuntos multimedia al nuevo Drive.', 'wp-song-study' );
+            }
+        }
+    } elseif ( $visible_attachments ) {
+        $media_message = __( 'La reversión se creó sin copiar adjuntos multimedia.', 'wp-song-study' );
+    }
+
+    $message = __( 'Reversión creada correctamente.', 'wp-song-study' );
+    if ( '' !== $media_message ) {
+        $message .= ' ' . $media_message;
+    }
+
     return rest_ensure_response(
         [
-            'ok'        => true,
-            'id'        => $new_id,
-            'source_id' => $source_id,
-            'song'      => wpss_prepare_cancion_list_item( $new_id ),
-            'message'   => __( 'Reversión creada correctamente.', 'wp-song-study' ),
+            'ok'              => true,
+            'id'              => $new_id,
+            'source_id'       => $source_id,
+            'song'            => wpss_prepare_cancion_list_item( $new_id ),
+            'copied_media'    => count( $copied_media ),
+            'preserve_media'  => $preserve_media,
+            'message'         => $message,
         ]
     );
 }

@@ -64,6 +64,7 @@ export function createEmptySong() {
     tiene_modulaciones: false,
     colecciones: [],
     tags: [],
+    adjuntos: [],
     estructura: [],
     estructuraPersonalizada: true,
   }

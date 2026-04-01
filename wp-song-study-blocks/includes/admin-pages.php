@@ -68,7 +68,34 @@ function wpss_register_admin_pages() {
         'wpss_render_chords_page'
     );
 
-    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook ];
+    $groups_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Agrupaciones', 'wp-song-study' ),
+        __( 'Agrupaciones', 'wp-song-study' ),
+        $capability,
+        'wpss-agrupaciones',
+        'wpss_render_groups_page'
+    );
+
+    $drive_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Mi Drive', 'wp-song-study' ),
+        __( 'Mi Drive', 'wp-song-study' ),
+        $capability,
+        'wpss-mi-drive',
+        'wpss_render_drive_page'
+    );
+
+    add_submenu_page(
+        $parent_slug,
+        __( 'Drive Global', 'wp-song-study' ),
+        __( 'Drive Global', 'wp-song-study' ),
+        'manage_options',
+        'wpss-drive-global-settings',
+        'wpss_render_google_drive_global_settings_page'
+    );
+
+    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $drive_hook ];
 
     add_submenu_page(
         $parent_slug,
@@ -99,6 +126,20 @@ function wpss_render_new_song_page() {
  */
 function wpss_render_chords_page() {
     echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="chords"></div>';
+}
+
+/**
+ * Renderiza el contenedor del SPA para administrar agrupaciones musicales.
+ */
+function wpss_render_groups_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="groups"></div>';
+}
+
+/**
+ * Renderiza el contenedor del SPA para la conexión personal a Google Drive.
+ */
+function wpss_render_drive_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="drive"></div>';
 }
 
 /**
@@ -183,6 +224,51 @@ function wpss_render_settings_page() {
 }
 
 /**
+ * Renderiza la configuración global de Google Drive.
+ *
+ * @return void
+ */
+function wpss_render_google_drive_global_settings_page() {
+    $google_client_id = function_exists( 'wpss_get_google_drive_client_id' ) ? wpss_get_google_drive_client_id() : '';
+    $google_client_secret = function_exists( 'wpss_get_google_drive_client_secret' ) ? wpss_get_google_drive_client_secret() : '';
+    $google_redirect_uri = function_exists( 'wpss_get_google_drive_redirect_uri' ) ? wpss_get_google_drive_redirect_uri() : '';
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Credenciales globales de Google Drive', 'wp-song-study' ) . '</h1>';
+    echo '<p>' . esc_html__( 'Estas credenciales funcionan como respaldo global. Si un usuario configura su propio Client ID y Client Secret en su perfil, esas credenciales personales tienen prioridad.', 'wp-song-study' ) . '</p>';
+    echo '<form method="post" action="options.php">';
+    settings_fields( 'wpss_settings' );
+    echo '<table class="form-table" role="presentation">';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Google Drive Client ID', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<input type="text" name="wpss_google_drive_client_id" value="' . esc_attr( $google_client_id ) . '" class="regular-text code" />';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Google Drive Client Secret', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<input type="password" name="wpss_google_drive_client_secret" value="' . esc_attr( $google_client_secret ) . '" class="regular-text code" autocomplete="new-password" />';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Redirect URI', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<code>' . esc_html( $google_redirect_uri ) . '</code>';
+    echo '<p class="description">' . esc_html__( 'Registra exactamente esta URL en tu proyecto OAuth de Google.', 'wp-song-study' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '</table>';
+    submit_button();
+    echo '</form>';
+    echo '</div>';
+}
+
+/**
  * Encola scripts y estilos necesarios únicamente en las páginas del cancionario.
  *
  * @param string $hook Hook actual.
@@ -211,6 +297,10 @@ if ( ! function_exists( 'wpss_get_asset_version_fallback' ) ) {
      * @return string
      */
     function wpss_get_asset_version_fallback() {
+        if ( defined( 'WPSSB_VERSION' ) ) {
+            return WPSSB_VERSION;
+        }
+
         return defined( 'WPSS_VERSION' ) ? WPSS_VERSION : '1.0.0';
     }
 }
@@ -279,6 +369,17 @@ function wpss_get_admin_localized_data() {
         'wpssNonce'    => wp_create_nonce( 'wpss' ),
         'isAdmin'      => current_user_can( 'manage_options' ),
         'currentUserId' => get_current_user_id(),
+        'googleDriveStatus' => function_exists( 'wpss_get_google_drive_status_payload' )
+            ? wpss_get_google_drive_status_payload( get_current_user_id() )
+            : [
+                'configured' => false,
+                'connected'  => false,
+            ],
+        'adminUrls'    => [
+            'drivePage'  => admin_url( 'admin.php?page=wpss-mi-drive' ),
+            'groupsPage' => admin_url( 'admin.php?page=wpss-agrupaciones' ),
+            'profilePage' => admin_url( 'profile.php' ),
+        ],
         'midiRanges'   => wpss_get_midi_range_presets(),
         'midiRangeDefault' => wpss_get_midi_range_default(),
         'tonicas'      => $tonicas,
@@ -400,6 +501,8 @@ function wpss_get_admin_localized_data() {
  */
 function wpss_enqueue_react_assets( $dev_server = '' ) {
     $dev_server = trim( $dev_server );
+    $plugin_path = defined( 'WPSSB_PATH' ) ? WPSSB_PATH : ( defined( 'WPSS_PATH' ) ? WPSS_PATH : '' );
+    $plugin_url  = defined( 'WPSSB_URL' ) ? WPSSB_URL : ( defined( 'WPSS_URL' ) ? WPSS_URL : '' );
 
     if ( '' !== $dev_server ) {
         $dev_server = untrailingslashit( $dev_server );
@@ -413,9 +516,13 @@ function wpss_enqueue_react_assets( $dev_server = '' ) {
         return 'wpss-react-app';
     }
 
-    $manifest_path = WPSS_PATH . 'assets/admin-build/manifest.json';
+    if ( '' === $plugin_path || '' === $plugin_url ) {
+        return false;
+    }
+
+    $manifest_path = $plugin_path . 'assets/admin-build/manifest.json';
     if ( ! file_exists( $manifest_path ) ) {
-        $manifest_path = WPSS_PATH . 'assets/admin-build/.vite/manifest.json';
+        $manifest_path = $plugin_path . 'assets/admin-build/.vite/manifest.json';
     }
     if ( ! file_exists( $manifest_path ) ) {
         return false;
@@ -431,7 +538,7 @@ function wpss_enqueue_react_assets( $dev_server = '' ) {
         return false;
     }
 
-    $base_url = WPSS_URL . 'assets/admin-build/';
+    $base_url = $plugin_url . 'assets/admin-build/';
     $version  = filemtime( $manifest_path );
 
     wp_enqueue_script( 'wpss-react-app', $base_url . $entry['file'], [], $version, true );
