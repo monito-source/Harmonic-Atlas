@@ -20,6 +20,9 @@ export default function EditorPreviewMediaAttachments({
   title = '',
   compact = false,
   groupedBySegment = false,
+  activeAttachmentId = null,
+  onSelectAttachment = null,
+  showActions = false,
   onRename = null,
   onUnlink = null,
   onDelete = null,
@@ -57,6 +60,9 @@ export default function EditorPreviewMediaAttachments({
                   key={item.id}
                   attachment={item}
                   compact={compact}
+                  active={activeAttachmentId !== null && String(activeAttachmentId) === String(item.id)}
+                  onSelectAttachment={onSelectAttachment}
+                  showActions={showActions}
                   onRename={onRename}
                   onUnlink={onUnlink}
                   onDelete={onDelete}
@@ -79,6 +85,9 @@ export default function EditorPreviewMediaAttachments({
             key={item.id}
             attachment={item}
             compact={compact}
+            active={activeAttachmentId !== null && String(activeAttachmentId) === String(item.id)}
+            onSelectAttachment={onSelectAttachment}
+            showActions={showActions}
             onRename={onRename}
             onUnlink={onUnlink}
             onDelete={onDelete}
@@ -90,7 +99,17 @@ export default function EditorPreviewMediaAttachments({
   )
 }
 
-function PreviewAttachmentCard({ attachment, compact = false, onRename, onUnlink, onDelete, pendingAction = '' }) {
+function PreviewAttachmentCard({
+  attachment,
+  compact = false,
+  active = false,
+  onSelectAttachment,
+  showActions = false,
+  onRename,
+  onUnlink,
+  onDelete,
+  pendingAction = '',
+}) {
   const label = attachment?.title || attachment?.file_name || 'Adjunto'
   const isPhoto = attachment?.type === 'photo'
   const isBusy = !!pendingAction
@@ -104,9 +123,27 @@ function PreviewAttachmentCard({ attachment, compact = false, onRename, onUnlink
 
   return (
     <article
-      className={`wpss-reading-media__card wpss-preview-media__card ${compact ? 'is-compact' : ''}`}
-      onClick={(event) => event.stopPropagation()}
+      className={`wpss-reading-media__card wpss-preview-media__card ${compact ? 'is-compact' : ''} ${
+        active ? 'is-active' : ''
+      } ${typeof onSelectAttachment === 'function' ? 'is-selectable' : ''}`}
+      role={typeof onSelectAttachment === 'function' ? 'button' : undefined}
+      tabIndex={typeof onSelectAttachment === 'function' ? 0 : undefined}
+      aria-pressed={typeof onSelectAttachment === 'function' ? active : undefined}
+      onClick={(event) => {
+        event.stopPropagation()
+        onSelectAttachment?.(attachment)
+      }}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (typeof onSelectAttachment !== 'function') {
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          event.stopPropagation()
+          onSelectAttachment(attachment)
+        }
+      }}
     >
       <div className="wpss-reading-media__card-head">
         <strong>{label}</strong>
@@ -130,7 +167,7 @@ function PreviewAttachmentCard({ attachment, compact = false, onRename, onUnlink
           <span>{pendingAction}</span>
         </p>
       ) : null}
-      {(attachment?.can_manage || attachment?.can_delete_file) ? (
+      {showActions && (attachment?.can_manage || attachment?.can_delete_file) ? (
         <div className="wpss-preview-media__actions">
           {attachment?.can_manage && typeof onRename === 'function' ? (
             <button type="button" className="button button-small" onClick={() => onRename(attachment)} disabled={isBusy}>

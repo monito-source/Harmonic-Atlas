@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
 import {
@@ -13,6 +13,92 @@ import MidiClipList from './MidiClipList.jsx'
 import CommentEditor from './CommentEditor.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
+
+const TOUCH_DRAG_ACTIVATION_DELAY = 180
+const TOUCH_DRAG_CANCEL_DISTANCE = 10
+
+const buildContentIndicators = ({ attachments = [], comments = [], midiClips = [] }) => {
+  const safeAttachments = Array.isArray(attachments) ? attachments : []
+  const indicators = []
+  if (safeAttachments.some((item) => item?.type !== 'photo')) {
+    indicators.push({ key: 'audio', title: 'Tiene audio', tabId: 'audio' })
+  }
+  if (safeAttachments.some((item) => item?.type === 'photo')) {
+    indicators.push({ key: 'photo', title: 'Tiene foto', tabId: 'photos' })
+  }
+  if (Array.isArray(comments) && comments.length) {
+    indicators.push({ key: 'annotation', title: 'Tiene anotaciones', tabId: 'annotations' })
+  }
+  if (Array.isArray(midiClips) && midiClips.length) {
+    indicators.push({ key: 'midi', title: 'Tiene MIDI', tabId: 'midi' })
+  }
+  return indicators
+}
+
+function ContentIndicatorIcon({ type }) {
+  if (type === 'audio') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M10.5 2.5v7.1a2.4 2.4 0 1 1-1-1.94V4.9L6 5.8V11a2.4 2.4 0 1 1-1-1.94V5l5.5-1.5Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (type === 'photo') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 4.5h2l.8-1.3h4.4l.8 1.3h2A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V6A1.5 1.5 0 0 1 3 4.5Zm5 2A2.7 2.7 0 1 0 8 11.9 2.7 2.7 0 0 0 8 6.5Zm0 1.2A1.5 1.5 0 1 1 6.5 9.2 1.5 1.5 0 0 1 8 7.7Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (type === 'annotation') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v5A1.5 1.5 0 0 1 13 10.5H8.4L5 13v-2.5H3A1.5 1.5 0 0 1 1.5 9V4A1.5 1.5 0 0 1 3 2.5Zm1.5 2v1h7v-1Zm0 2.5v1h5v-1Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 3.5h12v9H2Zm1.2 1.2v6.6h9.6V4.7Zm1.1 1.1h1v4.4h-1Zm2.2 0h1v4.4h-1Zm2.2 0h1v4.4h-1Zm2.2 0h1v4.4h-1Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ContentIndicators({ items = [], onSelect = null }) {
+  if (!Array.isArray(items) || !items.length) {
+    return null
+  }
+  return (
+    <span className="wpss-content-indicators" aria-label="Contenido disponible">
+      {items.map((item) => (
+        <span
+          key={item.key}
+          className={`wpss-content-indicator is-${item.key}`}
+          title={item.title}
+          aria-label={item.title}
+          role={typeof onSelect === 'function' ? 'button' : undefined}
+          tabIndex={typeof onSelect === 'function' ? 0 : undefined}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelect?.(item)
+          }}
+          onKeyDown={(event) => {
+            if (typeof onSelect !== 'function') {
+              return
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              event.stopPropagation()
+              onSelect(item)
+            }
+          }}
+        >
+          <ContentIndicatorIcon type={item.key} />
+        </span>
+      ))}
+    </span>
+  )
+}
 
 export default function VersesPanel({
   verses,
@@ -38,12 +124,20 @@ export default function VersesPanel({
   showHeader = true,
   showPreview = true,
   visibleVerseIndexes = null,
+  songAttachments = [],
+  onContextIndicatorSelect,
   onQuickUploadAttachment,
+  onBeginSegmentDrag,
+  onEndSegmentDrag,
+  onMoveSegmentToVerse,
+  onMoveSegmentToNewVerse,
+  useContextualToolbar = false,
 }) {
   const { wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
   const safeVerses = Array.isArray(verses) ? verses : []
   const safeSections = Array.isArray(sections) ? sections : []
+  const safeAttachments = Array.isArray(songAttachments) ? songAttachments : []
   const fallbackSection = safeSections[0]
   const activeSectionId =
     selectedSectionId && safeSections.some((section) => section.id === selectedSectionId)
@@ -51,6 +145,25 @@ export default function VersesPanel({
       : fallbackSection?.id || ''
   const activeSectionName =
     safeSections.find((section) => section.id === activeSectionId)?.nombre || getDefaultSectionName(0)
+
+  const getVerseAttachments = useCallback(
+    (verseIndex) =>
+      safeAttachments.filter(
+        (item) => String(item?.anchor_type || '') === 'verse' && Number(item?.verse_index) === Number(verseIndex),
+      ),
+    [safeAttachments],
+  )
+
+  const getSegmentAttachments = useCallback(
+    (verseIndex, segmentIndex) =>
+      safeAttachments.filter(
+        (item) =>
+          String(item?.anchor_type || '') === 'segment'
+          && Number(item?.verse_index) === Number(verseIndex)
+          && Number(item?.segment_index) === Number(segmentIndex),
+      ),
+    [safeAttachments],
+  )
 
   const [selection, setSelection] = useState({
     verseIndex: null,
@@ -67,9 +180,12 @@ export default function VersesPanel({
   const [dragOver, setDragOver] = useState({ verseIndex: null, segmentIndex: null })
   const [openNotes, setOpenNotes] = useState(() => new Set())
   const [moveTargets, setMoveTargets] = useState({})
+  const [segmentMoveTargets, setSegmentMoveTargets] = useState({})
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const dragDropHandledRef = useRef(false)
+  const touchDragSessionRef = useRef(null)
+  const touchDragTimerRef = useRef(null)
   const editorsRef = useRef(new Map())
   const pendingSegmentFocusRef = useRef(null)
 
@@ -114,19 +230,47 @@ export default function VersesPanel({
     [clearSelection, selection.segmentIndex, selection.verseIndex],
   )
 
-  const versesInSection = useMemo(() => {
-    if (!activeSectionId) return []
-    return safeVerses
-      .map((verse, index) => ({ verse, index }))
-      .filter((item) => item.verse.section_id === activeSectionId)
-  }, [safeVerses, activeSectionId])
+  const versesInSection = !activeSectionId
+    ? []
+    : safeVerses
+        .map((verse, index) => ({ verse, index }))
+        .filter((item) => item.verse.section_id === activeSectionId)
 
-  const visibleVersesInSection = useMemo(() => {
-    if (!visibleVerseIndexes || !(visibleVerseIndexes instanceof Set) || visibleVerseIndexes.size === 0) {
-      return versesInSection
+  const visibleVersesInSection =
+    !visibleVerseIndexes || !(visibleVerseIndexes instanceof Set) || visibleVerseIndexes.size === 0
+      ? versesInSection
+      : versesInSection.filter((item) => visibleVerseIndexes.has(item.index))
+
+  const verseLabelMap = (() => {
+    const map = new Map()
+    safeVerses.forEach((verse, index) => {
+      const sectionVerses = safeVerses
+        .slice(0, index + 1)
+        .filter((item) => (item.section_id || '') === (verse.section_id || ''))
+      const position = sectionVerses.length
+      const label = verse?.nombre
+        ? String(verse.nombre)
+        : verse?.instrumental
+          ? `Instrumental ${position}`
+          : `Verso ${position}`
+      map.set(index, label)
+    })
+    return map
+  })()
+
+  const buildSegmentMoveTarget = (segmentKey, fallbackSectionId) => {
+    const stored = segmentMoveTargets[segmentKey]
+    if (stored && typeof stored === 'object') {
+      return {
+        sectionId: stored.sectionId || fallbackSectionId || activeSectionId || '',
+        verseValue: stored.verseValue || '__new__',
+      }
     }
-    return versesInSection.filter((item) => visibleVerseIndexes.has(item.index))
-  }, [versesInSection, visibleVerseIndexes])
+    return {
+      sectionId: fallbackSectionId || activeSectionId || '',
+      verseValue: '__new__',
+    }
+  }
 
   const handleSelectionUpdate = (verseIndex, segmentIndex, event) => {
     const element = event.currentTarget || event.target
@@ -536,10 +680,6 @@ export default function VersesPanel({
     })
   }
 
-  const handleVerseMidiChange = (verseIndex, clips) => {
-    updateVerse(verseIndex, (verse) => ({ ...verse, midi_clips: clips }))
-  }
-
   const adjustEventIndexAfterRemove = (verse, segmentIndex) => {
     const current = getValidSegmentIndex(verse.evento_armonico, verse.segmentos.length)
     if (!verse.evento_armonico || current === null) {
@@ -577,28 +717,6 @@ export default function VersesPanel({
         verse = { ...verse, evento_armonico: { ...verse.evento_armonico, segment_index: current + 1 } }
       }
       return { ...verse, segmentos }
-    })
-  }
-
-  const handleMoveSegment = (verseIndex, segmentIndex, direction) => {
-    updateVerse(verseIndex, (verse) => {
-      const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
-      const target = segmentIndex + direction
-      if (target < 0 || target >= segmentos.length) return verse
-      const temp = segmentos[segmentIndex]
-      segmentos[segmentIndex] = segmentos[target]
-      segmentos[target] = temp
-
-      const current = getValidSegmentIndex(verse.evento_armonico, segmentos.length)
-      let nextEvent = verse.evento_armonico
-      if (nextEvent && current !== null) {
-        if (current === segmentIndex) {
-          nextEvent = { ...nextEvent, segment_index: target }
-        } else if (current === target) {
-          nextEvent = { ...nextEvent, segment_index: segmentIndex }
-        }
-      }
-      return { ...verse, segmentos, evento_armonico: nextEvent }
     })
   }
 
@@ -646,6 +764,220 @@ export default function VersesPanel({
     })
     return true
   }
+
+  const clearTouchDragTimer = useCallback(() => {
+    if (touchDragTimerRef.current !== null) {
+      window.clearTimeout(touchDragTimerRef.current)
+      touchDragTimerRef.current = null
+    }
+  }, [])
+
+  const clearTouchDragSession = useCallback(() => {
+    const activeType = touchDragSessionRef.current?.active ? touchDragSessionRef.current.type : null
+    clearTouchDragTimer()
+    touchDragSessionRef.current?.cleanup?.()
+    touchDragSessionRef.current = null
+    resetDragState()
+    if (activeType === 'segment' && onEndSegmentDrag) {
+      onEndSegmentDrag()
+    }
+  }, [clearTouchDragTimer, onEndSegmentDrag, resetDragState])
+
+  const resolveTouchDropTarget = useCallback((clientX, clientY) => {
+    if (typeof document === 'undefined') {
+      return null
+    }
+
+    const target = document.elementFromPoint(clientX, clientY)
+    if (!(target instanceof Element)) {
+      return null
+    }
+
+    const segmentNode = target.closest('[data-wpss-segment-key]')
+    if (segmentNode) {
+      const key = String(segmentNode.getAttribute('data-wpss-segment-key') || '')
+      const [verseIndexRaw, segmentIndexRaw] = key.split(':')
+      const verseIndex = parseInt(verseIndexRaw || '', 10)
+      const segmentIndex = parseInt(segmentIndexRaw || '', 10)
+      if (!Number.isNaN(verseIndex) && !Number.isNaN(segmentIndex)) {
+        return { type: 'segment', verseIndex, segmentIndex }
+      }
+    }
+
+    const verseNode = target.closest('[data-wpss-verse-index]')
+    if (verseNode) {
+      const verseIndex = parseInt(verseNode.getAttribute('data-wpss-verse-index') || '', 10)
+      if (!Number.isNaN(verseIndex)) {
+        return { type: 'verse', verseIndex }
+      }
+    }
+
+    const previewVerseNode = target.closest('[data-wpss-preview-verse-index]')
+    if (previewVerseNode) {
+      const verseIndex = parseInt(previewVerseNode.getAttribute('data-wpss-preview-verse-index') || '', 10)
+      if (!Number.isNaN(verseIndex)) {
+        return { type: 'preview-verse', verseIndex }
+      }
+    }
+
+    const previewSectionNode = target.closest('[data-wpss-preview-section-id]')
+    if (previewSectionNode) {
+      const sectionId = String(previewSectionNode.getAttribute('data-wpss-preview-section-id') || '')
+      if (sectionId) {
+        return { type: 'preview-section', sectionId }
+      }
+    }
+
+    return null
+  }, [])
+
+  const beginTouchHandleDrag = useCallback((event, payload) => {
+    if (!payload || (event.pointerType && event.pointerType === 'mouse')) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearTouchDragSession()
+
+    const pointerId = event.pointerId
+    const startX = event.clientX
+    const startY = event.clientY
+
+    const updateHoverState = (clientX, clientY) => {
+      const target = resolveTouchDropTarget(clientX, clientY)
+      if (payload.type === 'verse') {
+        const nextVerseIndex = target?.type === 'verse' ? target.verseIndex : null
+        setDragOver({ verseIndex: nextVerseIndex, segmentIndex: null })
+        dragOverRef.current = { verseIndex: nextVerseIndex, segmentIndex: null }
+        return
+      }
+
+      if (payload.type === 'segment') {
+        const nextDragOver =
+          target?.type === 'segment'
+            ? { verseIndex: target.verseIndex, segmentIndex: target.segmentIndex }
+            : { verseIndex: null, segmentIndex: null }
+        setDragOver(nextDragOver)
+        dragOverRef.current = nextDragOver
+      }
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleCancel)
+    }
+
+    const activate = () => {
+      touchDragTimerRef.current = null
+      touchDragSessionRef.current = {
+        ...payload,
+        pointerId,
+        startX,
+        startY,
+        active: true,
+        cleanup,
+      }
+      setDragState({
+        type: payload.type,
+        verseIndex: payload.verseIndex,
+        segmentIndex: payload.segmentIndex ?? null,
+      })
+      dragRef.current = {
+        type: payload.type,
+        verseIndex: payload.verseIndex,
+        segmentIndex: payload.segmentIndex ?? null,
+      }
+      dragDropHandledRef.current = false
+      if (payload.type === 'segment' && onBeginSegmentDrag) {
+        onBeginSegmentDrag(payload.verseIndex, payload.segmentIndex)
+      }
+      updateHoverState(startX, startY)
+    }
+
+    const finishDrag = (clientX, clientY) => {
+      const target = resolveTouchDropTarget(clientX, clientY)
+      let handled = false
+
+      if (payload.type === 'verse' && target?.type === 'verse') {
+        handled = moveVerseTo(payload.verseIndex, target.verseIndex)
+      } else if (payload.type === 'segment') {
+        if (target?.type === 'segment') {
+          handled = handleSegmentDrop(target.verseIndex, target.segmentIndex)
+        } else if (target?.type === 'preview-verse' && onMoveSegmentToVerse) {
+          handled = !!onMoveSegmentToVerse(payload.verseIndex, payload.segmentIndex, target.verseIndex)
+        } else if (target?.type === 'preview-section' && onMoveSegmentToNewVerse) {
+          handled = !!onMoveSegmentToNewVerse(payload.verseIndex, payload.segmentIndex, target.sectionId)
+        }
+      }
+
+      dragDropHandledRef.current = handled
+      clearTouchDragSession()
+    }
+
+    const handleMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) {
+        return
+      }
+
+      const session = touchDragSessionRef.current
+      if (!session?.active) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > TOUCH_DRAG_CANCEL_DISTANCE) {
+          clearTouchDragSession()
+        }
+        return
+      }
+
+      moveEvent.preventDefault()
+      updateHoverState(moveEvent.clientX, moveEvent.clientY)
+    }
+
+    const handleUp = (upEvent) => {
+      if (upEvent.pointerId !== pointerId) {
+        return
+      }
+      const isActive = !!touchDragSessionRef.current?.active
+      upEvent.preventDefault()
+      if (isActive) {
+        finishDrag(upEvent.clientX, upEvent.clientY)
+      } else {
+        clearTouchDragSession()
+      }
+    }
+
+    const handleCancel = (cancelEvent) => {
+      if (cancelEvent.pointerId !== pointerId) {
+        return
+      }
+      clearTouchDragSession()
+    }
+
+    touchDragSessionRef.current = {
+      ...payload,
+      pointerId,
+      startX,
+      startY,
+      active: false,
+      cleanup,
+    }
+    touchDragTimerRef.current = window.setTimeout(activate, TOUCH_DRAG_ACTIVATION_DELAY)
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleCancel)
+  }, [
+    clearTouchDragSession,
+    handleSegmentDrop,
+    moveVerseTo,
+    onBeginSegmentDrag,
+    onMoveSegmentToNewVerse,
+    onMoveSegmentToVerse,
+    resolveTouchDropTarget,
+  ])
+
+  useEffect(() => () => {
+    clearTouchDragSession()
+  }, [clearTouchDragSession])
 
   const toggleSegmentEvent = (verseIndex, segmentIndex) => {
     updateVerse(verseIndex, (verse) => {
@@ -872,10 +1204,16 @@ export default function VersesPanel({
               const canQuickSplitVerse =
                 activeSegmentIndex !== null && canSplitAt(verseIndex, activeSegmentIndex)
               const canQuickSplitSection = canSplitSectionAtVerse(verseIndex)
+              const verseIndicators = buildContentIndicators({
+                attachments: getVerseAttachments(verseIndex),
+                comments: verse?.comentarios,
+                midiClips: verse?.midi_clips,
+              })
               return (
                 <div
                   key={`verse-${verseIndex}`}
                   className={`wpss-verse-card ${dragOver.verseIndex === verseIndex ? 'is-dragover' : ''}`}
+                  data-wpss-verse-index={verseIndex}
                   onDragOver={(event) => {
                     event.preventDefault()
                     setDragOver({ verseIndex, segmentIndex: null })
@@ -898,14 +1236,19 @@ export default function VersesPanel({
                   }}
                 >
                   <div className="wpss-verse-card__header">
-                    <span
-                      className={`wpss-drag-handle ${dragState.type === 'verse' ? 'is-dragging' : ''}`}
-                      draggable
-                      aria-label="Mover verso"
-                      title="Mover verso"
-                      onDragStart={(event) => {
-                        if (event.dataTransfer) {
-                          event.dataTransfer.setData('text/plain', String(verseIndex))
+	                    <span
+	                      className={`wpss-drag-handle ${dragState.type === 'verse' ? 'is-dragging' : ''}`}
+	                      draggable
+	                      aria-label="Mover verso"
+	                      title="Mover verso"
+	                      onPointerDown={(event) => {
+	                        event.stopPropagation()
+	                        beginTouchHandleDrag(event, { type: 'verse', verseIndex })
+	                      }}
+	                      onContextMenu={(event) => event.preventDefault()}
+	                      onDragStart={(event) => {
+	                        if (event.dataTransfer) {
+	                          event.dataTransfer.setData('text/plain', String(verseIndex))
                         }
                         event.dataTransfer.effectAllowed = 'move'
                         dragDropHandledRef.current = false
@@ -927,7 +1270,22 @@ export default function VersesPanel({
                     >
                       ☰
                     </span>
-                    <strong>{label}</strong>
+                    <strong className="wpss-verse-card__label">
+                      <span>{label}</span>
+                      <ContentIndicators
+                        items={verseIndicators}
+                        onSelect={(item) =>
+                          onContextIndicatorSelect?.(
+                            {
+                              type: 'verse',
+                              sectionId: verse.section_id || activeSectionId,
+                              verseIndex,
+                            },
+                            item.tabId,
+                          )
+                        }
+                      />
+                    </strong>
                     <div className="wpss-verse-actions">
                       {activeSegmentIndex !== null ? (
                         <>
@@ -963,13 +1321,15 @@ export default function VersesPanel({
                           </button>
                         </>
                       ) : null}
-                      <button
-                        type="button"
-                        className={`button button-small ${openNotes.has(`verse-${verseIndex}`) ? 'is-active' : ''}`}
-                        onClick={() => toggleNotes(`verse-${verseIndex}`)}
-                      >
-                        Notas
-                      </button>
+                      {!useContextualToolbar ? (
+                        <button
+                          type="button"
+                          className={`button button-small ${openNotes.has(`verse-${verseIndex}`) ? 'is-active' : ''}`}
+                          onClick={() => toggleNotes(`verse-${verseIndex}`)}
+                        >
+                          Notas
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={`button button-small ${verse.instrumental ? 'is-active' : ''}`}
@@ -977,70 +1337,72 @@ export default function VersesPanel({
                       >
                         Instrumental
                       </button>
-                      <details className="wpss-action-menu">
-                        <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
-                        <div className="wpss-action-menu__panel">
-                          <InlineMediaQuickActions
-                            target={{ anchor_type: 'verse', verse_index: verseIndex }}
-                            onUpload={onQuickUploadAttachment}
-                          />
-                          <label>
-                            <span>Mover a sección</span>
-                            <select
-                              value={moveTarget}
-                              onChange={(event) =>
-                                setMoveTargets((prev) => ({ ...prev, [verseIndex]: event.target.value }))
+                      {!useContextualToolbar ? (
+                        <details className="wpss-action-menu">
+                          <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
+                          <div className="wpss-action-menu__panel">
+                            <InlineMediaQuickActions
+                              target={{ anchor_type: 'verse', verse_index: verseIndex }}
+                              onUpload={onQuickUploadAttachment}
+                            />
+                            <label>
+                              <span>Mover a sección</span>
+                              <select
+                                value={moveTarget}
+                                onChange={(event) =>
+                                  setMoveTargets((prev) => ({ ...prev, [verseIndex]: event.target.value }))
+                                }
+                              >
+                                {safeSections.map((section, index) => (
+                                  <option key={`move-${verseIndex}-${section.id}`} value={section.id}>
+                                    {section.nombre || getDefaultSectionName(index)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="button button-small"
+                              onClick={() => handleMoveVerseToSection(verseIndex, moveTarget)}
+                              disabled={!moveTarget || moveTarget === (verse.section_id || '')}
+                            >
+                              Mover verso
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-small"
+                              onClick={() => handleDuplicateVerse(verseIndex)}
+                            >
+                              Duplicar verso
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-small"
+                              onClick={() =>
+                                onSplitSection &&
+                                onSplitSection(
+                                  verseIndex,
+                                  selection.segmentIndex ?? 0,
+                                  selection.element,
+                                )
                               }
                             >
-                              {safeSections.map((section, index) => (
-                                <option key={`move-${verseIndex}-${section.id}`} value={section.id}>
-                                  {section.nombre || getDefaultSectionName(index)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <button
-                            type="button"
-                            className="button button-small"
-                            onClick={() => handleMoveVerseToSection(verseIndex, moveTarget)}
-                            disabled={!moveTarget || moveTarget === (verse.section_id || '')}
-                          >
-                            Mover verso
-                          </button>
-                          <button
-                            type="button"
-                            className="button button-small"
-                            onClick={() => handleDuplicateVerse(verseIndex)}
-                          >
-                            Duplicar verso
-                          </button>
-                          <button
-                            type="button"
-                            className="button button-small"
-                            onClick={() =>
-                              onSplitSection &&
-                              onSplitSection(
-                                verseIndex,
-                                selection.segmentIndex ?? 0,
-                                selection.element,
-                              )
-                            }
-                          >
-                            Dividir sección
-                          </button>
-                          <button
-                            type="button"
-                            className="button button-link-delete"
-                            onClick={() => handleRemoveVerse(verseIndex)}
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-                      </details>
+                              Dividir sección
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-link-delete"
+                              onClick={() => handleRemoveVerse(verseIndex)}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
                   </div>
                   <div className="wpss-verse-card__body">
-                    {activeSegmentIndex !== null ? (
+                    {activeSegmentIndex !== null && !useContextualToolbar ? (
                       <div className="wpss-verse-format-toolbar">
                         <span>Formato</span>
                         <button
@@ -1088,6 +1450,13 @@ export default function VersesPanel({
                         const chordInputSize = Math.max(2, String(segment?.acorde || '').length + 1)
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
+                        const segmentMoveKey = `${verseIndex}:${segmentIndex}`
+                        const segmentMoveTarget = buildSegmentMoveTarget(segmentMoveKey, verse.section_id || activeSectionId)
+                        const segmentIndicators = buildContentIndicators({
+                          attachments: getSegmentAttachments(verseIndex, segmentIndex),
+                          comments: segment?.comentarios,
+                          midiClips: segment?.midi_clips,
+                        })
 
                         return (
                           <div
@@ -1095,6 +1464,7 @@ export default function VersesPanel({
                             className={`wpss-segment ${isEventTarget ? 'is-event-target' : ''} ${
                               isDragOver ? 'is-dragover' : ''
                             } ${isEditingSegment ? 'is-editing' : ''}`}
+                            data-wpss-segment-key={`${verseIndex}:${segmentIndex}`}
                             onDragOver={(event) => {
                               if (dragState.type !== 'segment') return
                               event.preventDefault()
@@ -1109,21 +1479,33 @@ export default function VersesPanel({
                             }}
                           >
                             <div className="wpss-segment__drag">
-                              <span
-                                className={`wpss-drag-handle ${
-                                  dragState.type === 'segment' ? 'is-dragging' : ''
-                                }`}
-                                draggable
-                                aria-label="Mover segmento"
-                                title="Mover segmento"
-                                onDragStart={(event) => {
-                                  if (event.dataTransfer) {
-                                    event.dataTransfer.setData('text/plain', `${verseIndex}-${segmentIndex}`)
+	                              <span
+	                                className={`wpss-drag-handle ${
+	                                  dragState.type === 'segment' ? 'is-dragging' : ''
+	                                }`}
+	                                draggable
+	                                aria-label="Mover segmento"
+	                                title="Mover segmento"
+	                                onPointerDown={(event) => {
+	                                  event.stopPropagation()
+	                                  beginTouchHandleDrag(event, { type: 'segment', verseIndex, segmentIndex })
+	                                }}
+	                                onContextMenu={(event) => event.preventDefault()}
+	                                onDragStart={(event) => {
+	                                  if (event.dataTransfer) {
+	                                    event.dataTransfer.setData('text/plain', `${verseIndex}-${segmentIndex}`)
+                                    event.dataTransfer.setData(
+                                      'application/x-wpss-segment',
+                                      JSON.stringify({ verseIndex, segmentIndex }),
+                                    )
                                   }
                                   event.dataTransfer.effectAllowed = 'move'
                                   dragDropHandledRef.current = false
                                   setDragState({ type: 'segment', verseIndex, segmentIndex })
                                   dragRef.current = { type: 'segment', verseIndex, segmentIndex }
+                                  if (onBeginSegmentDrag) {
+                                    onBeginSegmentDrag(verseIndex, segmentIndex)
+                                  }
                                 }}
                                 onDragEnd={() => {
                                   const refState = dragRef.current
@@ -1138,6 +1520,9 @@ export default function VersesPanel({
                                     handleSegmentDrop(verseIndex, refOver.segmentIndex)
                                   }
                                   resetDragState()
+                                  if (onEndSegmentDrag) {
+                                    onEndSegmentDrag()
+                                  }
                                 }}
                               >
                                 ⋮⋮
@@ -1160,7 +1545,23 @@ export default function VersesPanel({
                               }}
                             >
                               <strong>{segmentChordLabel}</strong>
-                              <span>{segmentPreviewText}</span>
+                              <span className="wpss-segment__summary-copy">
+                                <span>{segmentPreviewText}</span>
+                                <ContentIndicators
+                                  items={segmentIndicators}
+                                  onSelect={(item) =>
+                                    onContextIndicatorSelect?.(
+                                      {
+                                        type: 'segment',
+                                        sectionId: verse.section_id || activeSectionId,
+                                        verseIndex,
+                                        segmentIndex,
+                                      },
+                                      item.tabId,
+                                    )
+                                  }
+                                />
+                              </span>
                             </button>
                             <div className="wpss-segment__fields">
                               <label>
@@ -1229,66 +1630,140 @@ export default function VersesPanel({
                               </div>
                             </div>
                             <div className="wpss-segment__actions">
-                              <button
-                                type="button"
-                                className={`button button-small ${openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? 'is-active' : ''}`}
-                                onClick={() => toggleNotes(`segment-${verseIndex}-${segmentIndex}`)}
-                              >
-                                Notas
-                              </button>
-                              <details className="wpss-action-menu">
-                                <summary aria-label="Acciones del segmento" title="Acciones del segmento">⋯</summary>
-                                <div className="wpss-action-menu__panel">
-                                  <InlineMediaQuickActions
-                                    target={{
-                                      anchor_type: 'segment',
-                                      section_id: verse.section_id || activeSectionId || '',
-                                      verse_index: verseIndex,
-                                      segment_index: segmentIndex,
-                                    }}
-                                    onUpload={onQuickUploadAttachment}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onClick={() => handleDuplicateSegment(verseIndex, segmentIndex)}
-                                  >
-                                    {wpData?.strings?.segmentDuplicate || 'Duplicar'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-small wpss-segment__split"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={(event) => {
-                                      const key = `${verseIndex}:${segmentIndex}`
-                                      const editor = editorsRef.current.get(key)
-                                      if (editor && onSplitSegment) {
-                                        onSplitSegment(verseIndex, segmentIndex, editor)
-                                      }
-                                    }}
-                                  >
-                                    {wpData?.strings?.segmentSplit || 'Dividir'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="button button-small"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={(event) => {
-                                      const key = `${verseIndex}:${segmentIndex}`
-                                      const editor = editorsRef.current.get(key)
-                                      if (editor && onSplitVerse) {
-                                        onSplitVerse(verseIndex, segmentIndex, editor)
-                                      }
-                                    }}
-                                  >
-                                    Cortar verso
-                                  </button>
+                              {!useContextualToolbar ? (
+                                <button
+                                  type="button"
+                                  className={`button button-small ${openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? 'is-active' : ''}`}
+                                  onClick={() => toggleNotes(`segment-${verseIndex}-${segmentIndex}`)}
+                                >
+                                  Notas
+                                </button>
+                              ) : null}
+                              {!useContextualToolbar ? (
+                                <details className="wpss-action-menu">
+                                  <summary aria-label="Acciones del segmento" title="Acciones del segmento">⋯</summary>
+                                  <div className="wpss-action-menu__panel">
+                                    <InlineMediaQuickActions
+                                      target={{
+                                        anchor_type: 'segment',
+                                        section_id: verse.section_id || activeSectionId || '',
+                                        verse_index: verseIndex,
+                                        segment_index: segmentIndex,
+                                      }}
+                                      onUpload={onQuickUploadAttachment}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="button button-small"
+                                      onClick={() => handleDuplicateSegment(verseIndex, segmentIndex)}
+                                    >
+                                      {wpData?.strings?.segmentDuplicate || 'Duplicar'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="button button-small wpss-segment__split"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => {
+                                        const key = `${verseIndex}:${segmentIndex}`
+                                        const editor = editorsRef.current.get(key)
+                                        if (editor && onSplitSegment) {
+                                          onSplitSegment(verseIndex, segmentIndex, editor)
+                                        }
+                                      }}
+                                    >
+                                      {wpData?.strings?.segmentSplit || 'Dividir'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="button button-small"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => {
+                                        const key = `${verseIndex}:${segmentIndex}`
+                                        const editor = editorsRef.current.get(key)
+                                        if (editor && onSplitVerse) {
+                                          onSplitVerse(verseIndex, segmentIndex, editor)
+                                        }
+                                      }}
+                                    >
+                                      Cortar verso
+                                    </button>
                                   <button
                                     type="button"
                                     className="button button-link-delete"
                                     onClick={() => handleRemoveSegment(verseIndex, segmentIndex)}
                                   >
                                     Eliminar
+                                  </button>
+                                  <label>
+                                    <span>Sección destino</span>
+                                    <select
+                                      value={segmentMoveTarget.sectionId}
+                                      onChange={(event) =>
+                                        setSegmentMoveTargets((prev) => ({
+                                          ...prev,
+                                          [segmentMoveKey]: {
+                                            sectionId: event.target.value,
+                                            verseValue: '__new__',
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      {safeSections.map((section, index) => (
+                                        <option key={`segment-target-section-${segmentMoveKey}-${section.id}`} value={section.id}>
+                                          {section.nombre || getDefaultSectionName(index)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label>
+                                    <span>Verso destino</span>
+                                    <select
+                                      value={segmentMoveTarget.verseValue}
+                                      onChange={(event) =>
+                                        setSegmentMoveTargets((prev) => ({
+                                          ...prev,
+                                          [segmentMoveKey]: {
+                                            ...segmentMoveTarget,
+                                            verseValue: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <option value="__new__">Crear verso nuevo</option>
+                                      {safeVerses
+                                        .map((targetVerse, targetVerseIndex) => ({ targetVerse, targetVerseIndex }))
+                                        .filter(({ targetVerse }) =>
+                                          (targetVerse.section_id || '') === segmentMoveTarget.sectionId,
+                                        )
+                                        .map(({ targetVerseIndex }) => (
+                                          <option
+                                            key={`segment-target-verse-${segmentMoveKey}-${targetVerseIndex}`}
+                                            value={String(targetVerseIndex)}
+                                          >
+                                            {verseLabelMap.get(targetVerseIndex) || `Verso ${targetVerseIndex + 1}`}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onClick={() => {
+                                      if (segmentMoveTarget.verseValue === '__new__') {
+                                        onMoveSegmentToNewVerse?.(
+                                          verseIndex,
+                                          segmentIndex,
+                                          segmentMoveTarget.sectionId,
+                                        )
+                                        return
+                                      }
+                                      const targetVerseIndex = parseInt(segmentMoveTarget.verseValue, 10)
+                                      if (!Number.isNaN(targetVerseIndex)) {
+                                        onMoveSegmentToVerse?.(verseIndex, segmentIndex, targetVerseIndex)
+                                      }
+                                    }}
+                                  >
+                                    Mover segmento
                                   </button>
                                   <label>
                                     <span>Evento armónico</span>
@@ -1385,8 +1860,9 @@ export default function VersesPanel({
                                   ) : null}
                                 </div>
                               </details>
+                              ) : null}
                             </div>
-                            {openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? (
+                            {!useContextualToolbar && openNotes.has(`segment-${verseIndex}-${segmentIndex}`) ? (
                               <CommentEditor
                                 label="Notas del segmento"
                                 comments={segment.comentarios || []}
@@ -1396,19 +1872,21 @@ export default function VersesPanel({
                                 }
                               />
                             ) : null}
-                            <div className="wpss-segment__midi">
-                                <MidiClipList
-                                  clips={segment?.midi_clips}
-                                  onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
-                                  emptyLabel="Añadir MIDI al segmento"
-                                  defaultTempo={bpmDefault}
-                                  compactRows={compactMidiRows}
-                                  allowRowToggle={allowMidiRowToggle}
-                                  rangePresets={midiRangePresets}
-                                  defaultRange={midiRangeDefault}
-                                  lockRange={lockMidiRange}
-                                />
-                            </div>
+                            {!useContextualToolbar ? (
+                              <div className="wpss-segment__midi">
+                                  <MidiClipList
+                                    clips={segment?.midi_clips}
+                                    onChange={(clips) => handleSegmentMidiChange(verseIndex, segmentIndex, clips)}
+                                    emptyLabel="Añadir MIDI al segmento"
+                                    defaultTempo={bpmDefault}
+                                    compactRows={compactMidiRows}
+                                    allowRowToggle={allowMidiRowToggle}
+                                    rangePresets={midiRangePresets}
+                                    defaultRange={midiRangeDefault}
+                                    lockRange={lockMidiRange}
+                                  />
+                              </div>
+                            ) : null}
                           </div>
                         )
                       })}
@@ -1423,7 +1901,7 @@ export default function VersesPanel({
                       </div>
                     </div>
 
-                    {openNotes.has(`verse-${verseIndex}`) ? (
+                    {!useContextualToolbar && openNotes.has(`verse-${verseIndex}`) ? (
                       <CommentEditor
                         label="Notas del verso"
                         comments={verse.comentarios || []}

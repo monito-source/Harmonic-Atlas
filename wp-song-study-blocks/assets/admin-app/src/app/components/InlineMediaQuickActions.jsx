@@ -28,7 +28,7 @@ function buildCapturedFile(blob, mode) {
   return new File([blob], `${isPhoto ? 'foto' : 'audio'}-${stamp}.${extension}`, { type: mimeType })
 }
 
-export default function InlineMediaQuickActions({ target, onUpload }) {
+export default function InlineMediaQuickActions({ target, onUpload, allowedModes = null }) {
   const { api, wpData, dispatch } = useAppState()
   const importAudioRef = useRef(null)
   const importPhotoRef = useRef(null)
@@ -281,6 +281,10 @@ export default function InlineMediaQuickActions({ target, onUpload }) {
   }
 
   const disabled = !!uploadingMode
+  const enabledModes = Array.isArray(allowedModes) && allowedModes.length
+    ? new Set(allowedModes)
+    : null
+  const canShowMode = (mode) => !enabledModes || enabledModes.has(mode)
   const renderActionContent = (mode) => (
     <span className="wpss-inline-action-label">
       {uploadingMode === mode ? <Spinner label="Subiendo a Google Drive" /> : null}
@@ -325,18 +329,28 @@ export default function InlineMediaQuickActions({ target, onUpload }) {
         hidden
         onChange={(event) => handleImportFile('importPhoto', event)}
       />
-      <button type="button" className="button button-small" onClick={openImportAudio} disabled={disabled || isCheckingDrive}>
-        {renderActionContent('importAudio')}
-      </button>
-      <button type="button" className="button button-small" onClick={openRecordAudio} disabled={disabled || isCheckingDrive}>
-        {renderActionContent('recordAudio')}
-      </button>
-      <button type="button" className="button button-small" onClick={openImportPhoto} disabled={disabled || isCheckingDrive}>
-        {renderActionContent('importPhoto')}
-      </button>
-      <button type="button" className="button button-small" onClick={openCapturePhoto} disabled={disabled || isCheckingDrive}>
-        {renderActionContent('capturePhoto')}
-      </button>
+      <div className="wpss-inline-actions">
+        {canShowMode('importAudio') ? (
+          <button type="button" className="button button-small" onClick={openImportAudio} disabled={disabled || isCheckingDrive}>
+            {renderActionContent('importAudio')}
+          </button>
+        ) : null}
+        {canShowMode('recordAudio') ? (
+          <button type="button" className="button button-small" onClick={openRecordAudio} disabled={disabled || isCheckingDrive}>
+            {renderActionContent('recordAudio')}
+          </button>
+        ) : null}
+        {canShowMode('importPhoto') ? (
+          <button type="button" className="button button-small" onClick={openImportPhoto} disabled={disabled || isCheckingDrive}>
+            {renderActionContent('importPhoto')}
+          </button>
+        ) : null}
+        {canShowMode('capturePhoto') ? (
+          <button type="button" className="button button-small" onClick={openCapturePhoto} disabled={disabled || isCheckingDrive}>
+            {renderActionContent('capturePhoto')}
+          </button>
+        ) : null}
+      </div>
 
       {isCheckingDrive ? (
         <p className="wpss-inline-drive-status">

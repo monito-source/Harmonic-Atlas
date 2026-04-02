@@ -96,6 +96,7 @@ export function buildInitialState(wpData, view = 'dashboard') {
     activeTab: view === 'public' ? 'reading' : 'editor',
     songs: [],
     filters: {
+      search: '',
       tonica: '',
       con_prestamos: '',
       con_modulaciones: '',
