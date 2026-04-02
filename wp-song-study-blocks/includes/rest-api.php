@@ -130,6 +130,9 @@ function wpss_register_rest_routes() {
                 'tag' => [
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+                'search' => [
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
             ],
         ]
     );
@@ -1167,6 +1170,7 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
     $page     = max( 1, (int) $request->get_param( 'page' ) );
     $per_page = (int) $request->get_param( 'per_page' );
     $per_page = min( max( 1, $per_page ), 100 );
+    $search   = trim( sanitize_text_field( (string) $request->get_param( 'search' ) ) );
 
     $args = [
         'post_type'      => 'cancion',
@@ -1256,6 +1260,37 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
     $items       = [];
     $total_items = 0;
     $total_pages = 0;
+    $matches_search = static function( $post_id ) use ( $search ) {
+        if ( '' === $search ) {
+            return true;
+        }
+
+        $normalize = static function( $value ) {
+            $value = remove_accents( wp_strip_all_tags( (string) $value ) );
+            return function_exists( 'mb_strtolower' )
+                ? mb_strtolower( $value, 'UTF-8' )
+                : strtolower( $value );
+        };
+
+        $autor_id        = (int) get_post_field( 'post_author', $post_id );
+        $reversion_data  = wpss_get_song_reversion_data( $post_id );
+        $haystacks = [
+            get_the_title( $post_id ),
+            sanitize_text_field( get_post_meta( $post_id, '_ficha_autores', true ) ),
+            wpss_get_user_display_name( $autor_id ),
+            isset( $reversion_data['reversion_autor_origen_nombre'] ) ? $reversion_data['reversion_autor_origen_nombre'] : '',
+        ];
+
+        $needle = $normalize( $search );
+        foreach ( $haystacks as $value ) {
+            $normalized_value = $normalize( $value );
+            if ( '' !== $normalized_value && false !== strpos( $normalized_value, $needle ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    };
 
     if ( $coleccion_id ) {
         $tax_query[] = [
@@ -1305,6 +1340,16 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
                     }
                 );
             }
+            if ( '' !== $search ) {
+                $filtered_ids = array_values(
+                    array_filter(
+                        $filtered_ids,
+                        static function( $post_id ) use ( $matches_search ) {
+                            return $matches_search( $post_id );
+                        }
+                    )
+                );
+            }
         } else {
             $filtered_ids = [];
         }
@@ -1332,25 +1377,63 @@ function wpss_rest_get_canciones( WP_REST_Request $request ) {
             $args['tax_query'] = $tax_query;
         }
 
-        $query = new WP_Query( $args );
+        if ( '' !== $search ) {
+            $search_args = $args;
+            $search_args['posts_per_page'] = -1;
+            $search_args['paged']          = 1;
+            $search_args['no_found_rows']  = true;
 
-        if ( ! empty( $query->posts ) ) {
-            if ( function_exists( 'prime_post_caches' ) ) {
-                prime_post_caches( $query->posts, true, true );
-            } else {
-                update_meta_cache( 'post', $query->posts );
-                update_object_term_cache( $query->posts, 'cancion' );
+            $query = new WP_Query( $search_args );
+
+            if ( ! empty( $query->posts ) ) {
+                if ( function_exists( 'prime_post_caches' ) ) {
+                    prime_post_caches( $query->posts, true, true );
+                } else {
+                    update_meta_cache( 'post', $query->posts );
+                    update_object_term_cache( $query->posts, 'cancion' );
+                }
             }
+
+            $filtered_ids = array_values(
+                array_filter(
+                    array_map( 'intval', $query->posts ),
+                    static function( $post_id ) use ( $matches_search ) {
+                        return $matches_search( $post_id );
+                    }
+                )
+            );
+
+            $total_items = count( $filtered_ids );
+            $total_pages = $per_page > 0 ? (int) ceil( $total_items / $per_page ) : 0;
+            $offset      = ( $page - 1 ) * $per_page;
+            $page_ids    = array_slice( $filtered_ids, $offset, $per_page );
+
+            foreach ( $page_ids as $post_id ) {
+                $items[] = wpss_prepare_cancion_list_item( $post_id );
+            }
+
+            wp_reset_postdata();
+        } else {
+            $query = new WP_Query( $args );
+
+            if ( ! empty( $query->posts ) ) {
+                if ( function_exists( 'prime_post_caches' ) ) {
+                    prime_post_caches( $query->posts, true, true );
+                } else {
+                    update_meta_cache( 'post', $query->posts );
+                    update_object_term_cache( $query->posts, 'cancion' );
+                }
+            }
+
+            foreach ( $query->posts as $post_id ) {
+                $items[] = wpss_prepare_cancion_list_item( $post_id );
+            }
+
+            $total_items = (int) $query->found_posts;
+            $total_pages = (int) $query->max_num_pages;
+
+            wp_reset_postdata();
         }
-
-        foreach ( $query->posts as $post_id ) {
-            $items[] = wpss_prepare_cancion_list_item( $post_id );
-        }
-
-        $total_items = (int) $query->found_posts;
-        $total_pages = (int) $query->max_num_pages;
-
-        wp_reset_postdata();
     }
 
     $response = rest_ensure_response( $items );

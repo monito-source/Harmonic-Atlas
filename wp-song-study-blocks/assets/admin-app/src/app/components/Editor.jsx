@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
-  formatSegmentsForStackedCells,
   formatSegmentsForStackedMode,
   getDefaultSectionName,
   getValidSegmentIndex,
@@ -13,7 +12,7 @@ import {
   validateEventosArmonicos,
   validateSegments,
 } from '../utils.js'
-import { createEmptySegment, createEmptyVerse, createSection } from '../state.js'
+import { createEmptySegment, createEmptySong, createEmptyVerse, createSection } from '../state.js'
 import StructurePanel from './StructurePanel.jsx'
 import VersesPanel from './VersesPanel.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
@@ -35,6 +34,8 @@ const UNDO_HISTORY_LIMIT = 10
 const MOBILE_EDITOR_PREVIEW_QUERY = '(max-width: 840px)'
 const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
 const TAG_SUGGESTIONS_PAGE_SIZE = 10
+const TOUCH_DRAG_ACTIVATION_DELAY = 180
+const TOUCH_DRAG_CANCEL_DISTANCE = 10
 
 const normalizeTagValue = (value) => String(value || '').trim().replace(/\s+/g, ' ')
 
@@ -79,6 +80,127 @@ const getTouchDistance = (touches) => {
   const deltaX = second.clientX - first.clientX
   const deltaY = second.clientY - first.clientY
   return Math.hypot(deltaX, deltaY)
+}
+
+const getAttachmentContextKey = (attachment) => {
+  if (!attachment || typeof attachment !== 'object') {
+    return ''
+  }
+  const anchorType = String(attachment.anchor_type || 'song')
+  if (anchorType === 'segment') {
+    return `segment:${Number(attachment.verse_index) || 0}:${Number(attachment.segment_index) || 0}`
+  }
+  if (anchorType === 'verse') {
+    return `verse:${Number(attachment.verse_index) || 0}`
+  }
+  if (anchorType === 'section') {
+    return `section:${String(attachment.section_id || '')}`
+  }
+  return 'song'
+}
+
+const buildContentIndicators = ({ attachments = [], comments = [], midiClips = [] }) => {
+  const safeAttachments = Array.isArray(attachments) ? attachments : []
+  const indicators = []
+  if (safeAttachments.some((item) => item?.type !== 'photo')) {
+    indicators.push({ key: 'audio', title: 'Tiene audio', tabId: 'audio' })
+  }
+  if (safeAttachments.some((item) => item?.type === 'photo')) {
+    indicators.push({ key: 'photo', title: 'Tiene foto', tabId: 'photos' })
+  }
+  if (Array.isArray(comments) && comments.length) {
+    indicators.push({ key: 'annotation', title: 'Tiene anotaciones', tabId: 'annotations' })
+  }
+  if (Array.isArray(midiClips) && midiClips.length) {
+    indicators.push({ key: 'midi', title: 'Tiene MIDI', tabId: 'midi' })
+  }
+  return indicators
+}
+
+function ContentIndicatorIcon({ type }) {
+  if (type === 'audio') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M10.5 2.5v7.1a2.4 2.4 0 1 1-1-1.94V4.9L6 5.8V11a2.4 2.4 0 1 1-1-1.94V5l5.5-1.5Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (type === 'photo') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 4.5h2l.8-1.3h4.4l.8 1.3h2A1.5 1.5 0 0 1 14.5 6v6A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V6A1.5 1.5 0 0 1 3 4.5Zm5 2A2.7 2.7 0 1 0 8 11.9 2.7 2.7 0 0 0 8 6.5Zm0 1.2A1.5 1.5 0 1 1 6.5 9.2 1.5 1.5 0 0 1 8 7.7Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (type === 'annotation') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 2.5h10A1.5 1.5 0 0 1 14.5 4v5A1.5 1.5 0 0 1 13 10.5H8.4L5 13v-2.5H3A1.5 1.5 0 0 1 1.5 9V4A1.5 1.5 0 0 1 3 2.5Zm1.5 2v1h7v-1Zm0 2.5v1h5v-1Z" fill="currentColor" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 3.5h12v9H2Zm1.2 1.2v6.6h9.6V4.7Zm1.1 1.1h1v4.4h-1Zm2.2 0h1v4.4h-1Zm2.2 0h1v4.4h-1Zm2.2 0h1v4.4h-1Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function ContentIndicators({ items = [], onSelect = null }) {
+  if (!Array.isArray(items) || !items.length) {
+    return null
+  }
+  return (
+    <span className="wpss-content-indicators" aria-label="Contenido disponible">
+      {items.map((item) => (
+        <span
+          key={item.key}
+          className={`wpss-content-indicator is-${item.key}`}
+          title={item.title}
+          aria-label={item.title}
+          role={typeof onSelect === 'function' ? 'button' : undefined}
+          tabIndex={typeof onSelect === 'function' ? 0 : undefined}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelect?.(item)
+          }}
+          onKeyDown={(event) => {
+            if (typeof onSelect !== 'function') {
+              return
+            }
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              event.stopPropagation()
+              onSelect(item)
+            }
+          }}
+        >
+          <ContentIndicatorIcon type={item.key} />
+        </span>
+      ))}
+    </span>
+  )
+}
+
+const normalizeSegmentHtml = (html) => {
+  if (!html) return ''
+  return html
+    .replace(/<div><br><\/div>/gi, '<br>')
+    .replace(/<\/div>/gi, '<br>')
+    .replace(/<div>/gi, '')
+    .replace(/<p><br><\/p>/gi, '<br>')
+    .replace(/<\/p>/gi, '<br>')
+    .replace(/<p[^>]*>/gi, '')
+    .replace(/(<br>\s*)+$/gi, '')
+}
+
+const unwrapNode = (node) => {
+  if (!node || !node.parentNode) return
+  const parent = node.parentNode
+  while (node.firstChild) {
+    parent.insertBefore(node.firstChild, node)
+  }
+  parent.removeChild(node)
 }
 
 const formatCollectionAssignment = (collection) => {
@@ -166,7 +288,7 @@ export default function Editor({ onShowList }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [editingSong, setEditingSong] = useState(state.editingSong)
   const [selectedSectionId, setSelectedSectionId] = useState(() => state.ui?.selectedSectionId ?? null)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed] = useState(false)
   const [previewScale, setPreviewScale] = useState(100)
   const [isCompactPreviewViewport, setIsCompactPreviewViewport] = useState(() => isCompactEditorPreviewViewport())
   const [previewRatio, setPreviewRatio] = useState(35)
@@ -185,11 +307,27 @@ export default function Editor({ onShowList }) {
   const [showTagSuggestions, setShowTagSuggestions] = useState(false)
   const [tagSuggestionsPage, setTagSuggestionsPage] = useState(1)
   const [pendingAttachmentActions, setPendingAttachmentActions] = useState({})
+  const [selectedAttachmentId, setSelectedAttachmentId] = useState(null)
+  const [verseMoveTargets, setVerseMoveTargets] = useState({})
+  const [contextualToolTabsByTarget, setContextualToolTabsByTarget] = useState({})
+  const [isContextualToolbarExpanded, setIsContextualToolbarExpanded] = useState(false)
+  const [contextualScopeMode, setContextualScopeMode] = useState('auto')
+  const [showPreviewAttachments, setShowPreviewAttachments] = useState(true)
+  const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
+  const [selectionState, setSelectionState] = useState({
+    verse: null,
+    segment: null,
+    start: null,
+    end: null,
+    element: null,
+  })
   const editingSongRef = useRef(state.editingSong)
   const editorRef = useRef(null)
   const layoutRef = useRef(null)
+  const mainSectionRef = useRef(null)
   const sidebarRef = useRef(null)
   const previewScrollRef = useRef(null)
+  const workspaceToolsRef = useRef(null)
   const previewSectionRefs = useRef(new Map())
   const autosaveRef = useRef(null)
   const undoHistoryRef = useRef([])
@@ -198,6 +336,10 @@ export default function Editor({ onShowList }) {
   const editingSongSignatureRef = useRef(serializeSongSnapshot(state.editingSong))
   const previewScaleRef = useRef(previewScale)
   const previewPinchRef = useRef({ active: false, startDistance: 0, startScale: 100 })
+  const draggingSegmentRef = useRef(null)
+  const previewTouchDragSessionRef = useRef(null)
+  const previewTouchDragTimerRef = useRef(null)
+  const pendingContextualToolbarOpenRef = useRef(null)
   const verseFocusRequestIdRef = useRef(0)
   const loadedSongKeyRef = useRef(state.editingSong?.id ?? '__new__')
   const currentUserId = wpData?.currentUserId || 0
@@ -1036,13 +1178,15 @@ export default function Editor({ onShowList }) {
   }
 
   const updateSegmentSelection = (verseIndex, segmentIndex, start, end, element) => {
-    selectionRef.current = {
+    const nextSelection = {
       verse: verseIndex,
       segment: segmentIndex,
       start,
       end,
       element,
     }
+    selectionRef.current = nextSelection
+    setSelectionState(nextSelection)
   }
 
   const requestVerseSegmentFocus = useCallback((verseIndex, segmentIndex = 0, selectAll = true) => {
@@ -1188,6 +1332,7 @@ export default function Editor({ onShowList }) {
       const response = await api.unlinkSongAttachment(songId, attachmentId)
       const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
       updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      setSelectedAttachmentId((prev) => (String(prev || '') === String(attachmentId) ? null : prev))
       dispatch({
         type: 'SET_STATE',
         payload: {
@@ -1277,6 +1422,7 @@ export default function Editor({ onShowList }) {
       const response = await api.deleteSongAttachment(songId, attachmentId)
       const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
       updateSong((prev) => ({ ...prev, adjuntos: attachments }))
+      setSelectedAttachmentId((prev) => (String(prev || '') === String(attachmentId) ? null : prev))
       dispatch({
         type: 'SET_STATE',
         payload: {
@@ -1318,7 +1464,6 @@ export default function Editor({ onShowList }) {
     }
 
     const segment = verse.segmentos[segmentIndex]
-    const texto = segment.texto || ''
 
     const splitHtml = splitSegmentHtml(textarea)
     if (!splitHtml) {
@@ -1509,7 +1654,11 @@ export default function Editor({ onShowList }) {
   }
 
   const selectSectionOnly = (id) => {
+    const emptySelection = { verse: null, segment: null, start: null, end: null, element: null }
+    setContextualScopeMode('auto')
     persistSelectedSection(id)
+    selectionRef.current = emptySelection
+    setSelectionState(emptySelection)
     setSelectedVerseIndexes((prev) => {
       if (!prev.size) return prev
       const next = new Set(
@@ -1570,6 +1719,12 @@ export default function Editor({ onShowList }) {
         : selectedVerse?.instrumental
           ? `Instrumental ${selectedVerseInSectionPosition + 1}`
           : `Verso ${selectedVerseInSectionPosition + 1}`
+  const selectedSegment =
+    selectionState.verse !== null && selectionState.segment !== null
+      ? (Array.isArray(editingSong.versos)
+          ? editingSong.versos[selectionState.verse]?.segmentos?.[selectionState.segment] || null
+          : null)
+      : null
 
   const allVerses = Array.isArray(editingSong.versos) ? editingSong.versos : []
   const sectionsList = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
@@ -1582,7 +1737,270 @@ export default function Editor({ onShowList }) {
     })
     return map
   }, [allVerses])
+  const activeSectionNavIndex = sectionsList.findIndex((section) => section.id === activeSectionId)
+  const sectionNavItems = sectionsList.map((section, index) => ({
+    id: section.id,
+    index,
+    label: section.nombre || getDefaultSectionName(index),
+    count: versesBySection.get(section.id)?.length || 0,
+    indicators: buildContentIndicators({
+      attachments: getSectionLevelAttachments(editingSong, section.id),
+      comments: section?.comentarios,
+      midiClips: section?.midi_clips,
+    }),
+  }))
+  const allAttachments = useMemo(
+    () => (Array.isArray(editingSong?.adjuntos) ? editingSong.adjuntos.filter((item) => item && typeof item === 'object') : []),
+    [editingSong],
+  )
   const songLevelAttachments = useMemo(() => getSongLevelAttachments(editingSong), [editingSong])
+  const selectedSection = sectionsList.find((section) => section.id === activeSectionId) || null
+  const contextualTarget = useMemo(() => {
+    if (contextualScopeMode === 'song') {
+      return {
+        type: 'song',
+        label: editingSong.titulo || 'Canción completa',
+        meta: 'Nivel general de la canción',
+        target: { anchor_type: 'song' },
+        attachments: songLevelAttachments,
+        comments: [],
+        midiClips: [],
+        verseIndex: null,
+        segmentIndex: null,
+      }
+    }
+
+    if (
+      selectionState.verse !== null
+      && selectionState.segment !== null
+      && selectedSegment
+    ) {
+      const verse = allVerses[selectionState.verse] || null
+      const sectionId = verse?.section_id || activeSectionId || ''
+      const sectionIndex = sectionsList.findIndex((section) => section.id === sectionId)
+      const sectionName = sectionIndex >= 0
+        ? sectionsList[sectionIndex]?.nombre || getDefaultSectionName(sectionIndex)
+        : activeSection?.nombre || getDefaultSectionName(0)
+      return {
+        type: 'segment',
+        label: `Segmento ${selectionState.segment + 1}`,
+        meta: sectionName,
+        target: {
+          anchor_type: 'segment',
+          section_id: sectionId,
+          verse_index: selectionState.verse,
+          segment_index: selectionState.segment,
+        },
+        attachments: getSegmentLevelAttachments(editingSong, selectionState.verse).filter(
+          (item) => Number(item?.segment_index) === Number(selectionState.segment),
+        ),
+        comments: Array.isArray(selectedSegment?.comentarios) ? selectedSegment.comentarios : [],
+        midiClips: Array.isArray(selectedSegment?.midi_clips) ? selectedSegment.midi_clips : [],
+        verseIndex: selectionState.verse,
+        segmentIndex: selectionState.segment,
+      }
+    }
+
+    if (selectedVerse && selectedVerseIndex !== null) {
+      return {
+        type: 'verse',
+        label: selectedVerseLabel || 'Verso',
+        meta: activeSection?.nombre || getDefaultSectionName(0),
+        target: {
+          anchor_type: 'verse',
+          section_id: selectedVerse.section_id || activeSectionId || '',
+          verse_index: selectedVerseIndex,
+        },
+        attachments: getVerseLevelAttachments(editingSong, selectedVerseIndex),
+        comments: Array.isArray(selectedVerse?.comentarios) ? selectedVerse.comentarios : [],
+        midiClips: Array.isArray(selectedVerse?.midi_clips) ? selectedVerse.midi_clips : [],
+        verseIndex: selectedVerseIndex,
+        segmentIndex: null,
+      }
+    }
+
+    return {
+      type: 'section',
+      label: selectedSection?.nombre || getDefaultSectionName(0),
+      meta: 'Sección activa',
+      target: { anchor_type: 'section', section_id: activeSectionId || '' },
+      attachments: getSectionLevelAttachments(editingSong, activeSectionId),
+      comments: Array.isArray(selectedSection?.comentarios) ? selectedSection.comentarios : [],
+      midiClips: Array.isArray(selectedSection?.midi_clips) ? selectedSection.midi_clips : [],
+      verseIndex: null,
+      segmentIndex: null,
+    }
+  }, [
+    activeSection,
+    activeSectionId,
+    allVerses,
+    contextualScopeMode,
+    editingSong,
+    sectionsList,
+    selectedSection,
+    selectedSegment,
+    selectedVerse,
+    selectedVerseIndex,
+    selectedVerseLabel,
+    selectionState.segment,
+    selectionState.verse,
+    songLevelAttachments,
+  ])
+  const contextualTargetKey = useMemo(() => {
+    if (contextualTarget.type === 'song') {
+      return 'song'
+    }
+    if (contextualTarget.type === 'segment') {
+      return `segment:${contextualTarget.verseIndex}:${contextualTarget.segmentIndex}`
+    }
+    if (contextualTarget.type === 'verse') {
+      return `verse:${contextualTarget.verseIndex}`
+    }
+    return `section:${activeSectionId || ''}`
+  }, [activeSectionId, contextualTarget])
+  const contextualToolTab = contextualToolTabsByTarget[contextualTargetKey] || null
+  const selectedAttachment = useMemo(
+    () =>
+      selectedAttachmentId === null
+        ? null
+        : allAttachments.find((item) => String(item?.id || '') === String(selectedAttachmentId)) || null,
+    [allAttachments, selectedAttachmentId],
+  )
+  const selectedAttachmentContextKey = useMemo(
+    () => getAttachmentContextKey(selectedAttachment),
+    [selectedAttachment],
+  )
+  const selectedAttachmentMatchesContext = useMemo(() => {
+    if (!selectedAttachment) {
+      return false
+    }
+    return selectedAttachmentContextKey === 'song' || selectedAttachmentContextKey === contextualTargetKey
+  }, [contextualTargetKey, selectedAttachment, selectedAttachmentContextKey])
+  const selectedAudioAttachment =
+    selectedAttachmentMatchesContext && selectedAttachment?.type !== 'photo' ? selectedAttachment : null
+  const selectedPhotoAttachment =
+    selectedAttachmentMatchesContext && selectedAttachment?.type === 'photo' ? selectedAttachment : null
+  const annotationNavigationTargets = useMemo(() => {
+    const targets = []
+
+    sectionsList.forEach((section, index) => {
+      const comments = Array.isArray(section?.comentarios) ? section.comentarios : []
+      if (comments.length) {
+        targets.push({
+          key: `section:${section.id}`,
+          type: 'section',
+          sectionId: section.id,
+          verseIndex: null,
+          segmentIndex: null,
+          label: section.nombre || getDefaultSectionName(index),
+          count: comments.length,
+        })
+      }
+    })
+
+    allVerses.forEach((verse, verseIndex) => {
+      const comments = Array.isArray(verse?.comentarios) ? verse.comentarios : []
+      if (comments.length) {
+        const sectionId = verse?.section_id || ''
+        const sectionIndex = sectionsList.findIndex((section) => section.id === sectionId)
+        const sectionLabel = sectionIndex >= 0
+          ? sectionsList[sectionIndex]?.nombre || getDefaultSectionName(sectionIndex)
+          : getDefaultSectionName(0)
+        targets.push({
+          key: `verse:${verseIndex}`,
+          type: 'verse',
+          sectionId,
+          verseIndex,
+          segmentIndex: null,
+          label: `${verse?.nombre || `Verso ${verseIndex + 1}`} · ${sectionLabel}`,
+          count: comments.length,
+        })
+      }
+
+      const segments = Array.isArray(verse?.segmentos) ? verse.segmentos : []
+      segments.forEach((segment, segmentIndex) => {
+        const segmentComments = Array.isArray(segment?.comentarios) ? segment.comentarios : []
+        if (!segmentComments.length) {
+          return
+        }
+        const sectionId = verse?.section_id || ''
+        const sectionIndex = sectionsList.findIndex((section) => section.id === sectionId)
+        const sectionLabel = sectionIndex >= 0
+          ? sectionsList[sectionIndex]?.nombre || getDefaultSectionName(sectionIndex)
+          : getDefaultSectionName(0)
+        targets.push({
+          key: `segment:${verseIndex}:${segmentIndex}`,
+          type: 'segment',
+          sectionId,
+          verseIndex,
+          segmentIndex,
+          label: `Segmento ${segmentIndex + 1} · ${sectionLabel}`,
+          count: segmentComments.length,
+        })
+      })
+    })
+
+    return targets
+  }, [allVerses, sectionsList])
+  const audioNavigationItems = useMemo(
+    () => allAttachments.filter((item) => item?.type !== 'photo'),
+    [allAttachments],
+  )
+  const visibleAudioNavigationItems = useMemo(() => {
+    if (contextualTarget.type === 'song') {
+      return contextualTarget.attachments.filter((item) => item?.type !== 'photo')
+    }
+    return audioNavigationItems
+  }, [audioNavigationItems, contextualTarget])
+  const currentAnnotationNavigationIndex = useMemo(
+    () => annotationNavigationTargets.findIndex((item) => item.key === contextualTargetKey),
+    [annotationNavigationTargets, contextualTargetKey],
+  )
+  const currentAudioNavigationIndex = useMemo(() => {
+    if (selectedAudioAttachment) {
+      return visibleAudioNavigationItems.findIndex((item) => String(item?.id || '') === String(selectedAudioAttachment.id))
+    }
+    return visibleAudioNavigationItems.findIndex((item) => getAttachmentContextKey(item) === contextualTargetKey)
+  }, [contextualTargetKey, selectedAudioAttachment, visibleAudioNavigationItems])
+
+  useEffect(() => {
+    if (contextualScopeMode !== 'song') {
+      return
+    }
+    if (selectionState.verse !== null || selectedVerseIndex !== null) {
+      setContextualScopeMode('auto')
+    }
+  }, [contextualScopeMode, selectedVerseIndex, selectionState.verse])
+  const hasSegmentFormatTools =
+    contextualTarget.type === 'segment'
+    && contextualTarget.verseIndex !== null
+    && contextualTarget.segmentIndex !== null
+  const contextualTabItems = [
+    ...(hasSegmentFormatTools ? [{ id: 'format', label: 'Formato' }] : []),
+    { id: 'audio', label: 'Audio' },
+    { id: 'photos', label: 'Fotos' },
+    { id: 'annotations', label: 'Anotaciones' },
+    { id: 'midi', label: 'MIDI' },
+    { id: 'reading', label: 'Lectura' },
+    { id: 'options', label: 'Opciones' },
+  ]
+
+  const toggleEditorFullscreen = useCallback(async () => {
+    const sectionNode = mainSectionRef.current
+    if (!sectionNode || typeof document === 'undefined') {
+      return
+    }
+
+    try {
+      if (document.fullscreenElement === sectionNode) {
+        await document.exitFullscreen?.()
+        return
+      }
+      await sectionNode.requestFullscreen?.()
+    } catch {
+      setIsEditorFullscreen((current) => !current)
+    }
+  }, [])
 
   const getVerseSummary = (verse) => {
     const summary = formatSegmentsForStackedMode(Array.isArray(verse?.segmentos) ? verse.segmentos : [])
@@ -1599,45 +2017,25 @@ export default function Editor({ onShowList }) {
     }
   }
 
-  const renderStackedPreview = (segmentos, key) => {
-    if (!Array.isArray(segmentos) || !segmentos.length) {
-      return (
-        <li key={key} className="wpss-section-preview__verse is-empty">
-          <span>Verso vacío</span>
-        </li>
-      )
-    }
-    const lines = formatSegmentsForStackedCells(segmentos)
-    return (
-      <li key={key} className="wpss-section-preview__verse">
-        <pre className="wpss-reading__stack">
-          <span className="wpss-reading__stack-chords">
-            {lines.chords.map((cell, cellIndex) => (
-              <span key={`preview-chord-${key}-${cellIndex}`}>
-                {cell.text ? <span className="wpss-reading__stack-chord">{cell.text}</span> : null}
-                {cell.spacer ? <span className="wpss-reading__stack-spacer">{cell.spacer}</span> : null}
-              </span>
-            ))}
-          </span>
-          {'\n'}
-          <span>{lines.lyrics}</span>
-        </pre>
-      </li>
-    )
-  }
-
   const handleSelectVerse = (sectionId, index) => {
+    const emptySelection = { verse: null, segment: null, start: null, end: null, element: null }
+    setContextualScopeMode('auto')
     persistSelectedSection(sectionId)
+    selectionRef.current = emptySelection
+    setSelectionState(emptySelection)
     setSelectedVerseIndexes(new Set([index]))
     setExpandedSectionId(sectionId)
     setNavLevel('verses')
   }
 
   const clearVerseSelection = useCallback(() => {
+    setContextualScopeMode('auto')
     setSelectedVerseIndexes((prev) => (prev.size ? new Set() : prev))
     setExpandedSectionId(null)
     setVerseFocusRequest(null)
-    selectionRef.current = { verse: null, segment: null, start: null, end: null, element: null }
+    const emptySelection = { verse: null, segment: null, start: null, end: null, element: null }
+    selectionRef.current = emptySelection
+    setSelectionState(emptySelection)
   }, [])
 
   const handleVerseSelectionClearClick = useCallback(
@@ -1651,7 +2049,7 @@ export default function Editor({ onShowList }) {
       }
       if (
         target.closest(
-          '.wpss-verse-inline-editor, .wpss-verse-card, .wpss-preview-verse-card:not(.wpss-preview-verse-card--ghost), .wpss-verse-card-mini:not(.wpss-verse-card-mini--ghost)',
+          '.wpss-verse-inline-editor, .wpss-verse-card, .wpss-preview-verse-card:not(.wpss-preview-verse-card--ghost), .wpss-verse-card-mini:not(.wpss-verse-card-mini--ghost), .wpss-section-preview__workspace-tools',
         )
       ) {
         return
@@ -1662,19 +2060,15 @@ export default function Editor({ onShowList }) {
   )
 
   const enterVerseLevel = (sectionId) => {
+    setContextualScopeMode('auto')
     persistSelectedSection(sectionId)
     clearVerseSelection()
     setExpandedSectionId(sectionId)
     setNavLevel('verses')
   }
 
-  const enterSectionManage = (sectionId) => {
-    persistSelectedSection(sectionId)
-    clearVerseSelection()
-    setNavLevel('manage')
-  }
-
   const backToSections = () => {
+    setContextualScopeMode('auto')
     clearVerseSelection()
     setExpandedSectionId(null)
     setNavLevel('sections')
@@ -1723,6 +2117,131 @@ export default function Editor({ onShowList }) {
 
     alignToTarget(behavior)
   }, [])
+
+  const ensureContextTargetVisible = useCallback((behavior = 'smooth') => {
+    const shell = previewScrollRef.current
+    if (!shell) {
+      return
+    }
+
+    let target = null
+    if (contextualTarget.type === 'segment' && contextualTarget.verseIndex !== null && contextualTarget.segmentIndex !== null) {
+      target = shell.querySelector(
+        `[data-wpss-segment-key="${contextualTarget.verseIndex}:${contextualTarget.segmentIndex}"]`,
+      )
+    } else if (contextualTarget.type === 'verse' && contextualTarget.verseIndex !== null) {
+      target = shell.querySelector(`[data-wpss-verse-index="${contextualTarget.verseIndex}"]`)
+    } else if (contextualTarget.type === 'section' && activeSectionId) {
+      target = previewSectionRefs.current.get(activeSectionId) || null
+    }
+
+    if (!(target instanceof Element)) {
+      return
+    }
+
+    const shellRect = shell.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const topOverflow = targetRect.top < shellRect.top + 12
+    const bottomOverflow = targetRect.bottom > shellRect.bottom - 12
+
+    if (!topOverflow && !bottomOverflow) {
+      return
+    }
+
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior })
+    }
+  }, [activeSectionId, contextualTarget])
+
+  useEffect(() => {
+    const pendingOpen = pendingContextualToolbarOpenRef.current
+    if (pendingOpen && pendingOpen.targetKey === contextualTargetKey) {
+      setContextualToolTabsByTarget((prev) => ({ ...prev, [contextualTargetKey]: pendingOpen.tabId }))
+      setSelectedAttachmentId(pendingOpen.attachmentId)
+      setIsContextualToolbarExpanded(true)
+      pendingContextualToolbarOpenRef.current = null
+      return
+    }
+    setIsContextualToolbarExpanded(false)
+  }, [contextualTargetKey])
+
+  useEffect(() => {
+    if (!selectedAttachment) {
+      return
+    }
+    if (selectedAttachmentContextKey !== 'song' && selectedAttachmentContextKey !== contextualTargetKey) {
+      setSelectedAttachmentId(null)
+    }
+  }, [contextualTargetKey, selectedAttachment, selectedAttachmentContextKey])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return undefined
+    }
+
+    const handleFullscreenChange = () => {
+      setIsEditorFullscreen(document.fullscreenElement === mainSectionRef.current)
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    handleFullscreenChange()
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const frameId = window.requestAnimationFrame(() => ensureContextTargetVisible('smooth'))
+      return () => window.cancelAnimationFrame(frameId)
+    }
+    ensureContextTargetVisible('auto')
+    return undefined
+  }, [contextualTargetKey, ensureContextTargetVisible])
+
+  useEffect(() => {
+    if (!isContextualToolbarExpanded) {
+      return
+    }
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const frameId = window.requestAnimationFrame(() => ensureContextTargetVisible('auto'))
+      return () => window.cancelAnimationFrame(frameId)
+    }
+    ensureContextTargetVisible('auto')
+    return undefined
+  }, [contextualTargetKey, contextualToolTab, ensureContextTargetVisible, isContextualToolbarExpanded])
+
+  useEffect(() => {
+    if (!isContextualToolbarExpanded) {
+      return undefined
+    }
+    if (contextualToolTab === 'format' && contextualTarget.type === 'segment') {
+      return undefined
+    }
+
+    const handlePointerDown = (event) => {
+      const tools = workspaceToolsRef.current
+      if (!tools || !(event.target instanceof Node) || tools.contains(event.target)) {
+        return
+      }
+      setIsContextualToolbarExpanded(false)
+    }
+
+    const handleFocusIn = (event) => {
+      const tools = workspaceToolsRef.current
+      if (!tools || !(event.target instanceof Node) || tools.contains(event.target)) {
+        return
+      }
+      setIsContextualToolbarExpanded(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    document.addEventListener('focusin', handleFocusIn, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      document.removeEventListener('focusin', handleFocusIn, true)
+    }
+  }, [contextualTarget.type, contextualToolTab, isContextualToolbarExpanded])
   const editorGridTemplateColumns = isCompactPreviewViewport
     ? 'minmax(0, 1fr)'
     : isFocusWork && !useMasterPreview
@@ -2022,47 +2541,77 @@ export default function Editor({ onShowList }) {
     handleSectionChange(sections)
   }
 
-  const moveVerseInSection = (fromIndex, toIndex) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+  const getSectionAppendIndex = useCallback((verses, sectionId) => {
+    if (!sectionId) {
+      return Array.isArray(verses) ? verses.length : 0
+    }
+
+    const safeVerses = Array.isArray(verses) ? verses : []
+    let lastMatch = -1
+    safeVerses.forEach((verse, index) => {
+      if ((verse?.section_id || '') === sectionId) {
+        lastMatch = index
+      }
+    })
+
+    if (lastMatch >= 0) {
+      return lastMatch + 1
+    }
+
+    const sections = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
+    const sectionIndex = sections.findIndex((section) => section.id === sectionId)
+    if (sectionIndex < 0) {
+      return safeVerses.length
+    }
+
+    for (let index = sectionIndex + 1; index < sections.length; index += 1) {
+      const nextSectionId = sections[index]?.id || ''
+      const nextVerseIndex = safeVerses.findIndex((verse) => (verse?.section_id || '') === nextSectionId)
+      if (nextVerseIndex >= 0) {
+        return nextVerseIndex
+      }
+    }
+
+    return safeVerses.length
+  }, [editingSong.secciones])
+
+  const moveVerseToPosition = useCallback((fromIndex, targetSectionId, targetIndex = null, placement = 'before') => {
+    if (fromIndex < 0) {
       return false
     }
 
     const verses = Array.isArray(editingSong.versos) ? editingSong.versos : []
-    if (fromIndex >= verses.length || toIndex >= verses.length) {
+    if (fromIndex >= verses.length) {
       return false
     }
 
-    const fromVerse = verses[fromIndex]
-    const toVerse = verses[toIndex]
-    if (!fromVerse || !toVerse) {
+    const safeTargetSectionId = String(targetSectionId || verses[fromIndex]?.section_id || '')
+    if (!safeTargetSectionId) {
       return false
     }
-
-    const sectionId = fromVerse.section_id || ''
-    if ((toVerse.section_id || '') !== sectionId) {
-      return false
-    }
-
-    const sectionIndexes = verses
-      .map((verse, index) => ({ verse, index }))
-      .filter((item) => (item.verse.section_id || '') === sectionId)
-      .map((item) => item.index)
-
-    const fromPosition = sectionIndexes.indexOf(fromIndex)
-    const toPosition = sectionIndexes.indexOf(toIndex)
-    if (fromPosition < 0 || toPosition < 0 || fromPosition === toPosition) {
-      return false
-    }
-
-    const reorderedIndexes = [...sectionIndexes]
-    const [movedIndex] = reorderedIndexes.splice(fromPosition, 1)
-    reorderedIndexes.splice(toPosition, 0, movedIndex)
 
     const nextVerses = [...verses]
-    const targetSlots = [...sectionIndexes].sort((a, b) => a - b)
-    const reorderedVerses = reorderedIndexes.map((index) => verses[index])
-    targetSlots.forEach((slot, slotIndex) => {
-      nextVerses[slot] = reorderedVerses[slotIndex]
+    const [movedVerse] = nextVerses.splice(fromIndex, 1)
+    if (!movedVerse) {
+      return false
+    }
+
+    let insertIndex = nextVerses.length
+    if (Number.isInteger(targetIndex) && targetIndex >= 0 && targetIndex <= verses.length) {
+      insertIndex = targetIndex
+      if (fromIndex < targetIndex) {
+        insertIndex -= 1
+      }
+      if (placement === 'after') {
+        insertIndex += 1
+      }
+    } else {
+      insertIndex = getSectionAppendIndex(nextVerses, safeTargetSectionId)
+    }
+
+    nextVerses.splice(insertIndex, 0, {
+      ...movedVerse,
+      section_id: safeTargetSectionId,
     })
 
     normalizeVerseOrder(nextVerses)
@@ -2071,15 +2620,126 @@ export default function Editor({ onShowList }) {
     updateSong(nextSong)
     scheduleAutosave()
     return true
+  }, [editingSong, getSectionAppendIndex])
+
+  const adjustEventIndexAfterSegmentRemoval = useCallback((verse, removedIndex) => {
+    if (!verse?.evento_armonico) {
+      return verse
+    }
+
+    const currentIndex = getValidSegmentIndex(verse.evento_armonico, verse.segmentos?.length)
+    if (currentIndex === null) {
+      return verse
+    }
+
+    const nextEvent = { ...verse.evento_armonico }
+    if (currentIndex === removedIndex) {
+      delete nextEvent.segment_index
+    } else if (currentIndex > removedIndex) {
+      nextEvent.segment_index = currentIndex - 1
+    }
+
+    return { ...verse, evento_armonico: nextEvent }
+  }, [])
+
+  function moveSegmentToTargetVerse(fromVerseIndex, fromSegmentIndex, targetVerseIndex) {
+    const verses = Array.isArray(editingSong.versos) ? editingSong.versos : []
+    if (
+      fromVerseIndex < 0
+      || targetVerseIndex < 0
+      || fromVerseIndex >= verses.length
+      || targetVerseIndex >= verses.length
+    ) {
+      return false
+    }
+
+    const nextVerses = verses.map((verse) => ({
+      ...verse,
+      segmentos: Array.isArray(verse.segmentos) ? [...verse.segmentos] : [],
+    }))
+    const sourceVerse = nextVerses[fromVerseIndex]
+    const targetVerse = nextVerses[targetVerseIndex]
+    const [movedSegment] = sourceVerse?.segmentos?.splice(fromSegmentIndex, 1) || []
+
+    if (!movedSegment || !targetVerse) {
+      return false
+    }
+
+    if (!sourceVerse.segmentos.length) {
+      sourceVerse.segmentos = [createEmptySegment()]
+    }
+
+    nextVerses[fromVerseIndex] = adjustEventIndexAfterSegmentRemoval(sourceVerse, fromSegmentIndex)
+    targetVerse.segmentos = targetVerse.segmentos.concat({ ...movedSegment })
+
+    normalizeVerseOrder(nextVerses)
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+    persistSelectedSection(targetVerse.section_id || sourceVerse.section_id || '')
+    setSelectedVerseIndexes(new Set([targetVerseIndex]))
+    setExpandedSectionId(targetVerse.section_id || sourceVerse.section_id || '')
+    requestVerseSegmentFocus(targetVerseIndex, targetVerse.segmentos.length - 1, true)
+    return true
+  }
+
+  function moveSegmentToNewVerse(fromVerseIndex, fromSegmentIndex, targetSectionId) {
+    const verses = Array.isArray(editingSong.versos) ? editingSong.versos : []
+    if (fromVerseIndex < 0 || fromVerseIndex >= verses.length) {
+      return false
+    }
+
+    const safeTargetSectionId = String(targetSectionId || '')
+    if (!safeTargetSectionId) {
+      return false
+    }
+
+    const nextVerses = verses.map((verse) => ({
+      ...verse,
+      segmentos: Array.isArray(verse.segmentos) ? [...verse.segmentos] : [],
+    }))
+    const sourceVerse = nextVerses[fromVerseIndex]
+    const [movedSegment] = sourceVerse?.segmentos?.splice(fromSegmentIndex, 1) || []
+    if (!movedSegment) {
+      return false
+    }
+
+    if (!sourceVerse.segmentos.length) {
+      sourceVerse.segmentos = [createEmptySegment()]
+    }
+    nextVerses[fromVerseIndex] = adjustEventIndexAfterSegmentRemoval(sourceVerse, fromSegmentIndex)
+
+    const insertIndex = getSectionAppendIndex(nextVerses, safeTargetSectionId)
+    const newVerse = createEmptyVerse(insertIndex + 1, safeTargetSectionId)
+    newVerse.segmentos = [{ ...movedSegment }]
+
+    nextVerses.splice(insertIndex, 0, newVerse)
+    normalizeVerseOrder(nextVerses)
+
+    const nextSong = { ...editingSong, versos: nextVerses }
+    syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
+    updateSong(nextSong)
+    scheduleAutosave()
+    persistSelectedSection(safeTargetSectionId)
+    setSelectedVerseIndexes(new Set([insertIndex]))
+    setExpandedSectionId(safeTargetSectionId)
+    requestVerseSegmentFocus(insertIndex, 0, true)
+    return true
   }
 
   const beginVerseDrag = (event, fromIndex) => {
     event.dataTransfer.setData('text/plain', String(fromIndex))
+    event.dataTransfer.setData('application/x-wpss-verse-index', String(fromIndex))
     event.dataTransfer.effectAllowed = 'move'
     setVerseDragIndex(fromIndex)
   }
 
   const getDraggedVerseIndex = (event) => {
+    const typedPayload = parseInt(event.dataTransfer.getData('application/x-wpss-verse-index'), 10)
+    if (!Number.isNaN(typedPayload)) {
+      return typedPayload
+    }
     const payload = parseInt(event.dataTransfer.getData('text/plain'), 10)
     if (!Number.isNaN(payload)) {
       return payload
@@ -2087,8 +2747,295 @@ export default function Editor({ onShowList }) {
     return verseDragIndex
   }
 
+  const beginSegmentDrag = useCallback((verseIndex, segmentIndex) => {
+    draggingSegmentRef.current = { verseIndex, segmentIndex }
+  }, [])
+
+  const clearSegmentDrag = useCallback(() => {
+    draggingSegmentRef.current = null
+  }, [])
+
+  const getDraggedSegmentMeta = useCallback((event) => {
+    if (draggingSegmentRef.current) {
+      return draggingSegmentRef.current
+    }
+    if (!event?.dataTransfer) {
+      return null
+    }
+    const payload = event.dataTransfer.getData('application/x-wpss-segment')
+    if (!payload) {
+      return null
+    }
+    try {
+      const parsed = JSON.parse(payload)
+      if (Number.isInteger(parsed?.verseIndex) && Number.isInteger(parsed?.segmentIndex)) {
+        return parsed
+      }
+    } catch {
+      return null
+    }
+    return null
+  }, [])
+
+  const handleSectionRenamePrompt = useCallback((sectionId) => {
+    const sections = Array.isArray(editingSong.secciones) ? editingSong.secciones : []
+    const sectionIndex = sections.findIndex((section) => section.id === sectionId)
+    const section = sectionIndex >= 0 ? sections[sectionIndex] : null
+    if (!section) {
+      return
+    }
+    const currentName = String(section.nombre || getDefaultSectionName(sectionIndex))
+    const nextName = window.prompt('Nombre de la sección', currentName)
+    if (nextName === null) {
+      return
+    }
+    handleSectionNameChange(sectionId, String(nextName))
+  }, [editingSong.secciones])
+
+  const handleContextualTabToggle = useCallback((tabId) => {
+    if (!tabId) {
+      return
+    }
+    setContextualToolTabsByTarget((prev) => ({ ...prev, [contextualTargetKey]: tabId }))
+    setIsContextualToolbarExpanded((current) => {
+      if (current && contextualToolTab === tabId) {
+        return false
+      }
+      return true
+    })
+  }, [contextualTargetKey, contextualToolTab])
+
+  const openContextualTarget = useCallback((target, tabId) => {
+    if (!target || !tabId) {
+      return
+    }
+
+    setContextualScopeMode('auto')
+
+    const targetType = String(target.type || 'section')
+    const targetSectionId = String(target.sectionId || activeSectionId || '')
+    const targetVerseIndex = Number.isInteger(target.verseIndex) ? target.verseIndex : null
+    const targetSegmentIndex = Number.isInteger(target.segmentIndex) ? target.segmentIndex : null
+    const targetKey =
+      targetType === 'segment'
+        ? `segment:${targetVerseIndex}:${targetSegmentIndex}`
+        : targetType === 'verse'
+          ? `verse:${targetVerseIndex}`
+          : `section:${targetSectionId}`
+
+    setSelectedAttachmentId(null)
+
+    if (targetKey === contextualTargetKey) {
+      setContextualToolTabsByTarget((prev) => ({ ...prev, [targetKey]: tabId }))
+      setIsContextualToolbarExpanded(true)
+      if (targetType === 'segment' && targetVerseIndex !== null && targetSegmentIndex !== null) {
+        requestVerseSegmentFocus(targetVerseIndex, targetSegmentIndex, false)
+      }
+      return
+    }
+
+    pendingContextualToolbarOpenRef.current = {
+      attachmentId: null,
+      targetKey,
+      tabId,
+    }
+
+    const emptySelection = { verse: null, segment: null, start: null, end: null, element: null }
+
+    if (targetType === 'segment' && targetVerseIndex !== null && targetSegmentIndex !== null) {
+      persistSelectedSection(targetSectionId)
+      setExpandedSectionId(targetSectionId)
+      setNavLevel('verses')
+      setSelectedVerseIndexes(new Set([targetVerseIndex]))
+      selectionRef.current = emptySelection
+      setSelectionState(emptySelection)
+      requestVerseSegmentFocus(targetVerseIndex, targetSegmentIndex, false)
+      return
+    }
+
+    if (targetType === 'verse' && targetVerseIndex !== null) {
+      persistSelectedSection(targetSectionId)
+      setExpandedSectionId(targetSectionId)
+      setNavLevel('verses')
+      setSelectedVerseIndexes(new Set([targetVerseIndex]))
+      selectionRef.current = emptySelection
+      setSelectionState(emptySelection)
+      return
+    }
+
+    persistSelectedSection(targetSectionId)
+    setExpandedSectionId(targetSectionId)
+    setSelectedVerseIndexes(new Set())
+    selectionRef.current = emptySelection
+    setSelectionState(emptySelection)
+  }, [activeSectionId, contextualTargetKey, persistSelectedSection, requestVerseSegmentFocus])
+
+  const applyContextualTextFormat = useCallback((format) => {
+    if (
+      contextualTarget.type !== 'segment'
+      || contextualTarget.verseIndex === null
+      || contextualTarget.segmentIndex === null
+      || !selectionState.element
+      || !selectionState.element.isContentEditable
+    ) {
+      return
+    }
+
+    const element = selectionState.element
+    element.focus()
+    const selectionObj = window.getSelection()
+    if (!selectionObj || selectionObj.rangeCount === 0) {
+      return
+    }
+
+    const range = selectionObj.getRangeAt(0)
+    if (!element.contains(range.startContainer)) {
+      return
+    }
+
+    if (format === 'bold') {
+      document.execCommand('bold')
+    } else if (format === 'underline') {
+      document.execCommand('underline')
+    } else if (format === 'light') {
+      if (range.collapsed) {
+        return
+      }
+      const fragment = range.cloneContents()
+      if (fragment.querySelector && fragment.querySelector('div, p, br')) {
+        return
+      }
+      const startLight = range.startContainer.parentElement?.closest?.('.wpss-text-light')
+      const endLight = range.endContainer.parentElement?.closest?.('.wpss-text-light')
+      if (startLight && startLight === endLight) {
+        unwrapNode(startLight)
+      } else {
+        const span = document.createElement('span')
+        span.className = 'wpss-text-light'
+        const extracted = range.extractContents()
+        span.appendChild(extracted)
+        range.insertNode(span)
+      }
+    } else if (format === 'clear') {
+      document.execCommand('removeFormat')
+      element.querySelectorAll('span.wpss-text-light').forEach((node) => unwrapNode(node))
+    } else {
+      return
+    }
+
+    const verseIndex = contextualTarget.verseIndex
+    const segmentIndex = contextualTarget.segmentIndex
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    const nextSegments = Array.isArray(verse?.segmentos) ? [...verse.segmentos] : []
+    const segment = nextSegments[segmentIndex]
+    if (!verse || !segment) {
+      return
+    }
+    nextSegments[segmentIndex] = {
+      ...segment,
+      texto: normalizeSegmentHtml(element.innerHTML),
+    }
+    nextVerses[verseIndex] = { ...verse, segmentos: nextSegments }
+    const nextSong = { ...editingSong, versos: nextVerses }
+    updateSong(nextSong)
+    scheduleAutosave()
+    updateSegmentSelection(
+      verseIndex,
+      segmentIndex,
+      selectionObj.anchorOffset ?? null,
+      selectionObj.focusOffset ?? null,
+      element,
+    )
+  }, [contextualTarget, editingSong, selectionState.element])
+
+  const handleAttachmentSelect = useCallback((attachment) => {
+    if (!attachment?.id) {
+      return
+    }
+
+    const tabId = attachment?.type === 'photo' ? 'photos' : 'audio'
+    const targetKey = getAttachmentContextKey(attachment) || contextualTargetKey
+    setContextualScopeMode(targetKey === 'song' ? 'song' : 'auto')
+    setSelectedAttachmentId(attachment.id)
+
+    if (targetKey === 'song' || targetKey === contextualTargetKey) {
+      setContextualToolTabsByTarget((prev) => ({ ...prev, [contextualTargetKey]: tabId }))
+      setIsContextualToolbarExpanded(true)
+      return
+    }
+
+    pendingContextualToolbarOpenRef.current = {
+      attachmentId: attachment.id,
+      targetKey,
+      tabId,
+    }
+
+    const emptySelection = { verse: null, segment: null, start: null, end: null, element: null }
+    const sectionId = String(attachment.section_id || '')
+    const verseIndex = Number(attachment.verse_index)
+    const segmentIndex = Number(attachment.segment_index)
+
+    if (attachment.anchor_type === 'segment') {
+      persistSelectedSection(sectionId)
+      setExpandedSectionId(sectionId)
+      setNavLevel('verses')
+      setSelectedVerseIndexes(new Set([verseIndex]))
+      const nextSelection = {
+        verse: verseIndex,
+        segment: segmentIndex,
+        start: null,
+        end: null,
+        element: null,
+      }
+      selectionRef.current = nextSelection
+      setSelectionState(nextSelection)
+      return
+    }
+
+    if (attachment.anchor_type === 'verse') {
+      persistSelectedSection(sectionId)
+      setExpandedSectionId(sectionId)
+      setNavLevel('verses')
+      setSelectedVerseIndexes(new Set([verseIndex]))
+      selectionRef.current = emptySelection
+      setSelectionState(emptySelection)
+      return
+    }
+
+    if (attachment.anchor_type === 'section') {
+      persistSelectedSection(sectionId)
+      setExpandedSectionId(sectionId)
+      setSelectedVerseIndexes(new Set())
+      selectionRef.current = emptySelection
+      setSelectionState(emptySelection)
+      return
+    }
+
+    setContextualToolTabsByTarget((prev) => ({ ...prev, [contextualTargetKey]: tabId }))
+    setIsContextualToolbarExpanded(true)
+  }, [contextualTargetKey, persistSelectedSection])
+
+  const navigateAnnotationByStep = useCallback((step) => {
+    if (!annotationNavigationTargets.length) {
+      return
+    }
+    const baseIndex = currentAnnotationNavigationIndex >= 0 ? currentAnnotationNavigationIndex : 0
+    const nextIndex = (baseIndex + step + annotationNavigationTargets.length) % annotationNavigationTargets.length
+    openContextualTarget(annotationNavigationTargets[nextIndex], 'annotations')
+  }, [annotationNavigationTargets, currentAnnotationNavigationIndex, openContextualTarget])
+
+  const navigateAudioByStep = useCallback((step) => {
+    if (!visibleAudioNavigationItems.length) {
+      return
+    }
+    const baseIndex = currentAudioNavigationIndex >= 0 ? currentAudioNavigationIndex : 0
+    const nextIndex = (baseIndex + step + visibleAudioNavigationItems.length) % visibleAudioNavigationItems.length
+    handleAttachmentSelect(visibleAudioNavigationItems[nextIndex])
+  }, [currentAudioNavigationIndex, handleAttachmentSelect, visibleAudioNavigationItems])
+
   const handleVerseCardDragOver = (event, toIndex) => {
-    if (verseDragIndex === null) return
+    if (verseDragIndex === null && !draggingSegmentRef.current) return
     event.preventDefault()
     event.stopPropagation()
     setVerseDragOverIndex(toIndex)
@@ -2097,9 +3044,16 @@ export default function Editor({ onShowList }) {
   const handleVerseCardDrop = (event, toIndex) => {
     event.preventDefault()
     event.stopPropagation()
+    const draggedSegment = getDraggedSegmentMeta(event)
+    if (draggedSegment) {
+      moveSegmentToTargetVerse(draggedSegment.verseIndex, draggedSegment.segmentIndex, toIndex)
+      clearSegmentDrag()
+      return
+    }
     const fromIndex = getDraggedVerseIndex(event)
     if (fromIndex !== null && fromIndex !== undefined) {
-      moveVerseInSection(fromIndex, toIndex)
+      const targetSectionId = Array.isArray(editingSong.versos) ? editingSong.versos[toIndex]?.section_id || '' : ''
+      moveVerseToPosition(fromIndex, targetSectionId, toIndex, 'before')
     }
     setVerseDragIndex(null)
     setVerseDragOverIndex(null)
@@ -2109,6 +3063,229 @@ export default function Editor({ onShowList }) {
     setVerseDragIndex(null)
     setVerseDragOverIndex(null)
   }
+
+  const handleSectionSurfaceDragOver = useCallback((event) => {
+    if (sectionDragIndex === null && verseDragIndex === null && !draggingSegmentRef.current) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+  }, [sectionDragIndex, verseDragIndex])
+
+  const handleSectionSurfaceDrop = useCallback((event, sectionId, sectionIndex) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const draggedSectionIndex = parseInt(
+      event.dataTransfer.getData('application/x-wpss-section-index') || '',
+      10,
+    )
+    if (!Number.isNaN(draggedSectionIndex)) {
+      moveSection(draggedSectionIndex, sectionIndex)
+      setSectionDragIndex(null)
+      setSectionDragOverIndex(null)
+      return
+    }
+    const draggedSegment = getDraggedSegmentMeta(event)
+    if (draggedSegment) {
+      moveSegmentToNewVerse(draggedSegment.verseIndex, draggedSegment.segmentIndex, sectionId)
+      clearSegmentDrag()
+      return
+    }
+    const fromIndex = getDraggedVerseIndex(event)
+    if (fromIndex !== null && fromIndex !== undefined) {
+      moveVerseToPosition(fromIndex, sectionId)
+    }
+    setVerseDragIndex(null)
+    setVerseDragOverIndex(null)
+  }, [
+    clearSegmentDrag,
+    getDraggedSegmentMeta,
+    getDraggedVerseIndex,
+    moveSegmentToNewVerse,
+    moveVerseToPosition,
+  ])
+
+  const clearPreviewTouchDragTimer = useCallback(() => {
+    if (previewTouchDragTimerRef.current !== null) {
+      window.clearTimeout(previewTouchDragTimerRef.current)
+      previewTouchDragTimerRef.current = null
+    }
+  }, [])
+
+  const clearPreviewTouchDragState = useCallback(() => {
+    clearPreviewTouchDragTimer()
+    previewTouchDragSessionRef.current?.cleanup?.()
+    previewTouchDragSessionRef.current = null
+    setSectionDragIndex(null)
+    setSectionDragOverIndex(null)
+    setVerseDragIndex(null)
+    setVerseDragOverIndex(null)
+  }, [clearPreviewTouchDragTimer])
+
+  const resolvePreviewTouchDropTarget = useCallback((clientX, clientY) => {
+    if (typeof document === 'undefined') {
+      return null
+    }
+
+    const target = document.elementFromPoint(clientX, clientY)
+    if (!(target instanceof Element)) {
+      return null
+    }
+
+    const previewVerseNode = target.closest('[data-wpss-preview-verse-index]')
+    if (previewVerseNode) {
+      const verseIndex = parseInt(previewVerseNode.getAttribute('data-wpss-preview-verse-index') || '', 10)
+      const sectionId = String(previewVerseNode.getAttribute('data-wpss-preview-section-id') || '')
+      if (!Number.isNaN(verseIndex)) {
+        return { type: 'verse', verseIndex, sectionId }
+      }
+    }
+
+    const previewSectionNode = target.closest('[data-wpss-preview-section-index]')
+    if (previewSectionNode) {
+      const sectionIndex = parseInt(previewSectionNode.getAttribute('data-wpss-preview-section-index') || '', 10)
+      const sectionId = String(previewSectionNode.getAttribute('data-wpss-preview-section-id') || '')
+      if (!Number.isNaN(sectionIndex)) {
+        return { type: 'section', sectionIndex, sectionId }
+      }
+    }
+
+    const sidebarSectionNode = target.closest('[data-wpss-section-pill-index]')
+    if (sidebarSectionNode) {
+      const sectionIndex = parseInt(sidebarSectionNode.getAttribute('data-wpss-section-pill-index') || '', 10)
+      const sectionId = String(sidebarSectionNode.getAttribute('data-wpss-section-id') || '')
+      if (!Number.isNaN(sectionIndex)) {
+        return { type: 'section', sectionIndex, sectionId }
+      }
+    }
+
+    return null
+  }, [])
+
+  const beginPreviewTouchDrag = useCallback((event, payload) => {
+    if (!payload || (event.pointerType && event.pointerType === 'mouse')) {
+      return
+    }
+
+    const handleNode = event.currentTarget
+    if (!(handleNode instanceof Element)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    clearPreviewTouchDragState()
+
+    const pointerId = event.pointerId
+    const startX = event.clientX
+    const startY = event.clientY
+
+    const updateHoverState = (clientX, clientY) => {
+      const target = resolvePreviewTouchDropTarget(clientX, clientY)
+      if (payload.type === 'section') {
+        setSectionDragOverIndex(target?.type === 'section' ? target.sectionIndex : null)
+      } else if (payload.type === 'verse') {
+        setVerseDragOverIndex(target?.type === 'verse' ? target.verseIndex : null)
+      }
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleCancel)
+    }
+
+    const activate = () => {
+      previewTouchDragTimerRef.current = null
+      previewTouchDragSessionRef.current = {
+        ...payload,
+        pointerId,
+        startX,
+        startY,
+        active: true,
+        cleanup,
+      }
+      if (payload.type === 'section') {
+        setSectionDragIndex(payload.index)
+      } else if (payload.type === 'verse') {
+        setVerseDragIndex(payload.index)
+      }
+      updateHoverState(startX, startY)
+    }
+
+    const finishDrag = (clientX, clientY) => {
+      const target = resolvePreviewTouchDropTarget(clientX, clientY)
+      let moved = false
+
+      if (payload.type === 'section' && target?.type === 'section') {
+        moved = moveSection(payload.index, target.sectionIndex)
+      } else if (payload.type === 'verse') {
+        if (target?.type === 'verse') {
+          moved = moveVerseToPosition(payload.index, target.sectionId, target.verseIndex, 'before')
+        } else if (target?.type === 'section') {
+          moved = moveVerseToPosition(payload.index, target.sectionId)
+        }
+      }
+
+      clearPreviewTouchDragState()
+      return moved
+    }
+
+    const handleMove = (moveEvent) => {
+      if (moveEvent.pointerId !== pointerId) {
+        return
+      }
+
+      const session = previewTouchDragSessionRef.current
+      if (!session?.active) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > TOUCH_DRAG_CANCEL_DISTANCE) {
+          clearPreviewTouchDragState()
+        }
+        return
+      }
+
+      moveEvent.preventDefault()
+      updateHoverState(moveEvent.clientX, moveEvent.clientY)
+    }
+
+    const handleUp = (upEvent) => {
+      if (upEvent.pointerId !== pointerId) {
+        return
+      }
+
+      const isActive = !!previewTouchDragSessionRef.current?.active
+      upEvent.preventDefault()
+      if (isActive) {
+        finishDrag(upEvent.clientX, upEvent.clientY)
+      } else {
+        clearPreviewTouchDragState()
+      }
+    }
+
+    const handleCancel = (cancelEvent) => {
+      if (cancelEvent.pointerId !== pointerId) {
+        return
+      }
+      clearPreviewTouchDragState()
+    }
+
+    previewTouchDragSessionRef.current = {
+      ...payload,
+      pointerId,
+      startX,
+      startY,
+      active: false,
+      cleanup,
+    }
+    previewTouchDragTimerRef.current = window.setTimeout(activate, TOUCH_DRAG_ACTIVATION_DELAY)
+    window.addEventListener('pointermove', handleMove, { passive: false })
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleCancel)
+  }, [clearPreviewTouchDragState, moveSection, moveVerseToPosition, resolvePreviewTouchDropTarget])
+
+  useEffect(() => () => {
+    clearPreviewTouchDragState()
+  }, [clearPreviewTouchDragState])
 
   const handleSectionCommentsChange = (sectionId, comments) => {
     const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
@@ -2126,11 +3303,73 @@ export default function Editor({ onShowList }) {
     handleSectionChange(sections)
   }
 
+  const handleVerseCommentsChange = (verseIndex, comments) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    nextVerses[verseIndex] = { ...verse, comentarios: comments }
+    handleVerseChange(nextVerses)
+  }
+
+  const handleSegmentCommentsChange = (verseIndex, segmentIndex, comments) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+    if (!segmentos[segmentIndex]) return
+    segmentos[segmentIndex] = { ...segmentos[segmentIndex], comentarios: comments }
+    nextVerses[verseIndex] = { ...verse, segmentos }
+    handleVerseChange(nextVerses)
+  }
+
+  const handleVerseMidiChange = (verseIndex, clips) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    nextVerses[verseIndex] = { ...verse, midi_clips: clips }
+    handleVerseChange(nextVerses)
+  }
+
+  const handleSegmentMidiChange = (verseIndex, segmentIndex, clips) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+    const current = segmentos[segmentIndex]
+    if (!current) return
+    segmentos[segmentIndex] = { ...current, midi_clips: clips }
+    nextVerses[verseIndex] = { ...verse, segmentos }
+    handleVerseChange(nextVerses)
+  }
+
   const handleVerseChange = (nextVerses) => {
     const nextSong = { ...editingSong, versos: nextVerses }
     syncLegacyFromSections(nextSong, Array.isArray(nextSong.secciones) ? nextSong.secciones : [])
     updateSong({ ...nextSong })
     scheduleAutosave()
+  }
+
+  const handleDuplicateSegmentAtIndex = (verseIndex, segmentIndex) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+    const segment = segmentos[segmentIndex]
+    if (!segment) return
+    segmentos.splice(segmentIndex + 1, 0, { ...segment })
+    nextVerses[verseIndex] = { ...verse, segmentos }
+    handleVerseChange(nextVerses)
+  }
+
+  const handleRemoveSegmentAtIndex = (verseIndex, segmentIndex) => {
+    const nextVerses = Array.isArray(editingSong.versos) ? [...editingSong.versos] : []
+    const verse = nextVerses[verseIndex]
+    if (!verse) return
+    const segmentos = Array.isArray(verse.segmentos) ? [...verse.segmentos] : []
+    if (segmentos.length <= 1 || !segmentos[segmentIndex]) return
+    segmentos.splice(segmentIndex, 1)
+    nextVerses[verseIndex] = { ...adjustEventIndexAfterSegmentRemoval({ ...verse, segmentos }, segmentIndex) }
+    handleVerseChange(nextVerses)
   }
 
   const handleAddSection = () => {
@@ -2601,7 +3840,10 @@ export default function Editor({ onShowList }) {
           </details>
         </div>
 
-        <section className="wpss-section wpss-section--main">
+        <section
+          ref={mainSectionRef}
+          className={`wpss-section wpss-section--main ${isEditorFullscreen ? 'is-editor-fullscreen' : ''}`}
+        >
           <header>
             <h3>Secciones, versos y segmentos</h3>
           </header>
@@ -2627,13 +3869,15 @@ export default function Editor({ onShowList }) {
                   </div>
                   <div className="wpss-section-pill-list">
                     {(Array.isArray(editingSong.secciones) ? editingSong.secciones : []).map((section, index) => (
-                      <div
-                        key={section.id}
-                        className={`wpss-section-pill ${activeSectionId === section.id ? 'is-active' : ''} ${
-                          sectionDragOverIndex === index ? 'is-dragover' : ''
-                        }`}
-                        role="button"
-                        tabIndex={0}
+	                      <div
+	                        key={section.id}
+	                        className={`wpss-section-pill ${activeSectionId === section.id ? 'is-active' : ''} ${
+	                          sectionDragOverIndex === index ? 'is-dragover' : ''
+	                        }`}
+	                        data-wpss-section-pill-index={index}
+	                        data-wpss-section-id={section.id}
+	                        role="button"
+	                        tabIndex={0}
                         onClick={(event) => {
                           if (event.target && event.target.tagName === 'INPUT') {
                             return
@@ -2686,16 +3930,20 @@ export default function Editor({ onShowList }) {
                           setSectionDragOverIndex(null)
                         }}
                       >
-                        <span
-                          className="wpss-section-pill__drag"
-                          draggable
-                          aria-label="Mover sección"
-                          title="Arrastra para ordenar"
-                          onClick={(event) => event.stopPropagation()}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData('text/plain', String(index))
-                            event.dataTransfer.effectAllowed = 'move'
+	                        <span
+	                          className="wpss-section-pill__drag"
+	                          draggable
+	                          aria-label="Mover sección"
+	                          title="Arrastra para ordenar"
+	                          onClick={(event) => event.stopPropagation()}
+	                          onPointerDown={(event) => {
+	                            event.stopPropagation()
+	                            beginPreviewTouchDrag(event, { type: 'section', index })
+	                          }}
+	                          onContextMenu={(event) => event.preventDefault()}
+	                          onDragStart={(event) => {
+	                            event.dataTransfer.setData('text/plain', String(index))
+	                            event.dataTransfer.effectAllowed = 'move'
                             setSectionDragIndex(index)
                           }}
                           onDragEnd={() => {
@@ -2717,57 +3965,6 @@ export default function Editor({ onShowList }) {
                           onChange={(event) => handleSectionNameChange(section.id, event.target.value)}
                         />
                         <em>{sectionCounts.get(section.id) || 0}</em>
-                        <div className="wpss-section-pill__actions">
-                          <details className="wpss-action-menu">
-                            <summary
-                              aria-label="Acciones de sección"
-                              title="Acciones de sección"
-                              onClick={(event) => event.stopPropagation()}
-                              onPointerDown={(event) => event.stopPropagation()}
-                            >
-                              ⋯
-                            </summary>
-                            <div className="wpss-action-menu__panel">
-                              <InlineMediaQuickActions
-                                target={{ anchor_type: 'section', section_id: section.id }}
-                                onUpload={handleQuickUploadAttachment}
-                              />
-                              <button
-                                type="button"
-                                className="button button-small"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleDuplicateSection(index)
-                                }}
-                              >
-                                Duplicar
-                              </button>
-                              <button
-                                type="button"
-                                className="button button-small"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  selectSectionOnly(section.id)
-                                  clearVerseSelection()
-                                  setNavLevel('verses')
-                                }}
-                              >
-                                MIDI sección
-                              </button>
-                              <button
-                                type="button"
-                                className="button button-link-delete"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleRemoveSection(index)
-                                }}
-                                disabled={(Array.isArray(editingSong.secciones) ? editingSong.secciones.length : 0) <= 1}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </details>
-                        </div>
                       </div>
                     ))}
                     <button
@@ -2924,6 +4121,11 @@ export default function Editor({ onShowList }) {
                     <div className="wpss-work-verse-sections">
                       {sectionsList.map((section, sectionIndex) => {
                         const sectionVerses = versesBySection.get(section.id) || []
+                        const sectionIndicators = buildContentIndicators({
+                          attachments: getSectionLevelAttachments(editingSong, section.id),
+                          comments: section?.comentarios,
+                          midiClips: section?.midi_clips,
+                        })
                         const isActiveSection = section.id === activeSectionId
                         const previewVerses = sectionVerses.slice(0, 2)
                         return (
@@ -2939,6 +4141,10 @@ export default function Editor({ onShowList }) {
                               >
                                 {section.nombre || getDefaultSectionName(sectionIndex)}
                               </button>
+                              <ContentIndicators
+                                items={sectionIndicators}
+                                onSelect={(item) => openContextualTarget({ type: 'section', sectionId: section.id }, item.tabId)}
+                              />
                               <span>{sectionVerses.length} versos</span>
                               <button
                                 type="button"
@@ -2970,6 +4176,11 @@ export default function Editor({ onShowList }) {
                                         && selectedVerseIndex === index
                                         && selectedVerse?.section_id === section.id
                                       const preview = getVerseStackPreview(verse)
+                                      const verseIndicators = buildContentIndicators({
+                                        attachments: getVerseLevelAttachments(editingSong, index),
+                                        comments: verse?.comentarios,
+                                        midiClips: verse?.midi_clips,
+                                      })
                                       if (isSelectedCard) {
                                         return (
                                           <div
@@ -3000,7 +4211,14 @@ export default function Editor({ onShowList }) {
                                               showHeader={false}
                                               showPreview={false}
                                               visibleVerseIndexes={new Set([index])}
+                                              songAttachments={editingSong.adjuntos}
+                                              onContextIndicatorSelect={openContextualTarget}
                                               onQuickUploadAttachment={handleQuickUploadAttachment}
+                                              onBeginSegmentDrag={beginSegmentDrag}
+                                              onEndSegmentDrag={clearSegmentDrag}
+                                              onMoveSegmentToVerse={moveSegmentToTargetVerse}
+                                              onMoveSegmentToNewVerse={moveSegmentToNewVerse}
+                                              useContextualToolbar
                                             />
                                           </div>
                                         )
@@ -3038,45 +4256,28 @@ export default function Editor({ onShowList }) {
                                           ☰
                                         </span>
                                         <strong>
-                                          {verse.nombre
-                                            ? verse.nombre
-                                            : verse.instrumental
-                                              ? `Instrumental ${verseIndex + 1}`
-                                              : `Verso ${verseIndex + 1}`}
+                                          <span>
+                                            {verse.nombre
+                                              ? verse.nombre
+                                              : verse.instrumental
+                                                ? `Instrumental ${verseIndex + 1}`
+                                                : `Verso ${verseIndex + 1}`}
+                                          </span>
+                                          <ContentIndicators
+                                            items={verseIndicators}
+                                            onSelect={(item) =>
+                                              openContextualTarget(
+                                                {
+                                                  type: 'verse',
+                                                  sectionId: verse.section_id || section.id,
+                                                  verseIndex: index,
+                                                },
+                                                item.tabId,
+                                              )
+                                            }
+                                          />
                                         </strong>
                                         <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
-                                        <details
-                                          className="wpss-verse-card-mini__menu wpss-action-menu"
-                                          onClick={(event) => event.stopPropagation()}
-                                        >
-                                          <summary aria-label="Opciones del verso" title="Opciones del verso">
-                                            ⋯
-                                          </summary>
-                                          <div className="wpss-action-menu__panel">
-                                            <button
-                                              type="button"
-                                              className="button button-small"
-                                              onClick={() => handleRenameVerseAtIndex(index)}
-                                            >
-                                              Renombrar
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="button button-small"
-                                              onClick={() => handleDuplicateVerseAtIndex(index)}
-                                            >
-                                              Duplicar
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="button button-link-delete"
-                                              onClick={() => handleRemoveVerseAtIndex(index)}
-                                              disabled={sectionVerses.length <= 1}
-                                            >
-                                              Eliminar
-                                            </button>
-                                          </div>
-                                        </details>
                                       </div>
                                       )
                                     })
@@ -3123,7 +4324,14 @@ export default function Editor({ onShowList }) {
                   showHeader={false}
                   showPreview={false}
                   visibleVerseIndexes={hasVerseFilter ? selectedVerseIndexes : null}
+                  songAttachments={editingSong.adjuntos}
+                  onContextIndicatorSelect={openContextualTarget}
                   onQuickUploadAttachment={handleQuickUploadAttachment}
+                  onBeginSegmentDrag={beginSegmentDrag}
+                  onEndSegmentDrag={clearSegmentDrag}
+                  onMoveSegmentToVerse={moveSegmentToTargetVerse}
+                  onMoveSegmentToNewVerse={moveSegmentToNewVerse}
+                  useContextualToolbar
                 />
               )}
             </div>
@@ -3151,6 +4359,36 @@ export default function Editor({ onShowList }) {
                     <span>
                       {useMasterPreview ? 'Todas las secciones' : isFocusWork ? activeSection?.nombre || getDefaultSectionName(0) : 'Todas las secciones'}
                     </span>
+	                    <div className="wpss-section-preview__context-actions">
+	                      <button type="button" className="button button-small" onClick={handleAddSection}>
+	                        + Sección
+                      </button>
+                      <button
+                        type="button"
+                        className="button button-small"
+                        onClick={handleAddVerse}
+                        disabled={!activeSectionId}
+	                      >
+	                        + Verso
+	                      </button>
+	                      <button
+	                        type="button"
+	                        className={`button button-small ${contextualTarget.type === 'song' ? 'button-secondary' : ''}`}
+	                        onClick={() => {
+	                          if (contextualTarget.type === 'song') {
+	                            setContextualScopeMode('auto')
+	                            setIsContextualToolbarExpanded(false)
+	                            return
+	                          }
+	                          setSelectedAttachmentId(null)
+	                          setContextualScopeMode('song')
+	                          setContextualToolTabsByTarget((prev) => ({ ...prev, song: prev.song || 'audio' }))
+	                          setIsContextualToolbarExpanded(true)
+	                        }}
+	                      >
+	                        {contextualTarget.type === 'song' ? 'Salir de canción' : 'Canción'}
+	                      </button>
+	                    </div>
                     {isCompactPreviewViewport ? (
                       <div className="wpss-preview-zoom-controls" role="group" aria-label="Zoom de vista previa">
                         <button
@@ -3186,76 +4424,315 @@ export default function Editor({ onShowList }) {
                     ) : null}
                   </div>
                 </div>
-                {songLevelAttachments.length ? (
+                {showPreviewAttachments && songLevelAttachments.length ? (
                   <EditorPreviewMediaAttachments
                     attachments={songLevelAttachments}
                     title="Adjuntos de la canción"
                     compact
+                    activeAttachmentId={selectedAttachmentId}
+                    onSelectAttachment={handleAttachmentSelect}
                     pendingActionById={pendingAttachmentActions}
-                    onRename={handlePreviewRenameAttachment}
-                    onUnlink={handlePreviewUnlinkAttachment}
-                    onDelete={handlePreviewDeleteAttachment}
                   />
-                ) : null}
-                <div ref={previewScrollRef} className="wpss-section-preview__scroll-shell">
-                  <div
-                    className="wpss-section-preview__all wpss-section-preview__all--interactive"
-                    style={{ '--wpss-preview-scale': previewScale / 100 }}
-                  >
-                    {sectionsList.length ? (
-                      sectionsList.map((section, index) => {
-                      const verses = versesBySection.get(section.id) || []
-                      const isActiveSection = section.id === activeSectionId
-                      const isExpandedSection = expandedSectionId === section.id
-                      const sectionAttachments = getSectionLevelAttachments(editingSong, section.id)
-                      return (
-                        <div
-                          key={`preview-section-${section.id}`}
-                          className={`wpss-section-preview__group ${isActiveSection ? 'is-active' : ''}`}
-                          ref={(node) => {
-                            if (node) {
-                              previewSectionRefs.current.set(section.id, node)
-                            } else {
-                              previewSectionRefs.current.delete(section.id)
-                            }
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="wpss-section-preview__group-title"
-                            onClick={() => {
-                              selectSectionOnly(section.id)
-                              setSelectedVerseIndexes(new Set())
-                              setExpandedSectionId((prev) => (prev === section.id ? null : section.id))
-                            }}
-                            aria-label={`Sección ${index + 1}`}
-                          >
-                            <span>{isExpandedSection ? '▾' : '▸'}</span>
-                            <span>{verses.length} versos</span>
-                          </button>
-                          {isExpandedSection ? (
-                            <div className="wpss-section-preview__tools">
-                              <div className="wpss-section-preview__tools-bar">
-                                <span className="wpss-section-preview__tools-label">Acciones de la sección</span>
-                                <InlineMediaQuickActions
-                                  target={{ anchor_type: 'section', section_id: section.id }}
-                                  onUpload={handleQuickUploadAttachment}
-                                />
+	                ) : null}
+	                <div className="wpss-section-preview__workspace-tools" ref={workspaceToolsRef}>
+	                  <div className="wpss-section-preview__tools wpss-section-preview__tools--contextual">
+	                    <div className="wpss-section-preview__tools-bar">
+	                      <div className="wpss-section-preview__tools-context">
+	                        <span className="wpss-section-preview__tools-label">
+	                          {contextualTarget.type === 'song'
+	                            ? 'Herramientas de la canción'
+	                            : contextualTarget.type === 'section'
+	                            ? 'Herramientas de la sección'
+	                            : contextualTarget.type === 'verse'
+	                              ? 'Herramientas del verso'
+                              : 'Herramientas del segmento'}
+                        </span>
+	                        <strong>{contextualTarget.label}</strong>
+	                        {contextualTarget.meta ? <span>{contextualTarget.meta}</span> : null}
+	                      </div>
+	                      <div
+	                        className="wpss-section-preview__tool-tabs"
+	                        role="tablist"
+	                        aria-label="Barra contextual"
+	                      >
+	                        {contextualTabItems.map((tab) => (
+	                          <button
+	                            key={`context-tool-${tab.id}`}
+	                            type="button"
+	                            role="tab"
+	                            className={`button button-small wpss-section-preview__tool-tab ${
+	                              contextualToolTab === tab.id && isContextualToolbarExpanded ? 'is-active' : ''
+	                            }`}
+	                            aria-selected={contextualToolTab === tab.id && isContextualToolbarExpanded}
+	                            onClick={() => handleContextualTabToggle(tab.id)}
+	                          >
+	                            <span>{tab.label}</span>
+	                          </button>
+	                        ))}
+	                      </div>
+	                    </div>
+	                    {isContextualToolbarExpanded && contextualToolTab ? (
+	                      <div className="wpss-section-preview__tool-panel">
+	                        {contextualToolTab === 'format' ? (
+                          <div className="wpss-section-preview__tool-stack">
+                            <div className="wpss-section-preview__format-tools">
+                              <button
+                                type="button"
+                                className="button button-small"
+                                disabled={!selectionState.element}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyContextualTextFormat('bold')}
+                              >
+                                B
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-small"
+                                disabled={!selectionState.element}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyContextualTextFormat('underline')}
+                              >
+                                U
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-small"
+                                disabled={!selectionState.element}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyContextualTextFormat('light')}
+                              >
+                                Light
+                              </button>
+                              <button
+                                type="button"
+                                className="button button-small"
+                                disabled={!selectionState.element}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyContextualTextFormat('clear')}
+                              >
+                                Normal
+                              </button>
+	                            </div>
+	                          </div>
+	                        ) : null}
+	                        {contextualToolTab === 'reading' ? (
+	                          <div className="wpss-section-preview__tool-stack">
+	                            <div className="wpss-section-preview__options-grid">
+	                              <button
+	                                type="button"
+	                                className="button button-small"
+	                                onClick={() => setShowPreviewAttachments((current) => !current)}
+	                              >
+	                                {showPreviewAttachments ? 'Ocultar adjuntos' : 'Mostrar adjuntos'}
+	                              </button>
+	                              <button
+	                                type="button"
+	                                className="button button-small"
+	                                onClick={toggleEditorFullscreen}
+	                              >
+	                                {isEditorFullscreen ? 'Salir de pantalla completa' : 'Pantalla completa'}
+	                              </button>
+	                            </div>
+	                          </div>
+	                        ) : null}
+	                        {contextualToolTab === 'audio' ? (
+                          <div className="wpss-section-preview__tool-stack">
+	                            {visibleAudioNavigationItems.length ? (
+	                              <div className="wpss-section-preview__navigator">
+                                <button type="button" className="button button-small" onClick={() => navigateAudioByStep(-1)}>
+                                  ← Anterior
+                                </button>
+	                                <span>
+	                                  {`${Math.max(currentAudioNavigationIndex, 0) + 1}/${visibleAudioNavigationItems.length} ${
+	                                    (selectedAudioAttachment || visibleAudioNavigationItems[currentAudioNavigationIndex >= 0 ? currentAudioNavigationIndex : 0])?.title
+	                                    || (selectedAudioAttachment || visibleAudioNavigationItems[currentAudioNavigationIndex >= 0 ? currentAudioNavigationIndex : 0])?.file_name
+	                                    || 'Audio'
+	                                  }`}
+                                </span>
+                                <button type="button" className="button button-small" onClick={() => navigateAudioByStep(1)}>
+                                  Siguiente →
+                                </button>
                               </div>
-                              {sectionAttachments.length ? (
-                                <EditorPreviewMediaAttachments
-                                  attachments={sectionAttachments}
-                                  title="Adjuntos de la sección"
-                                  compact
-                                  pendingActionById={pendingAttachmentActions}
-                                  onRename={handlePreviewRenameAttachment}
-                                  onUnlink={handlePreviewUnlinkAttachment}
-                                  onDelete={handlePreviewDeleteAttachment}
+                            ) : null}
+                            <InlineMediaQuickActions
+                              target={contextualTarget.target}
+                              onUpload={handleQuickUploadAttachment}
+                              allowedModes={['importAudio', 'recordAudio']}
+                            />
+                            {contextualTarget.attachments.filter((item) => item?.type !== 'photo').length ? (
+                              <EditorPreviewMediaAttachments
+                                attachments={contextualTarget.attachments.filter((item) => item?.type !== 'photo')}
+                                title="Audios"
+                                compact
+                                activeAttachmentId={selectedAttachmentId}
+                                onSelectAttachment={handleAttachmentSelect}
+                                pendingActionById={pendingAttachmentActions}
+                              />
+                            ) : (
+                              <p className="wpss-empty">Aún no hay audios en este nivel.</p>
+                            )}
+                            {selectedAudioAttachment ? (
+                              <div className="wpss-preview-media__manager">
+                                <div className="wpss-preview-media__manager-head">
+                                  <div className="wpss-preview-media__manager-title">
+                                    <span>Audio seleccionado</span>
+                                    <strong>{selectedAudioAttachment.title || selectedAudioAttachment.file_name || 'Audio'}</strong>
+                                  </div>
+                                  {pendingAttachmentActions?.[selectedAudioAttachment.id] ? (
+                                    <span className="wpss-preview-media__status">{pendingAttachmentActions[selectedAudioAttachment.id]}</span>
+                                  ) : null}
+                                </div>
+                                <audio
+                                  className="wpss-reading-media__audio"
+                                  controls
+                                  preload="none"
+                                  src={selectedAudioAttachment.stream_url || ''}
                                 />
-                              ) : null}
-                              <MidiClipList
-                                clips={section?.midi_clips}
-                                onChange={(clips) => handleSectionMidiChange(section.id, clips)}
+                                <div className="wpss-preview-media__manager-actions">
+                                  {selectedAudioAttachment?.can_manage ? (
+                                    <>
+                                      <button type="button" className="button button-small" onClick={() => handlePreviewRenameAttachment(selectedAudioAttachment)}>
+                                        Renombrar
+                                      </button>
+                                      <button type="button" className="button button-small" onClick={() => handlePreviewUnlinkAttachment(selectedAudioAttachment)}>
+                                        Quitar
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {selectedAudioAttachment?.can_delete_file ? (
+                                    <button type="button" className="button button-secondary button-small" onClick={() => handlePreviewDeleteAttachment(selectedAudioAttachment)}>
+                                      Eliminar de Drive
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : contextualTarget.attachments.filter((item) => item?.type !== 'photo').length ? (
+                              <p className="wpss-empty">Selecciona un audio para administrarlo desde aquí.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {contextualToolTab === 'photos' ? (
+                          <div className="wpss-section-preview__tool-stack">
+                            <InlineMediaQuickActions
+                              target={contextualTarget.target}
+                              onUpload={handleQuickUploadAttachment}
+                              allowedModes={['importPhoto', 'capturePhoto']}
+                            />
+                            {contextualTarget.attachments.filter((item) => item?.type === 'photo').length ? (
+                              <EditorPreviewMediaAttachments
+                                attachments={contextualTarget.attachments.filter((item) => item?.type === 'photo')}
+                                title="Fotos"
+                                compact
+                                activeAttachmentId={selectedAttachmentId}
+                                onSelectAttachment={handleAttachmentSelect}
+                                pendingActionById={pendingAttachmentActions}
+                              />
+                            ) : (
+                              <p className="wpss-empty">Aún no hay fotos en este nivel.</p>
+                            )}
+                            {selectedPhotoAttachment ? (
+                              <div className="wpss-preview-media__manager">
+                                <div className="wpss-preview-media__manager-head">
+                                  <div className="wpss-preview-media__manager-title">
+                                    <span>Foto seleccionada</span>
+                                    <strong>{selectedPhotoAttachment.title || selectedPhotoAttachment.file_name || 'Foto'}</strong>
+                                  </div>
+                                  {pendingAttachmentActions?.[selectedPhotoAttachment.id] ? (
+                                    <span className="wpss-preview-media__status">{pendingAttachmentActions[selectedPhotoAttachment.id]}</span>
+                                  ) : null}
+                                </div>
+                                <a href={selectedPhotoAttachment.stream_url || '#'} target="_blank" rel="noreferrer">
+                                  <img
+                                    className="wpss-reading-media__image"
+                                    src={selectedPhotoAttachment.stream_url || ''}
+                                    alt={selectedPhotoAttachment.title || selectedPhotoAttachment.file_name || 'Foto'}
+                                    loading="lazy"
+                                  />
+                                </a>
+                                <div className="wpss-preview-media__manager-actions">
+                                  {selectedPhotoAttachment?.can_manage ? (
+                                    <>
+                                      <button type="button" className="button button-small" onClick={() => handlePreviewRenameAttachment(selectedPhotoAttachment)}>
+                                        Renombrar
+                                      </button>
+                                      <button type="button" className="button button-small" onClick={() => handlePreviewUnlinkAttachment(selectedPhotoAttachment)}>
+                                        Quitar
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {selectedPhotoAttachment?.can_delete_file ? (
+                                    <button type="button" className="button button-secondary button-small" onClick={() => handlePreviewDeleteAttachment(selectedPhotoAttachment)}>
+                                      Eliminar de Drive
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : contextualTarget.attachments.filter((item) => item?.type === 'photo').length ? (
+                              <p className="wpss-empty">Selecciona una foto para administrarla desde aquí.</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+	                        {contextualToolTab === 'annotations' ? (
+	                          <div className="wpss-section-preview__tool-stack">
+	                            {contextualTarget.type !== 'song' && annotationNavigationTargets.length ? (
+	                              <div className="wpss-section-preview__navigator">
+                                <button type="button" className="button button-small" onClick={() => navigateAnnotationByStep(-1)}>
+                                  ← Anterior
+                                </button>
+                                <span>
+                                  {currentAnnotationNavigationIndex >= 0
+                                    ? `${currentAnnotationNavigationIndex + 1}/${annotationNavigationTargets.length} ${annotationNavigationTargets[currentAnnotationNavigationIndex].label}`
+                                    : `${annotationNavigationTargets.length} anotaciones`}
+                                </span>
+                                <button type="button" className="button button-small" onClick={() => navigateAnnotationByStep(1)}>
+                                  Siguiente →
+	                                </button>
+	                              </div>
+	                            ) : null}
+	                            {contextualTarget.type === 'song' ? (
+	                              <p className="wpss-empty">Las anotaciones de canción completa aún no están habilitadas. Usa Audio o Fotos para incrustables globales.</p>
+	                            ) : null}
+	                            {contextualTarget.type === 'section' ? (
+	                              <CommentEditor
+                                label="Anotaciones de la sección"
+                                comments={contextualTarget.comments}
+                                defaultTitle={contextualTarget.label}
+                                onChange={(next) => handleSectionCommentsChange(activeSectionId, next)}
+                              />
+                            ) : null}
+                            {contextualTarget.type === 'verse' && contextualTarget.verseIndex !== null ? (
+                              <CommentEditor
+                                label="Anotaciones del verso"
+                                comments={contextualTarget.comments}
+                                defaultTitle={contextualTarget.label}
+                                onChange={(next) => handleVerseCommentsChange(contextualTarget.verseIndex, next)}
+                              />
+                            ) : null}
+                            {contextualTarget.type === 'segment' && contextualTarget.verseIndex !== null && contextualTarget.segmentIndex !== null ? (
+                              <CommentEditor
+                                label="Anotaciones del segmento"
+                                comments={contextualTarget.comments}
+                                defaultTitle={contextualTarget.label}
+                                onChange={(next) =>
+                                  handleSegmentCommentsChange(
+                                    contextualTarget.verseIndex,
+                                    contextualTarget.segmentIndex,
+                                    next,
+                                  )
+                                }
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+	                        {contextualToolTab === 'midi' ? (
+	                          <div className="wpss-section-preview__tool-stack">
+	                            {contextualTarget.type === 'song' ? (
+	                              <p className="wpss-empty">El MIDI global de canción aún no está habilitado en esta vista. Usa Audio o Fotos para incrustables de canción.</p>
+	                            ) : null}
+	                            {contextualTarget.type === 'section' ? (
+	                              <MidiClipList
+                                clips={contextualTarget.midiClips}
+                                onChange={(clips) => handleSectionMidiChange(activeSectionId, clips)}
                                 emptyLabel="Añadir MIDI a la sección"
                                 defaultTempo={editingSong.bpm}
                                 compactRows={preferCompactMidiRows}
@@ -3264,14 +4741,271 @@ export default function Editor({ onShowList }) {
                                 defaultRange={midiRangeDefault}
                                 lockRange={lockMidiRange}
                               />
-                              <CommentEditor
-                                label="Notas de sección"
-                                comments={section?.comentarios || []}
-                                defaultTitle={section?.nombre || getDefaultSectionName(index)}
-                                onChange={(next) => handleSectionCommentsChange(section.id, next)}
+                            ) : null}
+                            {contextualTarget.type === 'verse' && contextualTarget.verseIndex !== null ? (
+                              <MidiClipList
+                                clips={contextualTarget.midiClips}
+                                onChange={(clips) => handleVerseMidiChange(contextualTarget.verseIndex, clips)}
+                                emptyLabel="Añadir MIDI al verso"
+                                defaultTempo={editingSong.bpm}
+                                compactRows={preferCompactMidiRows}
+                                allowRowToggle={preferCompactMidiRows}
+                                rangePresets={midiRangePresets}
+                                defaultRange={midiRangeDefault}
+                                lockRange={lockMidiRange}
                               />
+                            ) : null}
+                            {contextualTarget.type === 'segment' && contextualTarget.verseIndex !== null && contextualTarget.segmentIndex !== null ? (
+                              <MidiClipList
+                                clips={contextualTarget.midiClips}
+                                onChange={(clips) =>
+                                  handleSegmentMidiChange(
+                                    contextualTarget.verseIndex,
+                                    contextualTarget.segmentIndex,
+                                    clips,
+                                  )
+                                }
+                                emptyLabel="Añadir MIDI al segmento"
+                                defaultTempo={editingSong.bpm}
+                                compactRows={preferCompactMidiRows}
+                                allowRowToggle={preferCompactMidiRows}
+                                rangePresets={midiRangePresets}
+                                defaultRange={midiRangeDefault}
+                                lockRange={lockMidiRange}
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
+	                        {contextualToolTab === 'options' ? (
+	                          <div className="wpss-section-preview__tool-stack">
+	                            <div className="wpss-section-preview__options-grid">
+	                              {contextualTarget.type === 'song' ? (
+	                                <p className="wpss-empty">Usa las pestañas Audio y Fotos para administrar incrustables de la canción completa.</p>
+	                              ) : null}
+	                              {contextualTarget.type === 'section' ? (
+                                <>
+                                  <button type="button" className="button button-small" onClick={() => handleAddVerseToSection(activeSectionId)}>
+                                    Añadir verso
+                                  </button>
+                                  <button type="button" className="button button-small" onClick={() => handleSectionRenamePrompt(activeSectionId)}>
+                                    Renombrar sección
+                                  </button>
+                                  <button type="button" className="button button-small" onClick={() => {
+                                    const sectionIndex = sectionsList.findIndex((section) => section.id === activeSectionId)
+                                    if (sectionIndex >= 0) handleDuplicateSection(sectionIndex)
+                                  }}>
+                                    Duplicar sección
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-link-delete"
+                                    onClick={() => {
+                                      const sectionIndex = sectionsList.findIndex((section) => section.id === activeSectionId)
+                                      if (sectionIndex >= 0) handleRemoveSection(sectionIndex)
+                                    }}
+                                    disabled={sectionsList.length <= 1}
+                                  >
+                                    Eliminar sección
+                                  </button>
+                                </>
+                              ) : null}
+                              {contextualTarget.type === 'verse' && contextualTarget.verseIndex !== null ? (
+                                <>
+                                  <button type="button" className="button button-small" onClick={() => handleRenameVerseAtIndex(contextualTarget.verseIndex)}>
+                                    Renombrar verso
+                                  </button>
+                                  <button type="button" className="button button-small" onClick={() => handleDuplicateVerseAtIndex(contextualTarget.verseIndex)}>
+                                    Duplicar verso
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onClick={() => {
+                                      const verse = Array.isArray(editingSong.versos) ? editingSong.versos[contextualTarget.verseIndex] : null
+                                      if (!verse) return
+                                      const nextVerses = [...editingSong.versos]
+                                      nextVerses[contextualTarget.verseIndex] = { ...verse, instrumental: !verse.instrumental }
+                                      handleVerseChange(nextVerses)
+                                    }}
+                                  >
+                                    Alternar instrumental
+                                  </button>
+                                  <button type="button" className="button button-link-delete" onClick={() => handleRemoveVerseAtIndex(contextualTarget.verseIndex)}>
+                                    Eliminar verso
+                                  </button>
+                                </>
+                              ) : null}
+                              {contextualTarget.type === 'segment' && contextualTarget.verseIndex !== null && contextualTarget.segmentIndex !== null ? (
+                                <>
+                                  <button type="button" className="button button-small" onClick={() => handleDuplicateSegmentAtIndex(contextualTarget.verseIndex, contextualTarget.segmentIndex)}>
+                                    Duplicar segmento
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onClick={() => {
+                                      const editor = selectionState.element
+                                      if (editor) {
+                                        splitSegment(contextualTarget.verseIndex, contextualTarget.segmentIndex, editor)
+                                      }
+                                    }}
+                                  >
+                                    Dividir segmento
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-small"
+                                    onClick={() => {
+                                      const editor = selectionState.element
+                                      if (editor) {
+                                        splitVerseFromCursor(contextualTarget.verseIndex, contextualTarget.segmentIndex, editor)
+                                      }
+                                    }}
+                                  >
+                                    Cortar verso
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button button-link-delete"
+                                    onClick={() => handleRemoveSegmentAtIndex(contextualTarget.verseIndex, contextualTarget.segmentIndex)}
+                                  >
+                                    Eliminar segmento
+                                  </button>
+                                </>
+                              ) : null}
                             </div>
-                          ) : null}
+                          </div>
+                        ) : null}
+	                      </div>
+	                    ) : null}
+	                  </div>
+	                  {sectionNavItems.length ? (
+	                    <nav className="wpss-reading__section-nav wpss-editor__section-nav" aria-label="Navegación de secciones en escritura">
+	                      {sectionNavItems.map((item) => (
+	                        <button
+	                          key={`editor-jump-section-${item.id}`}
+	                          type="button"
+	                          className={`button button-secondary wpss-reading__section-nav-pill ${
+	                            activeSectionNavIndex === item.index ? 'is-active' : ''
+	                          }`}
+	                          onClick={() => {
+	                            persistSelectedSection(item.id)
+	                            setExpandedSectionId(item.id)
+	                            setSelectedVerseIndexes(new Set())
+	                            scrollPreviewToSection(item.id)
+	                          }}
+	                        >
+	                          <span>{item.label}</span>
+	                          <ContentIndicators
+	                            items={item.indicators}
+	                            onSelect={(indicator) => openContextualTarget({ type: 'section', sectionId: item.id }, indicator.tabId)}
+	                          />
+	                          {item.count > 0 ? (
+	                            <span className="wpss-reading__section-nav-repeat">{item.count}</span>
+	                          ) : null}
+	                        </button>
+	                      ))}
+	                    </nav>
+	                  ) : null}
+	                </div>
+                <div ref={previewScrollRef} className="wpss-section-preview__scroll-shell">
+                  <div
+                    className="wpss-section-preview__all wpss-section-preview__all--interactive"
+                    style={{ '--wpss-preview-scale': previewScale / 100 }}
+                  >
+                    {sectionsList.length ? (
+                      sectionsList.map((section, index) => {
+                      const verses = versesBySection.get(section.id) || []
+                      const sectionIndicators = buildContentIndicators({
+                        attachments: getSectionLevelAttachments(editingSong, section.id),
+                        comments: section?.comentarios,
+                        midiClips: section?.midi_clips,
+                      })
+                      const isActiveSection = section.id === activeSectionId
+                      const isExpandedSection = expandedSectionId === section.id
+                      return (
+	                        <div
+	                          key={`preview-section-${section.id}`}
+	                          className={`wpss-section-preview__group ${isActiveSection ? 'is-active' : ''}`}
+	                          data-wpss-preview-section-id={section.id}
+	                          data-wpss-preview-section-index={index}
+	                          ref={(node) => {
+	                            if (node) {
+	                              previewSectionRefs.current.set(section.id, node)
+                            } else {
+                              previewSectionRefs.current.delete(section.id)
+                            }
+                          }}
+                          onDragOver={handleSectionSurfaceDragOver}
+                          onDrop={(event) => handleSectionSurfaceDrop(event, section.id, index)}
+                        >
+                          <div className="wpss-section-preview__group-header">
+                            <button
+                              type="button"
+                              className="wpss-section-preview__group-title"
+                              onClick={() => {
+                                selectSectionOnly(section.id)
+                                setSelectedVerseIndexes(new Set())
+                                setExpandedSectionId((prev) => (prev === section.id ? null : section.id))
+                              }}
+                              aria-label={`Sección ${index + 1}`}
+                            >
+                              <span>{isExpandedSection ? '▾' : '▸'}</span>
+                              <strong>{section.nombre || getDefaultSectionName(index)}</strong>
+                              <ContentIndicators
+                                items={sectionIndicators}
+                                onSelect={(item) => openContextualTarget({ type: 'section', sectionId: section.id }, item.tabId)}
+                              />
+                              <span>{verses.length} versos</span>
+                            </button>
+                            <div className="wpss-section-preview__group-actions">
+	                              <span
+	                                className={`wpss-verse-card-mini__drag ${
+	                                  sectionDragIndex === index ? 'is-dragging' : ''
+	                                }`}
+	                                draggable
+	                                aria-label="Mover sección"
+	                                title="Arrastra para ordenar sección"
+	                                onPointerDown={(event) => {
+	                                  event.stopPropagation()
+	                                  beginPreviewTouchDrag(event, { type: 'section', index })
+	                                }}
+	                                onContextMenu={(event) => event.preventDefault()}
+	                                onDragStart={(event) => {
+	                                  event.dataTransfer.setData('text/plain', String(index))
+	                                  event.dataTransfer.setData('application/x-wpss-section-index', String(index))
+                                  event.dataTransfer.effectAllowed = 'move'
+                                  setSectionDragIndex(index)
+                                }}
+                                onDragOver={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  setSectionDragOverIndex(index)
+                                }}
+                                onDrop={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  const payload = parseInt(
+                                    event.dataTransfer.getData('application/x-wpss-section-index')
+                                      || event.dataTransfer.getData('text/plain'),
+                                    10,
+                                  )
+                                  const fromIndex = Number.isNaN(payload) ? sectionDragIndex : payload
+                                  if (fromIndex !== null && fromIndex !== undefined) {
+                                    moveSection(fromIndex, index)
+                                  }
+                                  setSectionDragIndex(null)
+                                  setSectionDragOverIndex(null)
+                                }}
+                                onDragEnd={() => {
+                                  setSectionDragIndex(null)
+                                  setSectionDragOverIndex(null)
+                                }}
+                              >
+                                ☰
+                              </span>
+                            </div>
+                          </div>
                           {verses.length ? (
                             <div className="wpss-preview-verse-list">
                               {verses.map(({ verse, index: verseId }) => {
@@ -3284,99 +5018,136 @@ export default function Editor({ onShowList }) {
                                     : `Verso ${verseId + 1}`
                                 const verseAttachments = getVerseLevelAttachments(editingSong, verseId)
                                 const segmentAttachments = getSegmentLevelAttachments(editingSong, verseId)
+                                const verseIndicators = buildContentIndicators({
+                                  attachments: verseAttachments,
+                                  comments: verse?.comentarios,
+                                  midiClips: verse?.midi_clips,
+                                })
                                 if (isActiveVerse) {
                                   return (
-                                    <div
-                                      key={`preview-verse-editor-${section.id}-${verseId}`}
-                                      className={`wpss-preview-verse-card is-active ${
-                                        verseDragOverIndex === verseId ? 'is-dragover' : ''
-                                      }`}
-                                      onDragOver={(event) => handleVerseCardDragOver(event, verseId)}
-                                      onDrop={(event) => handleVerseCardDrop(event, verseId)}
-                                    >
-                                      <div className="wpss-preview-verse-card__toolbar">
-                                        <span
-                                          className={`wpss-verse-card-mini__drag ${
-                                            verseDragIndex === verseId ? 'is-dragging' : ''
-                                          }`}
-                                          draggable
-                                          aria-label="Mover verso"
-                                          title="Arrastra para ordenar"
-                                          onClick={(event) => event.stopPropagation()}
-                                          onPointerDown={(event) => event.stopPropagation()}
-                                          onDragStart={(event) => beginVerseDrag(event, verseId)}
-                                          onDragEnd={handleVerseCardDragEnd}
-                                        >
-                                          ☰
-                                        </span>
-                                        <strong className="wpss-preview-verse-card__title">{verseTitle}</strong>
-                                      </div>
-                                      <div className="wpss-verse-inline-editor">
-                                        <VersesPanel
-                                          verses={editingSong.versos}
-                                          sections={editingSong.secciones}
-                                          selectedSectionId={activeSectionId}
-                                          songBpm={editingSong.bpm}
-                                          onSelectSection={selectSectionOnly}
-                                          onSectionsChange={handleSectionChange}
-                                          onAddSection={handleAddSection}
-                                          onDuplicateSection={handleDuplicateSection}
-                                          onChange={handleVerseChange}
-                                          onSplitSegment={splitSegment}
-                                          onSplitVerse={splitVerseFromCursor}
-                                          onSplitSection={splitSectionFromCursor}
-                                          onSelectionChange={updateSegmentSelection}
-                                          focusRequest={verseFocusRequest}
-                                          onFocusRequestHandled={handleVerseFocusHandled}
-                                          compactMidiRows={preferCompactMidiRows}
-                                          allowMidiRowToggle={preferCompactMidiRows}
-                                          midiRangePresets={midiRangePresets}
-                                          midiRangeDefault={midiRangeDefault}
-                                          lockMidiRange={lockMidiRange}
-                                          showHeader={false}
-                                          showPreview={false}
-                                          visibleVerseIndexes={new Set([verseId])}
-                                          onQuickUploadAttachment={handleQuickUploadAttachment}
-                                        />
-                                      </div>
-                                      {(verseAttachments.length || segmentAttachments.length) ? (
-                                        <>
-                                          {verseAttachments.length ? (
-                                            <EditorPreviewMediaAttachments
-                                              attachments={verseAttachments}
-                                              title="Adjuntos del verso"
-                                              compact
-                                              pendingActionById={pendingAttachmentActions}
-                                              onRename={handlePreviewRenameAttachment}
-                                              onUnlink={handlePreviewUnlinkAttachment}
-                                              onDelete={handlePreviewDeleteAttachment}
+	                                    <div
+	                                      key={`preview-verse-editor-${section.id}-${verseId}`}
+	                                      className={`wpss-preview-verse-card is-active ${
+	                                        verseDragOverIndex === verseId ? 'is-dragover' : ''
+	                                      }`}
+	                                      data-wpss-preview-verse-index={verseId}
+	                                      data-wpss-preview-section-id={section.id}
+	                                      onDragOver={(event) => handleVerseCardDragOver(event, verseId)}
+	                                      onDrop={(event) => handleVerseCardDrop(event, verseId)}
+	                                    >
+                                      <div className="wpss-preview-verse-card__layout">
+                                        <div className="wpss-preview-verse-card__main">
+                                          <div className="wpss-preview-verse-card__toolbar">
+	                                            <span
+	                                              className={`wpss-verse-card-mini__drag ${
+	                                                verseDragIndex === verseId ? 'is-dragging' : ''
+	                                              }`}
+	                                              draggable
+	                                              aria-label="Mover verso"
+	                                              title="Arrastra para ordenar"
+	                                              onClick={(event) => event.stopPropagation()}
+	                                              onPointerDown={(event) => {
+	                                                event.stopPropagation()
+	                                                beginPreviewTouchDrag(event, { type: 'verse', index: verseId })
+	                                              }}
+	                                              onContextMenu={(event) => event.preventDefault()}
+	                                              onDragStart={(event) => beginVerseDrag(event, verseId)}
+	                                              onDragEnd={handleVerseCardDragEnd}
+	                                            >
+                                              ☰
+                                            </span>
+                                            <strong className="wpss-preview-verse-card__title">
+                                              <span>{verseTitle}</span>
+                                              <ContentIndicators
+                                                items={verseIndicators}
+                                                onSelect={(item) =>
+                                                  openContextualTarget(
+                                                    {
+                                                      type: 'verse',
+                                                      sectionId: verse.section_id || section.id,
+                                                      verseIndex: verseId,
+                                                    },
+                                                    item.tabId,
+                                                  )
+                                                }
+                                              />
+                                            </strong>
+                                          </div>
+                                          <div className="wpss-verse-inline-editor">
+                                            <VersesPanel
+                                              verses={editingSong.versos}
+                                              sections={editingSong.secciones}
+                                              selectedSectionId={activeSectionId}
+                                              songBpm={editingSong.bpm}
+                                              onSelectSection={selectSectionOnly}
+                                              onSectionsChange={handleSectionChange}
+                                              onAddSection={handleAddSection}
+                                              onDuplicateSection={handleDuplicateSection}
+                                              onChange={handleVerseChange}
+                                              onSplitSegment={splitSegment}
+                                              onSplitVerse={splitVerseFromCursor}
+                                              onSplitSection={splitSectionFromCursor}
+                                              onSelectionChange={updateSegmentSelection}
+                                              focusRequest={verseFocusRequest}
+                                              onFocusRequestHandled={handleVerseFocusHandled}
+                                              compactMidiRows={preferCompactMidiRows}
+                                              allowMidiRowToggle={preferCompactMidiRows}
+                                              midiRangePresets={midiRangePresets}
+                                              midiRangeDefault={midiRangeDefault}
+                                              lockMidiRange={lockMidiRange}
+                                              showHeader={false}
+                                              showPreview={false}
+                                              visibleVerseIndexes={new Set([verseId])}
+                                              songAttachments={editingSong.adjuntos}
+                                              onContextIndicatorSelect={openContextualTarget}
+                                              onQuickUploadAttachment={handleQuickUploadAttachment}
+                                              onBeginSegmentDrag={beginSegmentDrag}
+                                              onEndSegmentDrag={clearSegmentDrag}
+                                              onMoveSegmentToVerse={moveSegmentToTargetVerse}
+                                              onMoveSegmentToNewVerse={moveSegmentToNewVerse}
+                                              useContextualToolbar
                                             />
-                                          ) : null}
-                                          {segmentAttachments.length ? (
-                                            <EditorPreviewMediaAttachments
-                                              attachments={segmentAttachments}
-                                              title="Adjuntos por fragmento"
-                                              compact
-                                              groupedBySegment
-                                              pendingActionById={pendingAttachmentActions}
-                                              onRename={handlePreviewRenameAttachment}
-                                              onUnlink={handlePreviewUnlinkAttachment}
-                                              onDelete={handlePreviewDeleteAttachment}
-                                            />
-                                          ) : null}
-                                        </>
-                                      ) : null}
+                                          </div>
+                                        </div>
+                                        {showPreviewAttachments && (verseAttachments.length || segmentAttachments.length) ? (
+                                          <div className="wpss-preview-verse-card__attachments">
+                                            {verseAttachments.length ? (
+                                              <EditorPreviewMediaAttachments
+                                                attachments={verseAttachments}
+                                                title="Adjuntos del verso"
+                                                compact
+                                                activeAttachmentId={selectedAttachmentId}
+                                                onSelectAttachment={handleAttachmentSelect}
+                                                pendingActionById={pendingAttachmentActions}
+                                              />
+                                            ) : null}
+                                            {segmentAttachments.length ? (
+                                              <EditorPreviewMediaAttachments
+                                                attachments={segmentAttachments}
+                                                title="Adjuntos por fragmento"
+                                                compact
+                                                groupedBySegment
+                                                activeAttachmentId={selectedAttachmentId}
+                                                onSelectAttachment={handleAttachmentSelect}
+                                                pendingActionById={pendingAttachmentActions}
+                                              />
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                      </div>
                                     </div>
                                   )
                                 }
                                 return (
-                                  <div
-                                    key={`preview-verse-${section.id}-${verseId}`}
-                                    className={`wpss-preview-verse-card ${
-                                      isActiveVerse ? 'is-active' : ''
-                                    } ${verseDragOverIndex === verseId ? 'is-dragover' : ''}`}
-                                    role="button"
-                                    tabIndex={0}
+	                                  <div
+	                                    key={`preview-verse-${section.id}-${verseId}`}
+	                                    className={`wpss-preview-verse-card ${
+	                                      isActiveVerse ? 'is-active' : ''
+	                                    } ${verseDragOverIndex === verseId ? 'is-dragover' : ''}`}
+	                                    data-wpss-preview-verse-index={verseId}
+	                                    data-wpss-preview-section-id={section.id}
+	                                    role="button"
+	                                    tabIndex={0}
                                     onClick={() => handleSelectVerse(section.id, verseId)}
                                     onKeyDown={(event) => {
                                       if (event.key === 'Enter' || event.key === ' ') {
@@ -3387,51 +5158,72 @@ export default function Editor({ onShowList }) {
                                     onDragOver={(event) => handleVerseCardDragOver(event, verseId)}
                                     onDrop={(event) => handleVerseCardDrop(event, verseId)}
                                   >
-                                    <div className="wpss-preview-verse-card__toolbar">
-                                      <span
-                                        className={`wpss-verse-card-mini__drag ${
-                                          verseDragIndex === verseId ? 'is-dragging' : ''
-                                        }`}
-                                        draggable
-                                        aria-label="Mover verso"
-                                        title="Arrastra para ordenar"
-                                        onClick={(event) => event.stopPropagation()}
-                                        onPointerDown={(event) => event.stopPropagation()}
-                                        onDragStart={(event) => beginVerseDrag(event, verseId)}
-                                        onDragEnd={handleVerseCardDragEnd}
-                                      >
-                                        ☰
-                                      </span>
-                                      <strong className="wpss-preview-verse-card__title">{verseTitle}</strong>
+                                    <div className="wpss-preview-verse-card__layout">
+                                      <div className="wpss-preview-verse-card__main">
+                                        <div className="wpss-preview-verse-card__toolbar">
+	                                          <span
+	                                            className={`wpss-verse-card-mini__drag ${
+	                                              verseDragIndex === verseId ? 'is-dragging' : ''
+	                                            }`}
+	                                            draggable
+	                                            aria-label="Mover verso"
+	                                            title="Arrastra para ordenar"
+	                                            onClick={(event) => event.stopPropagation()}
+	                                            onPointerDown={(event) => {
+	                                              event.stopPropagation()
+	                                              beginPreviewTouchDrag(event, { type: 'verse', index: verseId })
+	                                            }}
+	                                            onContextMenu={(event) => event.preventDefault()}
+	                                            onDragStart={(event) => beginVerseDrag(event, verseId)}
+	                                            onDragEnd={handleVerseCardDragEnd}
+	                                          >
+                                            ☰
+                                          </span>
+                                          <strong className="wpss-preview-verse-card__title">
+                                            <span>{verseTitle}</span>
+                                            <ContentIndicators
+                                              items={verseIndicators}
+                                              onSelect={(item) =>
+                                                openContextualTarget(
+                                                  {
+                                                    type: 'verse',
+                                                    sectionId: verse.section_id || section.id,
+                                                    verseIndex: verseId,
+                                                  },
+                                                  item.tabId,
+                                                )
+                                              }
+                                            />
+                                          </strong>
+                                        </div>
+                                        <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
+                                      </div>
+                                      {showPreviewAttachments && (verseAttachments.length || segmentAttachments.length) ? (
+                                        <div className="wpss-preview-verse-card__attachments">
+                                          {verseAttachments.length ? (
+                                            <EditorPreviewMediaAttachments
+                                              attachments={verseAttachments}
+                                              title="Adjuntos del verso"
+                                              compact
+                                              activeAttachmentId={selectedAttachmentId}
+                                              onSelectAttachment={handleAttachmentSelect}
+                                              pendingActionById={pendingAttachmentActions}
+                                            />
+                                          ) : null}
+                                          {segmentAttachments.length ? (
+                                            <EditorPreviewMediaAttachments
+                                              attachments={segmentAttachments}
+                                              title="Adjuntos por fragmento"
+                                              compact
+                                              groupedBySegment
+                                              activeAttachmentId={selectedAttachmentId}
+                                              onSelectAttachment={handleAttachmentSelect}
+                                              pendingActionById={pendingAttachmentActions}
+                                            />
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
-                                    <pre className="wpss-verse-card-mini__stack">{`${preview.chords}\n${preview.lyrics}`}</pre>
-                                    {(verseAttachments.length || segmentAttachments.length) ? (
-                                      <>
-                                        {verseAttachments.length ? (
-                                          <EditorPreviewMediaAttachments
-                                            attachments={verseAttachments}
-                                            title="Adjuntos del verso"
-                                            compact
-                                            pendingActionById={pendingAttachmentActions}
-                                            onRename={handlePreviewRenameAttachment}
-                                            onUnlink={handlePreviewUnlinkAttachment}
-                                            onDelete={handlePreviewDeleteAttachment}
-                                          />
-                                        ) : null}
-                                        {segmentAttachments.length ? (
-                                          <EditorPreviewMediaAttachments
-                                            attachments={segmentAttachments}
-                                            title="Adjuntos por fragmento"
-                                            compact
-                                            groupedBySegment
-                                            pendingActionById={pendingAttachmentActions}
-                                            onRename={handlePreviewRenameAttachment}
-                                            onUnlink={handlePreviewUnlinkAttachment}
-                                            onDelete={handlePreviewDeleteAttachment}
-                                          />
-                                        ) : null}
-                                      </>
-                                    ) : null}
                                   </div>
                                 )
                               })}

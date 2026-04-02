@@ -249,6 +249,22 @@ export default function SongList({ onSelectSong, onNewSong }) {
       </header>
 
       <div className="wpss-filters">
+        <label className="wpss-filter--search">
+          <span>Buscar</span>
+          <input
+            type="search"
+            value={filters.search || ''}
+            placeholder="Título, artista o transcriptor"
+            onChange={(event) =>
+              dispatch({
+                type: 'SET_STATE',
+                payload: {
+                  filters: { ...filters, search: event.target.value },
+                  pagination: { ...state.pagination, page: 1 },
+                },
+              })}
+          />
+        </label>
         <label>
           <span>Tónica</span>
           <select value={filters.tonica || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, tonica: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
@@ -270,7 +286,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
             {availableTags.map((tag) => <option key={tag.id || tag.slug} value={tag.slug}>{tag.name}</option>)}
           </select>
         </label>
-        <button className="button button-secondary" type="button" onClick={() => dispatch({ type: 'SET_STATE', payload: { filters: { tonica: '', con_prestamos: '', con_modulaciones: '', coleccion: '', tag: '' }, pagination: { ...state.pagination, page: 1 } } })}>Limpiar filtros</button>
+        <button className="button button-secondary" type="button" onClick={() => dispatch({ type: 'SET_STATE', payload: { filters: { search: '', tonica: '', con_prestamos: '', con_modulaciones: '', coleccion: '', tag: '' }, pagination: { ...state.pagination, page: 1 } } })}>Limpiar filtros</button>
       </div>
 
       {state.listLoading ? (

@@ -109,6 +109,7 @@ function mapSongToEditingSong(song) {
 export default function PublicReader() {
   const { state, dispatch, api, wpData } = useAppState()
   const [filters, setFilters] = useState({
+    search: '',
     tonica: '',
     con_prestamos: '',
     con_modulaciones: '',
@@ -726,9 +727,18 @@ export default function PublicReader() {
             />
           ) : (
             <>
-              <div className="wpss-filters">
-                <label>
-                  <span>{wpData?.strings?.filtersTonica || 'Tónica'}</span>
+	              <div className="wpss-filters">
+	                <label className="wpss-filter--search">
+	                  <span>Buscar</span>
+	                  <input
+	                    type="search"
+	                    value={filters.search}
+	                    placeholder="Título, artista o transcriptor"
+	                    onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
+	                  />
+	                </label>
+	                <label>
+	                  <span>{wpData?.strings?.filtersTonica || 'Tónica'}</span>
                   <select
                     value={filters.tonica}
                     onChange={(event) => setFilters((prev) => ({ ...prev, tonica: event.target.value }))}
@@ -796,10 +806,11 @@ export default function PublicReader() {
                     type="button"
                     className="button button-secondary"
                     onClick={() =>
-                      setFilters({
-                        tonica: '',
-                        con_prestamos: '',
-                        con_modulaciones: '',
+	                      setFilters({
+	                        search: '',
+	                        tonica: '',
+	                        con_prestamos: '',
+	                        con_modulaciones: '',
                         coleccion: '',
                         tag: '',
                       })
