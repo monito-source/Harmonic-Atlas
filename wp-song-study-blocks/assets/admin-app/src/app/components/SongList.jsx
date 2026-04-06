@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
   REHEARSAL_STATUS_OPTIONS,
@@ -7,6 +7,9 @@ import {
   TRANSCRIPTION_STATUS_LABELS,
   getStatusLabel,
 } from '../songStatus.js'
+import SongFiltersPanel from './SongFiltersPanel.jsx'
+
+const SONG_REFRESH_INTERVAL_MS = 30000
 
 const formatCollectionAssignment = (collection) => {
   if (!collection || typeof collection !== 'object') return ''
@@ -18,6 +21,10 @@ const formatCollectionAssignment = (collection) => {
 export default function SongList({ onSelectSong, onNewSong }) {
   const { state, dispatch, api, wpData } = useAppState()
   const [statusSavingMap, setStatusSavingMap] = useState({})
+  const [listRefreshing, setListRefreshing] = useState(false)
+  const listRefreshInFlightRef = useRef(false)
+  const songsRef = useRef(state.songs)
+  const paginationRef = useRef(state.pagination)
   const currentUserId = wpData?.currentUserId || 0
   const filters = state.filters || {}
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
@@ -111,6 +118,11 @@ export default function SongList({ onSelectSong, onNewSong }) {
 
   const isStatusSaving = (songId, statusType) => !!statusSavingMap[`${songId}:${statusType}`]
 
+  useEffect(() => {
+    songsRef.current = state.songs
+    paginationRef.current = state.pagination
+  }, [state.pagination, state.songs])
+
   const patchSongState = (songId, patch) => {
     dispatch({
       type: 'SET_STATE',
@@ -197,42 +209,70 @@ export default function SongList({ onSelectSong, onNewSong }) {
     }
   }, [api, availableCollections.length, availableTags.length, dispatch, state.collections])
 
-  useEffect(() => {
-    let mounted = true
-    dispatch({ type: 'SET_STATE', payload: { listLoading: true } })
+  const refreshSongList = useCallback(async ({ showLoading = false, manual = false } = {}) => {
+    if (listRefreshInFlightRef.current) {
+      return
+    }
 
-    api
-      .listSongs({ page: state.pagination.page, per_page: 20, ...filters })
-      .then((response) => {
-        if (!mounted) return
-        const items = Array.isArray(response.data) ? response.data : []
-        const totalItems = parseInt(response.headers.get('X-WP-Total'), 10) || items.length
-        const totalPages = parseInt(response.headers.get('X-WP-TotalPages'), 10) || 1
+    listRefreshInFlightRef.current = true
+    if (showLoading) {
+      dispatch({ type: 'SET_STATE', payload: { listLoading: true } })
+    } else {
+      setListRefreshing(true)
+    }
 
+    try {
+      const currentPagination = paginationRef.current || {}
+      const response = await api.listSongs({ page: currentPagination.page || 1, per_page: 20, ...filters })
+      const items = Array.isArray(response.data) ? response.data : []
+      const totalItems = parseInt(response.headers.get('X-WP-Total'), 10) || items.length
+      const totalPages = parseInt(response.headers.get('X-WP-TotalPages'), 10) || 1
+      const currentSongsSnapshot = JSON.stringify(Array.isArray(songsRef.current) ? songsRef.current : [])
+      const nextSongsSnapshot = JSON.stringify(items)
+      const paginationChanged =
+        Number(currentPagination.totalItems || 0) !== totalItems
+        || Number(currentPagination.totalPages || 0) !== totalPages
+
+      if (currentSongsSnapshot !== nextSongsSnapshot || paginationChanged) {
         dispatch({
           type: 'SET_STATE',
           payload: {
             songs: items,
-            pagination: { ...state.pagination, totalItems, totalPages },
+            pagination: { ...currentPagination, totalItems, totalPages },
           },
         })
-      })
-      .catch(() => {
-        if (!mounted) return
+      }
+    } catch {
+      if (manual || showLoading) {
         dispatch({
           type: 'SET_STATE',
           payload: { error: wpData?.strings?.loadSongsError || 'No fue posible cargar canciones.' },
         })
-      })
-      .finally(() => {
-        if (!mounted) return
+      }
+    } finally {
+      listRefreshInFlightRef.current = false
+      if (showLoading) {
         dispatch({ type: 'SET_STATE', payload: { listLoading: false } })
-      })
-
-    return () => {
-      mounted = false
+      } else {
+        setListRefreshing(false)
+      }
     }
-  }, [api, dispatch, filters, state.pagination.page, wpData])
+  }, [api, dispatch, filters, wpData])
+
+  useEffect(() => {
+    refreshSongList({ showLoading: true })
+  }, [filters, refreshSongList, state.pagination.page])
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return
+      }
+      refreshSongList()
+    }, SONG_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [refreshSongList])
 
   return (
     <section className="wpss-panel wpss-panel--list">
@@ -242,52 +282,64 @@ export default function SongList({ onSelectSong, onNewSong }) {
           <p className="wpss-panel__meta">{state.pagination.totalItems} registros · React activo</p>
         </div>
         <div className="wpss-panel__actions">
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={() => refreshSongList({ manual: true })}
+            disabled={state.listLoading || listRefreshing}
+          >
+            {state.listLoading || listRefreshing ? 'Refrescando…' : 'Refrescar'}
+          </button>
           <button className="button button-secondary" type="button" onClick={onNewSong}>
             {wpData?.strings?.newSong || 'Nueva canción'}
           </button>
         </div>
       </header>
 
-      <div className="wpss-filters">
-        <label className="wpss-filter--search">
-          <span>Buscar</span>
-          <input
-            type="search"
-            value={filters.search || ''}
-            placeholder="Título, artista o transcriptor"
-            onChange={(event) =>
-              dispatch({
-                type: 'SET_STATE',
-                payload: {
-                  filters: { ...filters, search: event.target.value },
-                  pagination: { ...state.pagination, page: 1 },
-                },
-              })}
-          />
-        </label>
-        <label>
-          <span>Tónica</span>
-          <select value={filters.tonica || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, tonica: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
-            <option value="">Todas</option>
-            {(wpData?.tonicas || []).map((tonica) => <option key={tonica} value={tonica}>{tonica}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Colección</span>
-          <select value={filters.coleccion || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, coleccion: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
-            <option value="">Todas</option>
-            {availableCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.nombre}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Tag</span>
-          <select value={filters.tag || ''} onChange={(event) => dispatch({ type: 'SET_STATE', payload: { filters: { ...filters, tag: event.target.value }, pagination: { ...state.pagination, page: 1 } } })}>
-            <option value="">Todos</option>
-            {availableTags.map((tag) => <option key={tag.id || tag.slug} value={tag.slug}>{tag.name}</option>)}
-          </select>
-        </label>
-        <button className="button button-secondary" type="button" onClick={() => dispatch({ type: 'SET_STATE', payload: { filters: { search: '', tonica: '', con_prestamos: '', con_modulaciones: '', coleccion: '', tag: '' }, pagination: { ...state.pagination, page: 1 } } })}>Limpiar filtros</button>
-      </div>
+      <SongFiltersPanel
+        filters={filters}
+        tonicas={wpData?.tonicas || []}
+        collections={availableCollections}
+        tags={availableTags}
+        labels={{
+          searchLabel: 'Buscar',
+          searchPlaceholder: 'Título, artista o transcriptor',
+          tonicaLabel: 'Tónica',
+          loansLabel: 'Préstamos',
+          modsLabel: 'Modulaciones',
+          collectionLabel: 'Colección',
+          tagLabel: 'Tag',
+          collectionAllLabel: 'Todas',
+          tagAllLabel: 'Todos',
+          transcriptionLabel: 'Estado de la canción',
+          rehearsalLabel: 'Estado de ensayo',
+        }}
+        onChangeFilters={(nextFilters) =>
+          dispatch({
+            type: 'SET_STATE',
+            payload: {
+              filters: nextFilters,
+              pagination: { ...state.pagination, page: 1 },
+            },
+          })}
+        onResetFilters={() =>
+          dispatch({
+            type: 'SET_STATE',
+            payload: {
+              filters: {
+                search: '',
+                tonica: '',
+                con_prestamos: '',
+                con_modulaciones: '',
+                coleccion: '',
+                tag: '',
+                estado_transcripcion: '',
+                estado_ensayo: '',
+              },
+              pagination: { ...state.pagination, page: 1 },
+            },
+          })}
+      />
 
       {state.listLoading ? (
         <p className="wpss-loading">Cargando canciones…</p>

@@ -154,6 +154,9 @@ export function createApi(wpData) {
     listColleagues() {
       return request('colegas-musicales')
     },
+    listProjects() {
+      return request('proyectos')
+    },
     assignRepertoire(items) {
       return request('repertorio-asignaciones', { method: 'POST', body: { items } })
     },

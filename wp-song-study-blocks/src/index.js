@@ -1,2 +1,12 @@
 import './blocks/interface';
+import './blocks/collaborator-contact';
+import './blocks/collaborator-gallery';
+import './blocks/collaborator-presskit';
+import './blocks/collaborator-projects';
+import './blocks/current-membership';
+import './blocks/project-contact';
+import './blocks/project-collaborators';
+import './blocks/project-directory';
+import './blocks/project-gallery';
+import './blocks/project-presskit';
 import './blocks/song-list';

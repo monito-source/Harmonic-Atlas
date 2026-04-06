@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySong } from '../state.js'
-import { normalizeSectionsFromApi, normalizeStructureFromApi, normalizeVersesFromApi } from '../utils.js'
+import { mapSongToEditingSong, upsertSongInList } from '../songHydration.js'
 import {
   REHEARSAL_STATUS_OPTIONS,
   TRANSCRIPTION_STATUS_OPTIONS,
@@ -12,6 +12,9 @@ import {
 import ReadingView from './ReadingView.jsx'
 import Editor from './Editor.jsx'
 import CollectionsManager from './CollectionsManager.jsx'
+import SongFiltersPanel from './SongFiltersPanel.jsx'
+
+const SONG_REFRESH_INTERVAL_MS = 30000
 
 function formatCollectionAssignment(collection) {
   if (!collection || typeof collection !== 'object') return ''
@@ -31,81 +34,6 @@ function createAssignRow(defaultAuthorId = 0) {
   }
 }
 
-function normalizeSongTag(tag) {
-  if (tag === null || typeof tag === 'undefined') return null
-
-  if (typeof tag === 'object') {
-    const id = Number(tag?.id ?? tag?.term_id ?? tag?.termId)
-    const name = String(tag?.name || tag?.nombre || tag?.label || tag?.slug || '').trim()
-    if (!name && !Number.isInteger(id)) return null
-    return {
-      id: Number.isInteger(id) ? id : null,
-      name: name || `Tag ${id}`,
-      slug: String(tag?.slug || name || '').trim().toLowerCase(),
-    }
-  }
-
-  const value = String(tag).trim()
-  if (!value) return null
-  const id = Number(value)
-  if (Number.isInteger(id) && id > 0) return { id, name: `Tag ${id}`, slug: '' }
-  return { id: null, name: value, slug: value.toLowerCase() }
-}
-
-function mapSongToEditingSong(song) {
-  const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
-  const secciones = normalizeSectionsFromApi(song?.secciones, bpmDefault)
-  const estructura = normalizeStructureFromApi(song?.estructura || [], secciones)
-  const rawTags = Array.isArray(song?.tags) && song.tags.length
-    ? song.tags
-    : Array.isArray(song?.item?.tags)
-      ? song.item.tags
-      : []
-  const tags = rawTags.map((tag) => normalizeSongTag(tag)).filter(Boolean)
-
-  return {
-    ...createEmptySong(),
-    id: song?.id,
-    autor_id: song?.autor_id || null,
-    autor_nombre: song?.autor_nombre || '',
-    es_reversion: !!song?.es_reversion,
-    reversion_origen_id: song?.reversion_origen_id || null,
-    reversion_origen_titulo: song?.reversion_origen_titulo || '',
-    reversion_raiz_id: song?.reversion_raiz_id || null,
-    reversion_raiz_titulo: song?.reversion_raiz_titulo || '',
-    reversion_autor_origen_id: song?.reversion_autor_origen_id || null,
-    reversion_autor_origen_nombre: song?.reversion_autor_origen_nombre || '',
-    estado_transcripcion: song?.estado_transcripcion || 'sin_iniciar',
-    estado_transcripcion_label: song?.estado_transcripcion_label || 'Sin iniciar',
-    estado_ensayo: song?.estado_ensayo || 'sin_ensayar',
-    estado_ensayo_label: song?.estado_ensayo_label || 'No ensayada',
-    titulo: song?.titulo || '',
-    bpm: bpmDefault,
-    tonica: song?.tonica || song?.tonalidad || '',
-    campo_armonico: song?.campo_armonico || '',
-    campo_armonico_predominante: song?.campo_armonico_predominante || '',
-    ficha_autores: song?.ficha_autores || '',
-    ficha_anio: song?.ficha_anio || '',
-    ficha_pais: song?.ficha_pais || '',
-    ficha_estado_legal: song?.ficha_estado_legal || '',
-    ficha_licencia: song?.ficha_licencia || '',
-    ficha_fuente_verificacion: song?.ficha_fuente_verificacion || '',
-    ficha_incompleta: !!song?.ficha_incompleta,
-    ficha_incompleta_motivo: song?.ficha_incompleta_motivo || '',
-    prestamos: Array.isArray(song?.prestamos) ? song.prestamos : [],
-    modulaciones: Array.isArray(song?.modulaciones) ? song.modulaciones : [],
-    versos: normalizeVersesFromApi(song?.versos, bpmDefault),
-    secciones,
-    estructura,
-    estructuraPersonalizada: true,
-    tiene_prestamos: !!song?.tiene_prestamos,
-    tiene_modulaciones: !!song?.tiene_modulaciones,
-    colecciones: Array.isArray(song?.colecciones) ? song.colecciones : [],
-    adjuntos: Array.isArray(song?.adjuntos) ? song.adjuntos : [],
-    tags,
-  }
-}
-
 export default function PublicReader() {
   const { state, dispatch, api, wpData } = useAppState()
   const [filters, setFilters] = useState({
@@ -115,11 +43,14 @@ export default function PublicReader() {
     con_modulaciones: '',
     coleccion: '',
     tag: '',
+    estado_transcripcion: '',
+    estado_ensayo: '',
   })
   const [collections, setCollections] = useState([])
   const [tags, setTags] = useState([])
   const [listTab, setListTab] = useState('songs')
   const [listReloadTick, setListReloadTick] = useState(0)
+  const [listRefreshing, setListRefreshing] = useState(false)
   const [colleagues, setColleagues] = useState([])
   const [colleaguesLoading, setColleaguesLoading] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -132,16 +63,22 @@ export default function PublicReader() {
   const driveStatus = wpData?.googleDriveStatus || {}
   const driveReady = !!driveStatus?.configured && !!driveStatus?.connected
   const [showDebugIds, setShowDebugIds] = useState(false)
+  const listRefreshInFlightRef = useRef(false)
+  const songsRef = useRef(state.songs)
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const selectedSong = state.selectedSongId
     ? state.songs.find((song) => Number(song.id) === Number(state.selectedSongId))
     : null
   const canManageSong = (song) => !!song && (isAdmin || isOwnSong(song))
-  const canReversionSong = (song) => !!song && canViewSongbook && (isAdmin || !isOwnSong(song))
-  const isCreatingNewSong = state.activeTab === 'editor' && !state.selectedSongId
+  const canReversionSong = (song) => !!song && canManage && (isAdmin || !isOwnSong(song))
+  const isCreatingNewSong = canManage && state.activeTab === 'editor' && !state.selectedSongId
   const canEditSelected = isCreatingNewSong || (canManageSong(selectedSong) && !!state.selectedSongId)
 
   const canDeleteSong = (song) => canManageSong(song)
+
+  useEffect(() => {
+    songsRef.current = state.songs
+  }, [state.songs])
 
   const markStatusSaving = (songId, type, saving) => {
     const key = `${songId}:${type}`
@@ -249,19 +186,29 @@ export default function PublicReader() {
       .catch(() => {})
   }, [api, handleCollectionsChanged])
 
-  useEffect(() => {
-    let mounted = true
-    dispatch({ type: 'SET_STATE', payload: { listLoading: true } })
+  const refreshSongs = useCallback(async ({ showLoading = false, manual = false } = {}) => {
+    if (listRefreshInFlightRef.current) {
+      return
+    }
 
-    api
-      .listPublicSongs({ page: 1, per_page: 100, ...filters })
-      .then((response) => {
-        if (!mounted) return
-        const items = Array.isArray(response.data) ? response.data : []
+    listRefreshInFlightRef.current = true
+    if (showLoading) {
+      dispatch({ type: 'SET_STATE', payload: { listLoading: true } })
+    } else {
+      setListRefreshing(true)
+    }
+
+    try {
+      const response = await api.listPublicSongs({ page: 1, per_page: 100, ...filters })
+      const items = Array.isArray(response.data) ? response.data : []
+      const currentSnapshot = JSON.stringify(Array.isArray(songsRef.current) ? songsRef.current : [])
+      const nextSnapshot = JSON.stringify(items)
+
+      if (currentSnapshot !== nextSnapshot) {
         dispatch({ type: 'SET_STATE', payload: { songs: items } })
-      })
-      .catch((error) => {
-        if (!mounted) return
+      }
+    } catch (error) {
+      if (manual || showLoading) {
         const deniedMessage =
           'Esta pagina no es un producto ni de uso publico. Su acceso es personal y privado para musicos autorizados.'
         const fallbackMessage = wpData?.strings?.loadSongsError || 'No fue posible cargar canciones.'
@@ -270,16 +217,38 @@ export default function PublicReader() {
           type: 'SET_STATE',
           payload: { error: message },
         })
-      })
-      .finally(() => {
-        if (!mounted) return
+      }
+    } finally {
+      listRefreshInFlightRef.current = false
+      if (showLoading) {
         dispatch({ type: 'SET_STATE', payload: { listLoading: false } })
-      })
-
-    return () => {
-      mounted = false
+      } else {
+        setListRefreshing(false)
+      }
     }
-  }, [api, dispatch, filters, listReloadTick, wpData])
+  }, [api, dispatch, filters, wpData])
+
+  useEffect(() => {
+    if (state.selectedSongId || state.activeTab === 'editor' || (canManage && listTab !== 'songs')) {
+      return
+    }
+    refreshSongs({ showLoading: true })
+  }, [canManage, listReloadTick, listTab, refreshSongs, state.activeTab, state.selectedSongId])
+
+  useEffect(() => {
+    if (state.selectedSongId || state.activeTab === 'editor' || (canManage && listTab !== 'songs')) {
+      return undefined
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return
+      }
+      refreshSongs()
+    }, SONG_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [canManage, listTab, refreshSongs, state.activeTab, state.selectedSongId])
 
   useEffect(() => {
     loadCollections()
@@ -300,7 +269,7 @@ export default function PublicReader() {
   }, [api, dispatch])
 
   useEffect(() => {
-    if (!canViewSongbook) return undefined
+    if (!canManage) return undefined
     let mounted = true
     setColleaguesLoading(true)
     api
@@ -329,15 +298,10 @@ export default function PublicReader() {
     return () => {
       mounted = false
     }
-  }, [api, canViewSongbook, currentUserId])
-
-  useEffect(() => {
-    if (wpData?.initialSongId && !state.selectedSongId && !state.songLoading) {
-      handleSelectSong(wpData.initialSongId)
-    }
-  }, [state.selectedSongId, state.songLoading, wpData])
+  }, [api, canManage, currentUserId])
 
   const handleNewSong = () => {
+    if (!canManage) return
     dispatch({
       type: 'SET_STATE',
       payload: {
@@ -446,7 +410,7 @@ export default function PublicReader() {
           type: 'SET_STATE',
           payload: {
             songs: clonedSong
-              ? [clonedSong].concat(state.songs.filter((item) => Number(item.id) !== clonedId))
+              ? upsertSongInList(state.songs, clonedSong)
               : state.songs,
             selectedSongId: clonedId,
             feedback: { message: body?.message || 'Reversión creada correctamente.', type: 'success' },
@@ -497,6 +461,12 @@ export default function PublicReader() {
         })
       })
   }
+
+  useEffect(() => {
+    if (wpData?.initialSongId && !state.selectedSongId && !state.songLoading) {
+      handleSelectSong(wpData.initialSongId)
+    }
+  }, [state.selectedSongId, state.songLoading, wpData])
 
   const addAssignRow = () => {
     const fallbackId = colleagues[0]?.id || currentUserId || 0
@@ -621,15 +591,34 @@ export default function PublicReader() {
                 ) : null}
               </p>
             </div>
-            {canViewSongbook ? (
+            {canManage ? (
               <div className="wpss-panel__actions">
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => refreshSongs({ manual: true })}
+                  disabled={state.listLoading || listRefreshing}
+                >
+                  {state.listLoading || listRefreshing ? 'Refrescando…' : 'Refrescar'}
+                </button>
                 <button type="button" className="button button-primary" onClick={handleNewSong}>
                   {wpData?.strings?.newSong || 'Nueva canción'}
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <div className="wpss-panel__actions">
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => refreshSongs({ manual: true })}
+                  disabled={state.listLoading || listRefreshing}
+                >
+                  {state.listLoading || listRefreshing ? 'Refrescando…' : 'Refrescar'}
+                </button>
+              </div>
+            )}
           </header>
-          {canViewSongbook ? (
+          {canManage ? (
             <div className="wpss-tab-nav wpss-public-reader__tabs">
               <button
                 type="button"
@@ -654,7 +643,7 @@ export default function PublicReader() {
               </button>
             </div>
           ) : null}
-          {listTab === 'assign' && canViewSongbook ? (
+          {listTab === 'assign' && canManage ? (
             <section className="wpss-public-reader__assign">
               <p className="wpss-panel__meta">
                 Escribe el repertorio pendiente y asigna cada canción al colega que la transcribirá.
@@ -719,107 +708,46 @@ export default function PublicReader() {
                 </button>
               </div>
             </section>
-          ) : listTab === 'collections' && canViewSongbook ? (
+          ) : listTab === 'collections' && canManage ? (
             <CollectionsManager
               colleagues={colleagues}
               colleaguesLoading={colleaguesLoading}
               onCollectionsChanged={handleCollectionsChanged}
             />
           ) : (
-            <>
-	              <div className="wpss-filters">
-	                <label className="wpss-filter--search">
-	                  <span>Buscar</span>
-	                  <input
-	                    type="search"
-	                    value={filters.search}
-	                    placeholder="Título, artista o transcriptor"
-	                    onChange={(event) => setFilters((prev) => ({ ...prev, search: event.target.value }))}
-	                  />
-	                </label>
-	                <label>
-	                  <span>{wpData?.strings?.filtersTonica || 'Tónica'}</span>
-                  <select
-                    value={filters.tonica}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, tonica: event.target.value }))}
-                  >
-                    <option value="">{'—'}</option>
-                    {tonicas.map((tonica) => (
-                      <option key={tonica} value={tonica}>
-                        {tonica}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>{wpData?.strings?.filtersLoans || 'Préstamos'}</span>
-                  <select
-                    value={filters.con_prestamos}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, con_prestamos: event.target.value }))}
-                  >
-                    <option value="">{'—'}</option>
-                    <option value="1">Con préstamos</option>
-                    <option value="0">Sin préstamos</option>
-                  </select>
-                </label>
-                <label>
-                  <span>{wpData?.strings?.filtersMods || 'Modulaciones'}</span>
-                  <select
-                    value={filters.con_modulaciones}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, con_modulaciones: event.target.value }))}
-                  >
-                    <option value="">{'—'}</option>
-                    <option value="1">Con modulaciones</option>
-                    <option value="0">Sin modulaciones</option>
-                  </select>
-                </label>
-                <label className="wpss-filter--collection">
-                  <span>{wpData?.strings?.filtersCollection || 'Colección'}</span>
-                  <select
-                    value={filters.coleccion}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, coleccion: event.target.value }))}
-                  >
-                    <option value="">{'Todas'}</option>
-                    {collections.map((collection) => (
-                      <option key={collection.id} value={collection.id}>
-                        {collection.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Tag</span>
-                  <select
-                    value={filters.tag}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, tag: event.target.value }))}
-                  >
-                    <option value="">Todos</option>
-                    {tags.map((tag) => (
-                      <option key={tag.id || tag.slug} value={tag.slug}>
-                        {tag.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="wpss-filters__actions">
-                  <button
-                    type="button"
-                    className="button button-secondary"
-                    onClick={() =>
-	                      setFilters({
-	                        search: '',
-	                        tonica: '',
-	                        con_prestamos: '',
-	                        con_modulaciones: '',
-                        coleccion: '',
-                        tag: '',
-                      })
-                    }
-                  >
-                    {wpData?.strings?.filtersClear || 'Limpiar filtros'}
-                  </button>
-                </div>
-              </div>
+            <div className="wpss-public-reader__workarea">
+              <SongFiltersPanel
+                filters={filters}
+                tonicas={tonicas}
+                collections={collections}
+                tags={tags}
+                labels={{
+                  searchLabel: 'Buscar',
+                  searchPlaceholder: 'Título, artista o transcriptor',
+                  tonicaLabel: wpData?.strings?.filtersTonica || 'Tónica',
+                  loansLabel: wpData?.strings?.filtersLoans || 'Préstamos',
+                  modsLabel: wpData?.strings?.filtersMods || 'Modulaciones',
+                  collectionLabel: wpData?.strings?.filtersCollection || 'Colección',
+                  tagLabel: 'Tag',
+                  collectionAllLabel: 'Todas',
+                  tagAllLabel: 'Todos',
+                  clearLabel: wpData?.strings?.filtersClear || 'Limpiar filtros',
+                  transcriptionLabel: 'Estado de la canción',
+                  rehearsalLabel: 'Estado de ensayo',
+                }}
+                onChangeFilters={setFilters}
+                onResetFilters={() =>
+                  setFilters({
+                    search: '',
+                    tonica: '',
+                    con_prestamos: '',
+                    con_modulaciones: '',
+                    coleccion: '',
+                    tag: '',
+                    estado_transcripcion: '',
+                    estado_ensayo: '',
+                  })}
+              />
               {state.listLoading ? (
                 <p className="wpss-loading">Cargando canciones…</p>
               ) : (
@@ -985,7 +913,7 @@ export default function PublicReader() {
                   })}
                 </ul>
               )}
-            </>
+            </div>
           )}
         </section>
       )}

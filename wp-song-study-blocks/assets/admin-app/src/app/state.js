@@ -56,6 +56,16 @@ export function createEmptySong() {
     ficha_fuente_verificacion: '',
     ficha_incompleta: false,
     ficha_incompleta_motivo: '',
+    visibility_mode: 'private',
+    visibility_project_ids: [],
+    visibility_projects: [],
+    visibility_group_ids: [],
+    visibility_groups: [],
+    visibility_user_ids: [],
+    visibility_users: [],
+    rehearsal_project_ids: [],
+    rehearsal_projects: [],
+    can_upload_rehearsals: false,
     prestamos: [],
     modulaciones: [],
     versos: [],
@@ -65,12 +75,89 @@ export function createEmptySong() {
     colecciones: [],
     tags: [],
     adjuntos: [],
+    adjuntos_permisos: {
+      visibility_mode: 'private',
+      visibility_group_ids: [],
+      visibility_user_ids: [],
+    },
     estructura: [],
     estructuraPersonalizada: true,
   }
 }
 
+const READING_PREFERENCES_STORAGE_PREFIX = 'wpss-reading-preferences:'
+
+const DEFAULT_READING_PREFERENCES = {
+  readingMode: 'stacked',
+  readingFollowStructure: true,
+  readingShowNotes: true,
+  readingDoubleColumn: false,
+  readingInstrument: 'guitar',
+  readingTransposeTarget: 'concert',
+}
+
+function getReadingPreferencesStorageKey(userId = 0) {
+  const numericUserId = Number(userId) || 0
+  return `${READING_PREFERENCES_STORAGE_PREFIX}${numericUserId}`
+}
+
+function sanitizeStoredReadingPreferences(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_READING_PREFERENCES }
+  }
+  return {
+    readingMode: raw.readingMode === 'inline' ? 'inline' : DEFAULT_READING_PREFERENCES.readingMode,
+    readingFollowStructure:
+      typeof raw.readingFollowStructure === 'boolean'
+        ? raw.readingFollowStructure
+        : DEFAULT_READING_PREFERENCES.readingFollowStructure,
+    readingShowNotes:
+      typeof raw.readingShowNotes === 'boolean'
+        ? raw.readingShowNotes
+        : DEFAULT_READING_PREFERENCES.readingShowNotes,
+    readingDoubleColumn:
+      typeof raw.readingDoubleColumn === 'boolean'
+        ? raw.readingDoubleColumn
+        : DEFAULT_READING_PREFERENCES.readingDoubleColumn,
+    readingInstrument:
+      raw.readingInstrument === 'piano' ? 'piano' : DEFAULT_READING_PREFERENCES.readingInstrument,
+    readingTransposeTarget:
+      typeof raw.readingTransposeTarget === 'string' && raw.readingTransposeTarget.trim()
+        ? raw.readingTransposeTarget.trim()
+        : DEFAULT_READING_PREFERENCES.readingTransposeTarget,
+  }
+}
+
+export function loadReadingPreferences(userId = 0) {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return { ...DEFAULT_READING_PREFERENCES }
+  }
+  try {
+    const raw = window.localStorage.getItem(getReadingPreferencesStorageKey(userId))
+    if (!raw) {
+      return { ...DEFAULT_READING_PREFERENCES }
+    }
+    return sanitizeStoredReadingPreferences(JSON.parse(raw))
+  } catch {
+    return { ...DEFAULT_READING_PREFERENCES }
+  }
+}
+
+export function persistReadingPreferences(userId = 0, preferences = {}) {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return
+  }
+  try {
+    const payload = sanitizeStoredReadingPreferences(preferences)
+    window.localStorage.setItem(getReadingPreferencesStorageKey(userId), JSON.stringify(payload))
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
 export function buildInitialState(wpData, view = 'dashboard') {
+  const currentUserId = Number(wpData?.currentUserId) || 0
+  const readingPreferences = loadReadingPreferences(currentUserId)
   const camposLibrary = Array.isArray(wpData?.camposArmonicos) ? wpData.camposArmonicos : []
   const chordsLibrary = Array.isArray(wpData?.chordsLibrary) ? wpData.chordsLibrary : []
   const chordsConfig = wpData?.chordsConfig && typeof wpData.chordsConfig === 'object'
@@ -102,6 +189,8 @@ export function buildInitialState(wpData, view = 'dashboard') {
       con_modulaciones: '',
       coleccion: '',
       tag: '',
+      estado_transcripcion: '',
+      estado_ensayo: '',
     },
     pagination: {
       page: 1,
@@ -144,6 +233,7 @@ export function buildInitialState(wpData, view = 'dashboard') {
       selectionEnd: null,
     },
     songTags: [],
+    projects: [],
     collections: {
       items: [],
       loading: false,
@@ -157,12 +247,12 @@ export function buildInitialState(wpData, view = 'dashboard') {
       catalog: [],
       catalogLoading: false,
     },
-    readingMode: 'stacked',
-    readingFollowStructure: false,
-    readingShowNotes: true,
-    readingDoubleColumn: false,
-    readingInstrument: 'guitar',
-    readingTransposeTarget: 'concert',
+    readingMode: readingPreferences.readingMode,
+    readingFollowStructure: readingPreferences.readingFollowStructure,
+    readingShowNotes: readingPreferences.readingShowNotes,
+    readingDoubleColumn: readingPreferences.readingDoubleColumn,
+    readingInstrument: readingPreferences.readingInstrument,
+    readingTransposeTarget: readingPreferences.readingTransposeTarget,
     readingQueue: {
       ids: [],
       index: 0,

@@ -2545,6 +2545,11 @@
     max-width: 100%;
 }
 
+.wpss-segment__fields > label.wpss-segment__chord-field {
+    position: relative;
+    overflow: visible;
+}
+
 .wpss-segment__fields > label input[type="text"] {
     min-width: 3ch;
     width: auto;
@@ -2552,6 +2557,60 @@
     max-width: 100%;
     display: inline-block;
     field-sizing: content;
+}
+
+.wpss-chord-suggestions {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 6px);
+    z-index: 40;
+    min-width: max(100%, 180px);
+    max-width: min(260px, 70vw);
+    display: grid;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid #d7dce0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(8px);
+}
+
+.wpss-chord-suggestion {
+    display: grid;
+    gap: 2px;
+    text-align: left;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #1f2937;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.wpss-chord-suggestion strong {
+    font-size: 12px;
+    line-height: 1.2;
+}
+
+.wpss-chord-suggestion span {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.2;
+}
+
+.wpss-chord-suggestion:hover,
+.wpss-chord-suggestion:focus-visible,
+.wpss-chord-suggestion.is-active {
+    background: #eff6ff;
+    color: #1d4ed8;
+    outline: none;
+}
+
+.wpss-chord-suggestion:hover span,
+.wpss-chord-suggestion:focus-visible span,
+.wpss-chord-suggestion.is-active span {
+    color: #1e40af;
 }
 
 .wpss-segment__fields textarea {
@@ -2993,6 +3052,30 @@
     border-top: 0;
     border-radius: 0 0 14px 14px;
     background: #ffffff;
+}
+
+.wpss-reading__media-dock {
+    display: grid;
+    gap: 10px;
+    width: min(100%, 1080px);
+    margin: 0 auto;
+    padding: 10px 12px;
+    border: 1px solid #d7dce3;
+    border-top: 0;
+    border-radius: 0 0 14px 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.wpss-reading__tools-shell + .wpss-reading__media-dock {
+    margin-top: -2px;
+}
+
+.wpss-reading__media-dock .wpss-reading-media {
+    margin: 0;
+}
+
+.wpss-reading__media-dock .wpss-reading-media__grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .wpss-reading__group-controls--status {
@@ -3639,6 +3722,11 @@
         padding: 10px;
     }
 
+    .wpss-reading__media-dock {
+        width: 100%;
+        padding: 8px 10px;
+    }
+
     .wpss-reading__section-nav {
         width: 100%;
         margin-top: 8px;
@@ -3844,6 +3932,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__sections.is-mobi
 body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__tools-shell,
 body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__toolbar,
 body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__tool-panel,
+body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__media-dock,
 body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     width: 100%;
     max-width: 100%;
@@ -4070,6 +4159,10 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     display: inline-block;
 }
 
+.wpss-public-editor .wpss-chord-suggestions {
+    max-width: min(320px, 78vw);
+}
+
 .wpss-public-editor .wpss-segment__text {
     min-width: 0;
     width: max-content;
@@ -4238,10 +4331,11 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
 }
 
 .wpss-public-reader__list {
-    --wpss-public-list-height: min(calc(100dvh - 2rem), calc(100vh - 2rem));
+    --wpss-public-list-height: min(100dvh, 100vh);
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-sizing: border-box;
     height: var(--wpss-public-list-height);
     max-height: var(--wpss-public-list-height);
     min-height: 24rem;
@@ -4252,6 +4346,20 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
 .wpss-public-reader__list > .wpss-public-reader__tabs,
 .wpss-public-reader__list > .wpss-filters {
     flex: 0 0 auto;
+}
+
+.wpss-public-reader__workarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+}
+
+.wpss-public-reader__workarea > * + * {
+    margin-top: 12px;
 }
 
 .wpss-public-reader__list > .wpss-public-reader__assign,
@@ -4329,16 +4437,12 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     padding: 0;
     display: grid;
     gap: 10px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: visible;
     padding-right: 4px;
     align-content: start;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-    overscroll-behavior-y: contain;
 }
 
 .wpss-public-reader__songs > li {
@@ -4585,7 +4689,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     }
 
     .wpss-public-reader__list {
-        --wpss-public-list-height: min(calc(100dvh - 1rem), calc(100vh - 1rem));
+        --wpss-public-list-height: min(100dvh, 100vh);
         height: var(--wpss-public-list-height);
         max-height: var(--wpss-public-list-height);
         min-height: 0;
@@ -4599,6 +4703,12 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     .wpss-public-reader__songs {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         flex: 0 0 auto;
+        overflow: visible;
+    }
+
+    .wpss-public-reader__workarea {
+        flex: 0 0 auto;
+        min-height: 0;
         overflow: visible;
     }
 

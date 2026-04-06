@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 
 function normalizePermissions(settings) {
@@ -16,10 +16,19 @@ function normalizePermissions(settings) {
   }
 }
 
+function getVisibilityLabel(mode) {
+  if (mode === 'public') return 'Para todo el cancionero'
+  if (mode === 'groups') return 'Solo agrupaciones musicales'
+  if (mode === 'users') return 'Solo usuarios específicos'
+  return 'Mismo acceso que la canción'
+}
+
 export default function SongMediaPermissionsFields({ song, onChangeSong, onRequestAutosave }) {
   const { api, wpData } = useAppState()
   const [groups, setGroups] = useState([])
   const [colleagues, setColleagues] = useState([])
+  const persistTimeoutRef = useRef(null)
+  const [draftPermissions, setDraftPermissions] = useState(() => normalizePermissions(song?.adjuntos_permisos))
 
   useEffect(() => {
     Promise.allSettled([api.listGroups(), api.listColleagues()]).then((results) => {
@@ -29,15 +38,34 @@ export default function SongMediaPermissionsFields({ song, onChangeSong, onReque
     })
   }, [api])
 
-  const permissions = useMemo(() => normalizePermissions(song?.adjuntos_permisos), [song?.adjuntos_permisos])
+  useEffect(() => () => {
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    setDraftPermissions(normalizePermissions(song?.adjuntos_permisos))
+  }, [song?.adjuntos_permisos])
+
+  const permissions = useMemo(() => normalizePermissions(draftPermissions), [draftPermissions])
   const explicitUsers = useMemo(() => {
     const currentUserId = Number(wpData?.currentUserId || 0)
     return colleagues.filter((user) => Number(user?.id) !== currentUserId)
   }, [colleagues, wpData])
 
   const updatePermissions = (nextPermissions) => {
-    onChangeSong({ ...song, adjuntos_permisos: normalizePermissions(nextPermissions) })
-    onRequestAutosave?.()
+    const normalizedPermissions = normalizePermissions(nextPermissions)
+    setDraftPermissions(normalizedPermissions)
+    const nextSong = { ...song, adjuntos_permisos: normalizedPermissions }
+    onChangeSong(nextSong)
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current)
+    }
+    persistTimeoutRef.current = setTimeout(() => {
+      persistTimeoutRef.current = null
+      onRequestAutosave?.()
+    }, 180)
   }
 
   const togglePermissionValue = (key, value, checked) => {
@@ -57,7 +85,9 @@ export default function SongMediaPermissionsFields({ song, onChangeSong, onReque
       <div className="wpss-field-group">
         <label className="wpss-field">
           <span>Permisos de audios y fotos</span>
+          <strong>{`Modo actual: ${getVisibilityLabel(permissions.visibility_mode)}`}</strong>
           <select
+            key={`media-visibility-${permissions.visibility_mode}`}
             value={permissions.visibility_mode}
             onChange={(event) =>
               updatePermissions({
@@ -67,12 +97,14 @@ export default function SongMediaPermissionsFields({ song, onChangeSong, onReque
                 visibility_user_ids: event.target.value === 'users' ? permissions.visibility_user_ids : [],
               })}
           >
-            <option value="private">Privado</option>
+            <option value="private">Mismo acceso que la canción</option>
             <option value="public">Para todo el cancionero</option>
             <option value="groups">Solo agrupaciones musicales</option>
             <option value="users">Solo usuarios específicos</option>
           </select>
-          <small className="wpss-tags-help">Esta política se aplica a todos los adjuntos multimedia de la canción.</small>
+          <small className="wpss-tags-help">
+            Esta política gobierna los audios y fotos que el transcriptor o admin adjunta como material general de la canción. No afecta los audios del área de ensayos.
+          </small>
         </label>
       </div>
 
@@ -105,6 +137,7 @@ export default function SongMediaPermissionsFields({ song, onChangeSong, onReque
           }) : <span>No hay usuarios disponibles todavía.</span>}
         </div>
       ) : null}
+
     </>
   )
 }

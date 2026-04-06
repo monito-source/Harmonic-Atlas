@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/collaborator-gallery",
+  "version": "2.1.0",
+  "title": "Collaborator Gallery",
+  "category": "widgets",
+  "icon": "format-gallery",
+  "description": "Displays the gallery of a collaborator.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["collaborator", "gallery", "photos", "press"],
+  "attributes": {
+    "userId": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}

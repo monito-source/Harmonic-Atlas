@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import {
   endsWithJoiner,
@@ -20,11 +20,14 @@ import {
 } from '../songStatus.js'
 import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from './MidiSketch.jsx'
 import MidiClipList from './MidiClipList.jsx'
+import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
+import { mapSongToEditingSong, upsertSongInList } from '../songHydration.js'
 import ReadingMediaAttachments, {
   getSectionLevelAttachments,
   getSegmentLevelAttachments,
   getSongLevelAttachments,
   getVerseLevelAttachments,
+  isRehearsalAttachment,
 } from './ReadingMediaAttachments.jsx'
 
 const formatCollectionAssignment = (collection) => {
@@ -46,6 +49,18 @@ const MOBILE_DEFAULT_READING_ZOOM = 60
 const READING_ZOOM_MIN = 10
 const READING_ZOOM_MAX = 180
 const READING_ZOOM_STEP = 5
+const LOCAL_READING_TOOLBAR_STORAGE_PREFIX = 'wpss-reading-toolbar:'
+const SONG_REFRESH_INTERVAL_MS = 30000
+
+const DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES = {
+  repeatsEnabled: true,
+  linkedPlayback: true,
+  showMidi: true,
+  showAttachments: true,
+  minimizeAttachments: false,
+  showSectionTitles: true,
+  activeReadingToolTab: 'lectura',
+}
 
 const clampReadingZoom = (value) => {
   if (!Number.isFinite(value)) {
@@ -78,10 +93,117 @@ const getTouchDistance = (touches) => {
   return Math.hypot(deltaX, deltaY)
 }
 
+const normalizeProjectId = (value) => {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
+const getLocalReadingToolbarStorageKey = (userId = 0) =>
+  `${LOCAL_READING_TOOLBAR_STORAGE_PREFIX}${Number(userId) || 0}`
+
+const loadLocalReadingToolbarPreferences = (userId = 0) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return { ...DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES }
+  }
+  try {
+    const raw = window.localStorage.getItem(getLocalReadingToolbarStorageKey(userId))
+    if (!raw) {
+      return { ...DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES }
+    }
+    const parsed = JSON.parse(raw)
+    return {
+      repeatsEnabled:
+        typeof parsed?.repeatsEnabled === 'boolean'
+          ? parsed.repeatsEnabled
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.repeatsEnabled,
+      linkedPlayback:
+        typeof parsed?.linkedPlayback === 'boolean'
+          ? parsed.linkedPlayback
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.linkedPlayback,
+      showMidi:
+        typeof parsed?.showMidi === 'boolean'
+          ? parsed.showMidi
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.showMidi,
+      showAttachments:
+        typeof parsed?.showAttachments === 'boolean'
+          ? parsed.showAttachments
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.showAttachments,
+      minimizeAttachments:
+        typeof parsed?.minimizeAttachments === 'boolean'
+          ? parsed.minimizeAttachments
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.minimizeAttachments,
+      showSectionTitles:
+        typeof parsed?.showSectionTitles === 'boolean'
+          ? parsed.showSectionTitles
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.showSectionTitles,
+      activeReadingToolTab:
+        typeof parsed?.activeReadingToolTab === 'string' && parsed.activeReadingToolTab.trim()
+          ? parsed.activeReadingToolTab.trim()
+          : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.activeReadingToolTab,
+    }
+  } catch {
+    return { ...DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES }
+  }
+}
+
+const persistLocalReadingToolbarPreferences = (userId = 0, preferences = {}) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return
+  }
+  try {
+    window.localStorage.setItem(
+      getLocalReadingToolbarStorageKey(userId),
+      JSON.stringify({
+        repeatsEnabled: !!preferences.repeatsEnabled,
+        linkedPlayback: !!preferences.linkedPlayback,
+        showMidi: !!preferences.showMidi,
+        showAttachments: !!preferences.showAttachments,
+        minimizeAttachments: !!preferences.minimizeAttachments,
+        showSectionTitles: !!preferences.showSectionTitles,
+        activeReadingToolTab:
+          typeof preferences.activeReadingToolTab === 'string' && preferences.activeReadingToolTab.trim()
+            ? preferences.activeReadingToolTab.trim()
+            : DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES.activeReadingToolTab,
+      }),
+    )
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
+const filterRehearsalAttachmentsByProject = (attachments, projectId) => {
+  const normalizedProjectId = normalizeProjectId(projectId)
+  return (Array.isArray(attachments) ? attachments : []).filter((attachment) => {
+    if (!isRehearsalAttachment(attachment)) return false
+    const projectIds = Array.isArray(attachment?.project_ids)
+      ? attachment.project_ids.map((item) => normalizeProjectId(item)).filter((item) => item > 0)
+      : []
+    if (!normalizedProjectId) return projectIds.length > 0
+    return projectIds.includes(normalizedProjectId)
+  })
+}
+
+const buildRehearsalTitle = (target, projectTitle = '') => {
+  const anchorType = target?.anchor_type || 'song'
+  const scopeLabel = anchorType === 'section'
+    ? target?.label || 'sección'
+    : anchorType === 'verse'
+      ? `verso ${Number(target?.verse_index) + 1}`
+      : anchorType === 'segment'
+        ? `fragmento ${Number(target?.segment_index) + 1}`
+        : 'canción completa'
+  return projectTitle ? `Ensayo · ${scopeLabel} · ${projectTitle}` : `Ensayo · ${scopeLabel}`
+}
+
 export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const { state, dispatch, api, wpData } = useAppState()
   const song = state.editingSong
+  const availableProjects = Array.isArray(state.projects) ? state.projects : []
   const currentUserId = wpData?.currentUserId || 0
+  const localToolbarPreferences = useMemo(
+    () => loadLocalReadingToolbarPreferences(currentUserId),
+    [currentUserId],
+  )
   const isOwnSong = Number(song?.autor_id) === Number(currentUserId)
   const canManageStatuses = wpData?.canManage !== undefined ? !!wpData?.canManage : true
   const bpmDefault = Number.isInteger(parseInt(song?.bpm, 10)) ? parseInt(song.bpm, 10) : 120
@@ -108,17 +230,92 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const tonicBase = song.tonica || ''
   const tonicLabel = tonicBase ? transposeChordSymbol(tonicBase, transposeSemitones) : '—'
   const songVerses = useMemo(() => (Array.isArray(song?.versos) ? song.versos : []), [song?.versos])
-  const songLevelAttachments = useMemo(() => getSongLevelAttachments(song), [song])
-  const [repeatsEnabled, setRepeatsEnabled] = useState(true)
-  const [linkedPlayback, setLinkedPlayback] = useState(true)
-  const [showMidi, setShowMidi] = useState(true)
-  const [showAttachments, setShowAttachments] = useState(true)
-  const [showSectionTitles, setShowSectionTitles] = useState(true)
+  const allAttachments = useMemo(() => (Array.isArray(song?.adjuntos) ? song.adjuntos : []), [song?.adjuntos])
+  const rehearsalProjects = useMemo(() => {
+    const explicitProjects = Array.isArray(song?.rehearsal_projects) ? song.rehearsal_projects : []
+    if (explicitProjects.length) {
+      return explicitProjects
+    }
+
+    const rehearsalProjectIds = Array.isArray(song?.rehearsal_project_ids) ? song.rehearsal_project_ids : []
+    if (!rehearsalProjectIds.length) {
+      return []
+    }
+
+    const normalizedIds = Array.from(
+      new Set(
+        rehearsalProjectIds
+          .map((item) => normalizeProjectId(item))
+          .filter((item) => item > 0),
+      ),
+    )
+
+    return normalizedIds.map((projectId) => {
+      const matched = availableProjects.find((project) => normalizeProjectId(project?.id) === projectId)
+      return {
+        id: projectId,
+        titulo: matched?.titulo || `Proyecto ${projectId}`,
+        can_upload: !!song?.can_upload_rehearsals,
+      }
+    })
+  }, [
+    availableProjects,
+    song?.can_upload_rehearsals,
+    song?.rehearsal_project_ids,
+    song?.rehearsal_projects,
+  ])
+  const [selectedRehearsalProjectId, setSelectedRehearsalProjectId] = useState(0)
+  const genericAttachments = useMemo(
+    () => allAttachments.filter((attachment) => !isRehearsalAttachment(attachment)),
+    [allAttachments],
+  )
+  const rehearsalAttachments = useMemo(
+    () => allAttachments.filter((attachment) => isRehearsalAttachment(attachment)),
+    [allAttachments],
+  )
+  const activeRehearsalProject = useMemo(
+    () => rehearsalProjects.find((project) => normalizeProjectId(project?.id) === normalizeProjectId(selectedRehearsalProjectId)) || null,
+    [rehearsalProjects, selectedRehearsalProjectId],
+  )
+  const filteredRehearsalAttachments = useMemo(
+    () => filterRehearsalAttachmentsByProject(rehearsalAttachments, selectedRehearsalProjectId),
+    [rehearsalAttachments, selectedRehearsalProjectId],
+  )
+  const songLevelAttachments = useMemo(
+    () => getSongLevelAttachments({ ...(song || {}), adjuntos: genericAttachments }),
+    [genericAttachments, song],
+  )
+  const songLevelRehearsals = useMemo(
+    () => getSongLevelAttachments({ ...(song || {}), adjuntos: filteredRehearsalAttachments }),
+    [filteredRehearsalAttachments, song],
+  )
+  const canManageSongAttachments = typeof onEdit === 'function'
+  const canUploadRehearsals = useMemo(
+    () =>
+      !!song?.id
+      && rehearsalProjects.length > 0
+      && rehearsalProjects.some((project) => project?.can_upload !== false)
+      && (song?.can_upload_rehearsals !== undefined
+        ? !!song.can_upload_rehearsals
+        : true),
+    [rehearsalProjects, song?.can_upload_rehearsals, song?.id],
+  )
+  const hasRehearsalWorkspace = !!song?.id && rehearsalProjects.length > 0
+  const [repeatsEnabled, setRepeatsEnabled] = useState(localToolbarPreferences.repeatsEnabled)
+  const [linkedPlayback, setLinkedPlayback] = useState(localToolbarPreferences.linkedPlayback)
+  const [showMidi, setShowMidi] = useState(localToolbarPreferences.showMidi)
+  const [showAttachments, setShowAttachments] = useState(localToolbarPreferences.showAttachments)
+  const [minimizeAttachments, setMinimizeAttachments] = useState(localToolbarPreferences.minimizeAttachments)
+  const [showSectionTitles, setShowSectionTitles] = useState(localToolbarPreferences.showSectionTitles)
   const [statusSaving, setStatusSaving] = useState({ transcription: false, rehearsal: false })
+  const [pendingAttachmentActions, setPendingAttachmentActions] = useState({})
+  const [songRefreshing, setSongRefreshing] = useState(false)
   const [activePlaybackKey, setActivePlaybackKey] = useState(null)
   const [activePlaybackMeta, setActivePlaybackMeta] = useState(null)
   const [activeSectionIndex, setActiveSectionIndex] = useState(0)
-  const [activeReadingToolTab, setActiveReadingToolTab] = useState('lectura')
+  const [activeReadingToolTab, setActiveReadingToolTab] = useState(localToolbarPreferences.activeReadingToolTab)
+  const showSongMediaDock =
+    showAttachments && (songLevelAttachments.length > 0 || songLevelRehearsals.length > 0)
   const [isCompactViewport, setIsCompactViewport] = useState(() => isCompactReadingViewport())
   const [readingZoom, setReadingZoom] = useState(() =>
     isCompactReadingViewport() ? MOBILE_DEFAULT_READING_ZOOM : 100,
@@ -128,6 +325,9 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const readingRootRef = useRef(null)
   const pinchStateRef = useRef({ active: false, startDistance: 0, startZoom: 100 })
   const readingZoomRef = useRef(readingZoom)
+  const refreshInFlightRef = useRef(false)
+  const editingSongRef = useRef(state.editingSong)
+  const songsRef = useRef(state.songs)
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -164,6 +364,11 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   useEffect(() => {
     readingZoomRef.current = readingZoom
   }, [readingZoom])
+
+  useEffect(() => {
+    editingSongRef.current = state.editingSong
+    songsRef.current = state.songs
+  }, [state.editingSong, state.songs])
 
   useEffect(() => {
     if (!isCompactViewport || !hasVerses) {
@@ -307,6 +512,19 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     }
   }, [hasVerses, song, state.readingFollowStructure, state.readingMode, showMidi, state.readingShowNotes, isDoubleColumn])
 
+  useEffect(() => {
+    if (!rehearsalProjects.length) {
+      setSelectedRehearsalProjectId(0)
+      return
+    }
+
+    const currentId = normalizeProjectId(selectedRehearsalProjectId)
+    const exists = rehearsalProjects.some((project) => normalizeProjectId(project?.id) === currentId)
+    if (!exists) {
+      setSelectedRehearsalProjectId(normalizeProjectId(rehearsalProjects[0]?.id))
+    }
+  }, [rehearsalProjects, selectedRehearsalProjectId])
+
   const groups = useMemo(() => {
     if (!hasVerses) {
       return []
@@ -343,6 +561,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const readingToolTabs = useMemo(() => {
     const tabs = [
       { id: 'lectura', label: 'Lectura' },
+      ...(hasRehearsalWorkspace ? [{ id: 'ensayo', label: 'Ensayo' }] : []),
       { id: 'vista', label: 'Vista' },
       { id: 'orden', label: 'Orden' },
       { id: 'midi', label: 'MIDI' },
@@ -356,7 +575,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
       tabs.push({ id: 'estados', label: 'Estados' })
     }
     return tabs
-  }, [canManageStatuses])
+  }, [canManageStatuses, hasRehearsalWorkspace])
 
   const buildClipSteps = (clips, meta) =>
     buildMidiClipGroups(clips, linkedPlayback).map((group) => ({ clips: group, meta }))
@@ -529,6 +748,220 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     })
   }
 
+  const refreshCurrentSong = useCallback(async ({ manual = false } = {}) => {
+    const songId = Number(song?.id || 0)
+    if (!songId || refreshInFlightRef.current) {
+      return
+    }
+
+    refreshInFlightRef.current = true
+    setSongRefreshing(true)
+
+    try {
+      const response = state.view === 'public' ? await api.getPublicSong(songId) : await api.getSong(songId)
+      const refreshedSong = response?.data || {}
+      const normalizedSong = mapSongToEditingSong(refreshedSong)
+      const currentEditingSnapshot = JSON.stringify(editingSongRef.current || {})
+      const nextEditingSnapshot = JSON.stringify(normalizedSong)
+      const currentListSong = Array.isArray(songsRef.current)
+        ? songsRef.current.find((item) => Number(item?.id || 0) === songId)
+        : null
+      const currentListSnapshot = JSON.stringify(currentListSong || {})
+      const nextListSnapshot = JSON.stringify(refreshedSong || {})
+
+      if (currentEditingSnapshot !== nextEditingSnapshot || currentListSnapshot !== nextListSnapshot) {
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            editingSong: normalizedSong,
+            songs: upsertSongInList(songsRef.current, refreshedSong),
+            selectedSongId: Number(refreshedSong?.id || songId),
+            error: null,
+          },
+        })
+      }
+    } catch (error) {
+      if (manual) {
+        const payloadMessage = error?.payload?.message
+        const deniedMessage = payloadMessage || 'No fue posible refrescar la canción.'
+        const fallbackMessage = wpData?.strings?.loadSongError || 'No fue posible refrescar la canción.'
+        const message = error?.status === 403 ? deniedMessage : fallbackMessage
+        dispatch({ type: 'SET_STATE', payload: { error: message } })
+      }
+    } finally {
+      refreshInFlightRef.current = false
+      setSongRefreshing(false)
+    }
+  }, [api, dispatch, song?.id, state.view, wpData])
+
+  const handleUploadRehearsal = async (target, mode, file) => {
+    const songId = song?.id
+    const projectId = normalizeProjectId(selectedRehearsalProjectId)
+    if (!songId || !projectId) {
+      dispatch({ type: 'SET_STATE', payload: { error: 'Selecciona primero el proyecto del ensayo.' } })
+      return
+    }
+
+    const projectTitle = activeRehearsalProject?.titulo || ''
+    const formData = new FormData()
+    formData.append('song_id', String(songId))
+    formData.append('type', 'audio')
+    formData.append('attachment_role', 'rehearsal')
+    formData.append('title', buildRehearsalTitle(target, projectTitle))
+    formData.append('source_kind', mode === 'recordAudio' ? 'recording' : 'import')
+    formData.append('anchor_type', String(target?.anchor_type || 'song'))
+    formData.append('section_id', String(target?.section_id || ''))
+    formData.append('verse_index', String(Number(target?.verse_index) || 0))
+    formData.append('segment_index', String(Number(target?.segment_index) || 0))
+    formData.append('project_ids', JSON.stringify([projectId]))
+    formData.append('duration_seconds', '0')
+    formData.append('file', file)
+
+    try {
+      const response = await api.uploadSongAttachment(formData)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      patchSongState({ adjuntos: attachments })
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Ensayo guardado en Google Drive.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (error) {
+      const message = error?.payload?.message || 'No fue posible guardar el ensayo.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+      throw error
+    }
+  }
+
+  const handleUploadAttachment = async (target, mode, file) => {
+    const songId = song?.id
+    if (!songId) {
+      return
+    }
+
+    const type = mode === 'importPhoto' || mode === 'capturePhoto' ? 'photo' : 'audio'
+    const sourceKind = mode === 'recordAudio'
+      ? 'recording'
+      : mode === 'capturePhoto'
+        ? 'capture'
+        : 'import'
+    const mediaPermissions = song?.adjuntos_permisos || {}
+    const resolvedTarget = {
+      anchor_type: String(target?.anchor_type || 'song'),
+      section_id: String(target?.section_id || ''),
+      verse_index: Number(target?.verse_index) || 0,
+      segment_index: Number(target?.segment_index) || 0,
+    }
+
+    const formData = new FormData()
+    formData.append('song_id', String(songId))
+    formData.append('title', String(file?.name || `${type}-${Date.now()}`))
+    formData.append('type', type)
+    formData.append('source_kind', sourceKind)
+    formData.append('anchor_type', resolvedTarget.anchor_type)
+    formData.append(
+      'section_id',
+      resolvedTarget.anchor_type === 'section' || resolvedTarget.anchor_type === 'segment'
+        ? resolvedTarget.section_id
+        : '',
+    )
+    formData.append(
+      'verse_index',
+      String(
+        resolvedTarget.anchor_type === 'verse' || resolvedTarget.anchor_type === 'segment'
+          ? resolvedTarget.verse_index
+          : 0,
+      ),
+    )
+    formData.append(
+      'segment_index',
+      String(resolvedTarget.anchor_type === 'segment' ? resolvedTarget.segment_index : 0),
+    )
+    formData.append('visibility_mode', String(mediaPermissions.visibility_mode || 'private'))
+    formData.append(
+      'visibility_group_ids',
+      JSON.stringify(Array.isArray(mediaPermissions.visibility_group_ids) ? mediaPermissions.visibility_group_ids : []),
+    )
+    formData.append(
+      'visibility_user_ids',
+      JSON.stringify(Array.isArray(mediaPermissions.visibility_user_ids) ? mediaPermissions.visibility_user_ids : []),
+    )
+    formData.append('duration_seconds', '0')
+    formData.append('file', file)
+
+    const busyKey = `upload-${Date.now()}`
+    try {
+      setPendingAttachmentActions((prev) => ({
+        ...prev,
+        [busyKey]: 'Subiendo a Drive...',
+      }))
+      const response = await api.uploadSongAttachment(formData)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      patchSongState({ adjuntos: attachments })
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto subido a Google Drive.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (error) {
+      const message = error?.payload?.message || 'No fue posible subir el adjunto.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+      throw error
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        Object.keys(next).forEach((key) => {
+          if (key.startsWith('upload-')) {
+            delete next[key]
+          }
+        })
+        return next
+      })
+    }
+  }
+
+  const handleDeleteAttachment = async (attachment) => {
+    const songId = song?.id
+    const attachmentId = attachment?.id
+    if (!songId || !attachmentId || !attachment?.can_delete_file) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `¿Eliminar definitivamente "${attachment.title || attachment.file_name || attachment.id}" del Google Drive?`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setPendingAttachmentActions((prev) => ({ ...prev, [attachmentId]: 'Eliminando de Drive...' }))
+      const response = await api.deleteSongAttachment(songId, attachmentId)
+      const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
+      patchSongState({ adjuntos: attachments })
+      dispatch({
+        type: 'SET_STATE',
+        payload: {
+          feedback: { message: response?.data?.message || 'Adjunto eliminado del Drive.', type: 'success' },
+          error: null,
+        },
+      })
+    } catch (error) {
+      const message = error?.payload?.message || 'No fue posible eliminar el adjunto del Drive.'
+      dispatch({ type: 'SET_STATE', payload: { error: message } })
+    } finally {
+      setPendingAttachmentActions((prev) => {
+        const next = { ...prev }
+        delete next[attachmentId]
+        return next
+      })
+    }
+  }
+
   const handleTranscriptionStatusChange = (nextStatus) => {
     if (!song?.id || !isOwnSong || !canManageStatuses) return
     setStatusSaving((prev) => ({ ...prev, transcription: true }))
@@ -588,6 +1021,42 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     }
   }, [activeReadingToolTab, readingToolTabs])
 
+  useEffect(() => {
+    persistLocalReadingToolbarPreferences(currentUserId, {
+      repeatsEnabled,
+      linkedPlayback,
+      showMidi,
+      showAttachments,
+      minimizeAttachments,
+      showSectionTitles,
+      activeReadingToolTab,
+    })
+  }, [
+    currentUserId,
+    repeatsEnabled,
+    linkedPlayback,
+    showMidi,
+    showAttachments,
+    minimizeAttachments,
+    showSectionTitles,
+    activeReadingToolTab,
+  ])
+
+  useEffect(() => {
+    if (!song?.id) {
+      return undefined
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return
+      }
+      refreshCurrentSong()
+    }, SONG_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [refreshCurrentSong, song?.id])
+
   const activeReadingToolLabel =
     readingToolTabs.find((tab) => tab.id === activeReadingToolTab)?.label || 'Lectura'
 
@@ -609,6 +1078,14 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
               </p>
             </div>
             <div className="wpss-reading__quick-actions" role="toolbar" aria-label="Acciones rápidas de lectura">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => refreshCurrentSong({ manual: true })}
+                disabled={songRefreshing}
+              >
+                {songRefreshing ? 'Refrescando…' : 'Refrescar'}
+              </button>
               <button
                 type="button"
                 className="button button-secondary"
@@ -733,6 +1210,41 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                 </div>
               </div>
             ) : null}
+            {activeReadingToolTab === 'ensayo' ? (
+              <div className="wpss-reading__group-controls wpss-reading__group-controls--rehearsal">
+                {rehearsalProjects.length ? (
+                  <label className="wpss-reading__status-field">
+                    <span>Proyecto de ensayo</span>
+                    <select
+                      value={String(selectedRehearsalProjectId || '')}
+                      onChange={(event) => setSelectedRehearsalProjectId(normalizeProjectId(event.target.value))}
+                    >
+                      {rehearsalProjects.map((project) => (
+                        <option key={`rehearsal-project-${project.id}`} value={String(project.id)}>
+                          {project?.titulo || `Proyecto #${project.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="wpss-reading__status-label">
+                    Esta canción no tiene proyectos habilitados para ensayos.
+                  </span>
+                )}
+                <span className="wpss-reading__status-label">
+                  {activeRehearsalProject
+                    ? `Escuchando tomas de ${activeRehearsalProject.titulo}.`
+                    : 'Selecciona un proyecto para filtrar los ensayos.'}
+                </span>
+                {canUploadRehearsals && activeRehearsalProject ? (
+                  <InlineMediaQuickActions
+                    target={{ anchor_type: 'song', label: 'canción completa', compactRecorder: true }}
+                    onUpload={handleUploadRehearsal}
+                    allowedModes={['importAudio', 'recordAudio']}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             {activeReadingToolTab === 'vista' ? (
               <div className="wpss-reading__group-controls">
                 <button
@@ -802,6 +1314,13 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   onClick={() => setShowAttachments((prev) => !prev)}
                 >
                   {showAttachments ? 'Ocultar adjuntos' : 'Mostrar adjuntos'}
+                </button>
+                <button
+                  type="button"
+                  className={`button button-secondary ${minimizeAttachments ? 'is-active' : ''}`}
+                  onClick={() => setMinimizeAttachments((prev) => !prev)}
+                >
+                  {minimizeAttachments ? 'Minimizado' : 'Minimizar'}
                 </button>
               </div>
             ) : null}
@@ -904,6 +1423,31 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             ) : null}
           </div>
         </div>
+        {showSongMediaDock ? (
+          <div className="wpss-reading__media-dock">
+            {showAttachments || activeReadingToolTab === 'adjuntos' ? (
+              <ReadingMediaAttachments
+                attachments={songLevelAttachments}
+                title="Adjuntos de la canción"
+                emptyLabel=""
+                compact
+                minimal={minimizeAttachments}
+                onDelete={handleDeleteAttachment}
+                pendingActionById={pendingAttachmentActions}
+              />
+            ) : null}
+            {showAttachments && songLevelRehearsals.length ? (
+              <ReadingMediaAttachments
+                attachments={songLevelRehearsals}
+                title={activeRehearsalProject ? `Ensayos · ${activeRehearsalProject.titulo}` : 'Ensayos de la canción'}
+                compact
+                minimal={minimizeAttachments}
+                onDelete={handleDeleteAttachment}
+                pendingActionById={pendingAttachmentActions}
+              />
+            ) : null}
+          </div>
+        ) : null}
         {sectionNavItems.length ? (
           <nav className="wpss-reading__section-nav" aria-label="Navegación de secciones">
             {sectionNavItems.map((item) => (
@@ -925,12 +1469,6 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
           </nav>
         ) : null}
       </div>
-      {showAttachments && songLevelAttachments.length ? (
-        <ReadingMediaAttachments
-          attachments={songLevelAttachments}
-          title="Adjuntos de la canción"
-        />
-      ) : null}
       <div className="wpss-reading__sections-frame">
         <div className="wpss-reading__sections-scroll" ref={sectionsScrollRef}>
           <div
@@ -947,6 +1485,11 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             const canPlaySection = showMidi && hasMidiInGroup(group)
             const sectionNotes = Array.isArray(group.section?.comentarios) ? group.section.comentarios : []
             const sectionAttachments = getSectionLevelAttachments(song, group.section?.id)
+            const sectionStandardAttachments = sectionAttachments.filter((attachment) => !isRehearsalAttachment(attachment))
+            const sectionRehearsalAttachments = filterRehearsalAttachmentsByProject(
+              sectionAttachments,
+              selectedRehearsalProjectId,
+            )
             return (
               <section
                 key={`reading-${index}`}
@@ -991,6 +1534,33 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                         >
                           {activePlaybackKey === `section-${index}` ? 'Detener sección' : 'Reproducir sección'}
                         </button>
+                        {canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
+                          <InlineMediaQuickActions
+                            target={{
+                              anchor_type: 'section',
+                              section_id: group.section?.id || '',
+                              label: heading,
+                              compactRecorder: true,
+                            }}
+                            onUpload={handleUploadRehearsal}
+                            allowedModes={['importAudio', 'recordAudio']}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
+                    <div className="wpss-reading__section-tools" aria-label="Ensayo de la sección">
+                      <div className="wpss-reading__section-actions">
+                        <InlineMediaQuickActions
+                          target={{
+                            anchor_type: 'section',
+                            section_id: group.section?.id || '',
+                            label: heading,
+                            compactRecorder: true,
+                          }}
+                          onUpload={handleUploadRehearsal}
+                          allowedModes={['importAudio', 'recordAudio']}
+                        />
                       </div>
                     </div>
                   ) : null}
@@ -1009,11 +1579,24 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                       return (
                         <div className={sectionClass} style={sectionStyle}>
                           {group.notes ? <p className="wpss-reading__notes">{group.notes}</p> : null}
-                          {showAttachments && sectionAttachments.length ? (
+                          {showAttachments && sectionStandardAttachments.length ? (
                             <ReadingMediaAttachments
-                              attachments={sectionAttachments}
+                              attachments={sectionStandardAttachments}
                               title="Adjuntos de la sección"
                               compact
+                              minimal={minimizeAttachments}
+                              onDelete={handleDeleteAttachment}
+                              pendingActionById={pendingAttachmentActions}
+                            />
+                          ) : null}
+                          {showAttachments && sectionRehearsalAttachments.length ? (
+                            <ReadingMediaAttachments
+                              attachments={sectionRehearsalAttachments}
+                              title="Ensayos de la sección"
+                              compact
+                              minimal={minimizeAttachments}
+                              onDelete={handleDeleteAttachment}
+                              pendingActionById={pendingAttachmentActions}
                             />
                           ) : null}
                           {showMidi
@@ -1037,6 +1620,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                                     linkedPlayback={linkedPlayback}
                                     showMidi={showMidi}
                                     showAttachments={showAttachments}
+                                    minimizeAttachments={minimizeAttachments}
                                     showNotes={state.readingShowNotes}
                                     sectionIndex={index}
                                     verseIndex={verseIndex}
@@ -1047,6 +1631,13 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                                     camposLookup={camposLookup}
                                     transposeSemitones={transposeSemitones}
                                     globalVerseIndex={songVerses.indexOf(verse)}
+                                    activeReadingToolTab={activeReadingToolTab}
+                                    canUploadRehearsals={canUploadRehearsals}
+                                    activeRehearsalProject={activeRehearsalProject}
+                                    selectedRehearsalProjectId={selectedRehearsalProjectId}
+                                    onUploadRehearsal={handleUploadRehearsal}
+                                    onDeleteAttachment={handleDeleteAttachment}
+                                    pendingActionById={pendingAttachmentActions}
                                   />
                                 ))
                               : null}
@@ -1076,6 +1667,7 @@ function ReadingVerse({
   linkedPlayback,
   showMidi,
   showAttachments,
+  minimizeAttachments,
   showNotes,
   sectionIndex,
   verseIndex,
@@ -1086,6 +1678,13 @@ function ReadingVerse({
   camposLookup,
   transposeSemitones,
   globalVerseIndex,
+  activeReadingToolTab,
+  canUploadRehearsals,
+  activeRehearsalProject,
+  selectedRehearsalProjectId,
+  onUploadRehearsal,
+  onDeleteAttachment,
+  pendingActionById,
 }) {
   const segmentos = Array.isArray(verse.segmentos) ? verse.segmentos : []
   const instrumental = verse.instrumental ? <span className="wpss-reading__instrumental">Instrumental</span> : null
@@ -1119,6 +1718,14 @@ function ReadingVerse({
   const segmentVisualAttachments = useMemo(
     () => segmentAttachments.filter((attachment) => attachment?.type !== 'audio'),
     [segmentAttachments],
+  )
+  const verseStandardAttachments = useMemo(
+    () => verseAttachments.filter((attachment) => !isRehearsalAttachment(attachment)),
+    [verseAttachments],
+  )
+  const verseRehearsalAttachments = useMemo(
+    () => filterRehearsalAttachmentsByProject(verseAttachments, selectedRehearsalProjectId),
+    [selectedRehearsalProjectId, verseAttachments],
   )
   const segmentAudioByIndex = useMemo(() => {
     const map = new Map()
@@ -1325,6 +1932,20 @@ function ReadingVerse({
           </div>
           {segmentAudioElements}
           {meta}
+          {canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
+            <div className="wpss-reading__verse-tools">
+              <InlineMediaQuickActions
+                target={{
+                  anchor_type: 'verse',
+                  verse_index: globalVerseIndex,
+                  label: `verso ${globalVerseIndex + 1}`,
+                  compactRecorder: true,
+                }}
+                onUpload={onUploadRehearsal}
+                allowedModes={['importAudio', 'recordAudio']}
+              />
+            </div>
+          ) : null}
           {verseMidi}
           {segmentMidis}
           {showAttachments && segmentVisualAttachments.length ? (
@@ -1332,14 +1953,30 @@ function ReadingVerse({
               attachments={segmentVisualAttachments}
               title="Fotos por fragmento"
               compact
+              minimal={minimizeAttachments}
               groupedBySegment
+              onDelete={onDeleteAttachment}
+              pendingActionById={pendingActionById}
             />
           ) : null}
-          {showAttachments && verseAttachments.length ? (
+          {showAttachments && verseStandardAttachments.length ? (
             <ReadingMediaAttachments
-              attachments={verseAttachments}
+              attachments={verseStandardAttachments}
               title="Adjuntos del verso"
               compact
+              minimal={minimizeAttachments}
+              onDelete={onDeleteAttachment}
+              pendingActionById={pendingActionById}
+            />
+          ) : null}
+          {showAttachments && verseRehearsalAttachments.length ? (
+            <ReadingMediaAttachments
+              attachments={verseRehearsalAttachments}
+              title="Ensayos del verso"
+              compact
+              minimal={minimizeAttachments}
+              onDelete={onDeleteAttachment}
+              pendingActionById={pendingActionById}
             />
           ) : null}
         </div>
@@ -1375,6 +2012,20 @@ function ReadingVerse({
         </div>
         {segmentAudioElements}
         {meta}
+        {canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
+          <div className="wpss-reading__verse-tools">
+            <InlineMediaQuickActions
+              target={{
+                anchor_type: 'verse',
+                verse_index: globalVerseIndex,
+                label: `verso ${globalVerseIndex + 1}`,
+                compactRecorder: true,
+              }}
+              onUpload={onUploadRehearsal}
+              allowedModes={['importAudio', 'recordAudio']}
+            />
+          </div>
+        ) : null}
         {verseMidi}
         {segmentMidis}
         {showAttachments && segmentVisualAttachments.length ? (
@@ -1382,14 +2033,30 @@ function ReadingVerse({
             attachments={segmentVisualAttachments}
             title="Fotos por fragmento"
             compact
+            minimal={minimizeAttachments}
             groupedBySegment
+            onDelete={onDeleteAttachment}
+            pendingActionById={pendingActionById}
           />
         ) : null}
-        {showAttachments && verseAttachments.length ? (
+        {showAttachments && verseStandardAttachments.length ? (
           <ReadingMediaAttachments
-            attachments={verseAttachments}
+            attachments={verseStandardAttachments}
             title="Adjuntos del verso"
             compact
+            minimal={minimizeAttachments}
+            onDelete={onDeleteAttachment}
+            pendingActionById={pendingActionById}
+          />
+        ) : null}
+        {showAttachments && verseRehearsalAttachments.length ? (
+          <ReadingMediaAttachments
+            attachments={verseRehearsalAttachments}
+            title="Ensayos del verso"
+            compact
+            minimal={minimizeAttachments}
+            onDelete={onDeleteAttachment}
+            pendingActionById={pendingActionById}
           />
         ) : null}
       </div>

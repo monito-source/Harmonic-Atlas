@@ -20,6 +20,7 @@ import CommentEditor from './CommentEditor.jsx'
 import MidiClipList from './MidiClipList.jsx'
 import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
 import SongMediaPermissionsFields from './SongMediaPermissionsFields.jsx'
+import SongVisibilityAccessFields from './SongVisibilityAccessFields.jsx'
 import EditorPreviewMediaAttachments from './EditorPreviewMediaAttachments.jsx'
 import SongMediaManager from './SongMediaManager.jsx'
 import {
@@ -308,7 +309,6 @@ export default function Editor({ onShowList }) {
   const [tagSuggestionsPage, setTagSuggestionsPage] = useState(1)
   const [pendingAttachmentActions, setPendingAttachmentActions] = useState({})
   const [selectedAttachmentId, setSelectedAttachmentId] = useState(null)
-  const [verseMoveTargets, setVerseMoveTargets] = useState({})
   const [contextualToolTabsByTarget, setContextualToolTabsByTarget] = useState({})
   const [isContextualToolbarExpanded, setIsContextualToolbarExpanded] = useState(false)
   const [contextualScopeMode, setContextualScopeMode] = useState('auto')
@@ -423,6 +423,24 @@ export default function Editor({ onShowList }) {
   }, [api, dispatch, state.songTags])
 
   useEffect(() => {
+    if (Array.isArray(state.projects) && state.projects.length) {
+      return
+    }
+
+    api
+      .listProjects()
+      .then((response) => {
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            projects: Array.isArray(response?.data) ? response.data : [],
+          },
+        })
+      })
+      .catch(() => {})
+  }, [api, dispatch, state.projects])
+
+  useEffect(() => {
     return () => {
       if (autosaveRef.current) {
         clearTimeout(autosaveRef.current)
@@ -510,6 +528,26 @@ export default function Editor({ onShowList }) {
   }
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
+  const availableProjects = Array.isArray(state.projects) ? state.projects : []
+  const selectedRehearsalProjectIds = useMemo(
+    () => (Array.isArray(editingSong.rehearsal_project_ids)
+      ? Array.from(new Set(editingSong.rehearsal_project_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
+      : []),
+    [editingSong.rehearsal_project_ids],
+  )
+  const selectedRehearsalProjects = useMemo(
+    () => availableProjects.filter((project) => selectedRehearsalProjectIds.includes(Number(project?.id))),
+    [availableProjects, selectedRehearsalProjectIds],
+  )
+  const mediaPermissionsKey = useMemo(() => {
+    const settings = editingSong?.adjuntos_permisos && typeof editingSong.adjuntos_permisos === 'object'
+      ? editingSong.adjuntos_permisos
+      : {}
+    const mode = String(settings.visibility_mode || 'private')
+    const groups = Array.isArray(settings.visibility_group_ids) ? settings.visibility_group_ids.join('-') : ''
+    const users = Array.isArray(settings.visibility_user_ids) ? settings.visibility_user_ids.join('-') : ''
+    return `${editingSong?.id || 'new'}:${mode}:${groups}:${users}`
+  }, [editingSong?.adjuntos_permisos, editingSong?.id])
   const availableTags = useMemo(
     () => (Array.isArray(state.songTags) ? state.songTags : [])
       .map((tag) => normalizeTagCandidate(tag, []))
@@ -1011,6 +1049,19 @@ export default function Editor({ onShowList }) {
       ficha_fuente_verificacion: currentSong.ficha_fuente_verificacion || '',
       ficha_incompleta: !!currentSong.ficha_incompleta,
       ficha_incompleta_motivo: currentSong.ficha_incompleta_motivo || '',
+      visibility_mode: currentSong.visibility_mode || 'private',
+      visibility_project_ids: Array.isArray(currentSong.visibility_project_ids)
+        ? Array.from(new Set(currentSong.visibility_project_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
+        : [],
+      visibility_group_ids: Array.isArray(currentSong.visibility_group_ids)
+        ? Array.from(new Set(currentSong.visibility_group_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
+        : [],
+      visibility_user_ids: Array.isArray(currentSong.visibility_user_ids)
+        ? Array.from(new Set(currentSong.visibility_user_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
+        : [],
+      rehearsal_project_ids: Array.isArray(currentSong.rehearsal_project_ids)
+        ? Array.from(new Set(currentSong.rehearsal_project_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
+        : [],
       prestamos_cancion: currentSong.prestamos,
       modulaciones_cancion: currentSong.modulaciones,
       secciones: Array.isArray(currentSong.secciones)
@@ -1065,32 +1116,71 @@ export default function Editor({ onShowList }) {
     const normalizedBodyTags = Array.isArray(body.tags)
       ? body.tags.map((item) => normalizeTagCandidate(item, availableTags)).filter(Boolean)
       : []
+        const fallbackSong = currentSong && typeof currentSong === 'object' ? currentSong : editingSong
+        const fallbackAttachmentPermissions =
+          fallbackSong?.adjuntos_permisos && typeof fallbackSong.adjuntos_permisos === 'object'
+            ? fallbackSong.adjuntos_permisos
+            : { visibility_mode: 'private', visibility_group_ids: [], visibility_user_ids: [] }
         const normalizedSong = {
-          ...editingSong,
-          id: body.id,
-          autor_id: body.autor_id || editingSong.autor_id || null,
-          autor_nombre: body.autor_nombre || editingSong.autor_nombre || '',
-          es_reversion: !!body.es_reversion || !!editingSong.es_reversion,
-          reversion_origen_id: body.reversion_origen_id || editingSong.reversion_origen_id || null,
+          ...fallbackSong,
+          id: body.id || fallbackSong?.id || null,
+          autor_id: body.autor_id || fallbackSong?.autor_id || null,
+          autor_nombre: body.autor_nombre || fallbackSong?.autor_nombre || '',
+          es_reversion: body.es_reversion !== undefined ? !!body.es_reversion : !!fallbackSong?.es_reversion,
+          reversion_origen_id: body.reversion_origen_id || fallbackSong?.reversion_origen_id || null,
           reversion_origen_titulo:
-            body.reversion_origen_titulo || editingSong.reversion_origen_titulo || '',
-          reversion_raiz_id: body.reversion_raiz_id || editingSong.reversion_raiz_id || null,
-          reversion_raiz_titulo: body.reversion_raiz_titulo || editingSong.reversion_raiz_titulo || '',
+            body.reversion_origen_titulo || fallbackSong?.reversion_origen_titulo || '',
+          reversion_raiz_id: body.reversion_raiz_id || fallbackSong?.reversion_raiz_id || null,
+          reversion_raiz_titulo: body.reversion_raiz_titulo || fallbackSong?.reversion_raiz_titulo || '',
           reversion_autor_origen_id:
-            body.reversion_autor_origen_id || editingSong.reversion_autor_origen_id || null,
+            body.reversion_autor_origen_id || fallbackSong?.reversion_autor_origen_id || null,
           reversion_autor_origen_nombre:
-            body.reversion_autor_origen_nombre || editingSong.reversion_autor_origen_nombre || '',
+            body.reversion_autor_origen_nombre || fallbackSong?.reversion_autor_origen_nombre || '',
           estado_transcripcion:
-            body.estado_transcripcion || editingSong.estado_transcripcion || 'sin_iniciar',
+            body.estado_transcripcion || fallbackSong?.estado_transcripcion || 'sin_iniciar',
           estado_transcripcion_label:
-            body.estado_transcripcion_label || editingSong.estado_transcripcion_label || 'Sin iniciar',
-          estado_ensayo: body.estado_ensayo || editingSong.estado_ensayo || 'sin_ensayar',
+            body.estado_transcripcion_label || fallbackSong?.estado_transcripcion_label || 'Sin iniciar',
+          estado_ensayo: body.estado_ensayo || fallbackSong?.estado_ensayo || 'sin_ensayar',
           estado_ensayo_label:
-            body.estado_ensayo_label || editingSong.estado_ensayo_label || 'No ensayada',
+            body.estado_ensayo_label || fallbackSong?.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
+          visibility_mode: body.visibility_mode || fallbackSong?.visibility_mode || 'private',
+          visibility_project_ids: Array.isArray(body.visibility_project_ids)
+            ? body.visibility_project_ids
+            : (fallbackSong?.visibility_project_ids || []),
+          visibility_projects: Array.isArray(body.visibility_projects)
+            ? body.visibility_projects
+            : (fallbackSong?.visibility_projects || []),
+          visibility_group_ids: Array.isArray(body.visibility_group_ids)
+            ? body.visibility_group_ids
+            : (fallbackSong?.visibility_group_ids || []),
+          visibility_groups: Array.isArray(body.visibility_groups)
+            ? body.visibility_groups
+            : (fallbackSong?.visibility_groups || []),
+          visibility_user_ids: Array.isArray(body.visibility_user_ids)
+            ? body.visibility_user_ids
+            : (fallbackSong?.visibility_user_ids || []),
+          visibility_users: Array.isArray(body.visibility_users)
+            ? body.visibility_users
+            : (fallbackSong?.visibility_users || []),
+          rehearsal_project_ids: Array.isArray(body.rehearsal_project_ids)
+            ? body.rehearsal_project_ids
+            : (fallbackSong?.rehearsal_project_ids || []),
+          rehearsal_projects: Array.isArray(body.rehearsal_projects)
+            ? body.rehearsal_projects
+            : (fallbackSong?.rehearsal_projects || []),
+          can_upload_rehearsals:
+            body.can_upload_rehearsals !== undefined
+              ? !!body.can_upload_rehearsals
+              : !!fallbackSong?.can_upload_rehearsals,
           tags: normalizedBodyTags.length ? normalizedBodyTags : resolvedTagsForPayload,
-          adjuntos: Array.isArray(body.adjuntos) ? body.adjuntos : (Array.isArray(editingSong.adjuntos) ? editingSong.adjuntos : []),
-          adjuntos_permisos: body.adjuntos_permisos || editingSong.adjuntos_permisos || { visibility_mode: 'private', visibility_group_ids: [], visibility_user_ids: [] },
+          adjuntos: Array.isArray(body.adjuntos)
+            ? body.adjuntos
+            : (Array.isArray(fallbackSong?.adjuntos) ? fallbackSong.adjuntos : []),
+          adjuntos_permisos:
+            body.adjuntos_permisos && typeof body.adjuntos_permisos === 'object'
+              ? body.adjuntos_permisos
+              : fallbackAttachmentPermissions,
           secciones,
           estructura,
           estructuraPersonalizada: true,
@@ -1104,6 +1194,15 @@ export default function Editor({ onShowList }) {
           bpm: normalizedSong.bpm,
           tags: normalizedSong.tags,
           colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones : (songFromList?.colecciones || []),
+          visibility_mode: normalizedSong.visibility_mode,
+          visibility_project_ids: normalizedSong.visibility_project_ids,
+          visibility_projects: normalizedSong.visibility_projects,
+          visibility_group_ids: normalizedSong.visibility_group_ids,
+          visibility_groups: normalizedSong.visibility_groups,
+          visibility_user_ids: normalizedSong.visibility_user_ids,
+          visibility_users: normalizedSong.visibility_users,
+          rehearsal_project_ids: normalizedSong.rehearsal_project_ids,
+          rehearsal_projects: normalizedSong.rehearsal_projects,
         }
         const updatedSongs = Array.isArray(state.songs)
           ? (() => {
@@ -1133,10 +1232,12 @@ export default function Editor({ onShowList }) {
           })
           setEditingSong(normalizedSong)
         } else {
+          setEditingSong(normalizedSong)
           dispatch({
             type: 'SET_STATE',
             payload: {
               selectedSongId: body.id,
+              editingSong: normalizedSong,
               songs: updatedSongs,
               feedback: null,
               error: null,
@@ -2189,15 +2290,6 @@ export default function Editor({ onShowList }) {
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
     }
   }, [])
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      const frameId = window.requestAnimationFrame(() => ensureContextTargetVisible('smooth'))
-      return () => window.cancelAnimationFrame(frameId)
-    }
-    ensureContextTargetVisible('auto')
-    return undefined
-  }, [contextualTargetKey, ensureContextTargetVisible])
 
   useEffect(() => {
     if (!isContextualToolbarExpanded) {
@@ -3730,9 +3822,10 @@ export default function Editor({ onShowList }) {
             </label>
           </div>
           <SongMediaPermissionsFields
+            key={mediaPermissionsKey}
             song={editingSong}
             onChangeSong={(nextSong) => updateSong(nextSong)}
-            onRequestAutosave={scheduleAutosave}
+            onRequestAutosave={() => saveSong(true)}
           />
           <details className="wpss-section wpss-section--collapsible wpss-section--nested">
             <summary>
@@ -3774,6 +3867,12 @@ export default function Editor({ onShowList }) {
               </label>
             </div>
             <div className="wpss-field-group">
+              <SongVisibilityAccessFields
+                song={editingSong}
+                availableProjects={availableProjects}
+                onChangeSong={(nextSong) => updateSong(nextSong)}
+                onRequestAutosave={() => saveSong(true)}
+              />
               <label>
                 <span>Estado legal</span>
                 <select
@@ -3813,6 +3912,56 @@ export default function Editor({ onShowList }) {
                   }}
                 />
               </label>
+            </div>
+            <div className="wpss-field">
+              <span>Administración de grupos de ensayo</span>
+              <p className="wpss-collections__hint">
+                Los proyectos seleccionados podrán grabar y adjuntar audios dentro del área de ensayos. Estos materiales no se mezclan con los adjuntos generales de la canción.
+              </p>
+              {availableProjects.length ? (
+                <>
+                  <div className="wpss-collections__shared-list">
+                    {availableProjects.map((project) => {
+                      const projectId = Number(project?.id)
+                      const checked = selectedRehearsalProjectIds.includes(projectId)
+
+                      return (
+                        <label key={projectId} className="wpss-collections__shared-item">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const nextIds = checked
+                                ? selectedRehearsalProjectIds.filter((item) => item !== projectId)
+                                : selectedRehearsalProjectIds.concat(projectId)
+                              updateSong({
+                                ...editingSong,
+                                rehearsal_project_ids: nextIds,
+                              })
+                              scheduleAutosave()
+                            }}
+                          />
+                          <span>
+                            <strong>{project?.titulo || `Proyecto #${projectId}`}</strong>
+                            {Array.isArray(project?.colaboradores) && project.colaboradores.length ? (
+                              <small>{` · ${project.colaboradores.map((item) => item.nombre).join(' · ')}`}</small>
+                            ) : (
+                              <small> · Sin colaboradores asignados</small>
+                            )}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <p className="wpss-collections__hint">
+                    {selectedRehearsalProjects.length
+                      ? `${selectedRehearsalProjects.length} proyecto(s) habilitado(s) para ensayos.`
+                      : 'Si no seleccionas proyectos, la canción no tendrá grupos de ensayo habilitados.'}
+                  </p>
+                </>
+              ) : (
+                <span>No hay proyectos disponibles todavía.</span>
+              )}
             </div>
             <label className="wpss-toggle">
               <input
@@ -4555,7 +4704,7 @@ export default function Editor({ onShowList }) {
                               </div>
                             ) : null}
                             <InlineMediaQuickActions
-                              target={contextualTarget.target}
+                              target={{ ...(contextualTarget.target || {}), compactRecorder: true }}
                               onUpload={handleQuickUploadAttachment}
                               allowedModes={['importAudio', 'recordAudio']}
                             />
@@ -4566,6 +4715,10 @@ export default function Editor({ onShowList }) {
                                 compact
                                 activeAttachmentId={selectedAttachmentId}
                                 onSelectAttachment={handleAttachmentSelect}
+                                showActions
+                                onRename={handlePreviewRenameAttachment}
+                                onUnlink={handlePreviewUnlinkAttachment}
+                                onDelete={handlePreviewDeleteAttachment}
                                 pendingActionById={pendingAttachmentActions}
                               />
                             ) : (

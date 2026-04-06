@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/current-membership",
+  "version": "2.1.0",
+  "title": "Current Membership",
+  "category": "widgets",
+  "icon": "admin-users",
+  "description": "Displays a frontend area where the logged-in user can edit their presskit and review their projects.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["membership", "presskit", "profile", "projects"],
+  "attributes": {
+    "targetUserId": {
+      "type": "number",
+      "default": 0
+    },
+    "showProjects": {
+      "type": "boolean",
+      "default": true
+    },
+    "showPreview": {
+      "type": "boolean",
+      "default": true
+    },
+    "showAdminLink": {
+      "type": "boolean",
+      "default": true
+    },
+    "loginMessage": {
+      "type": "string",
+      "default": "Inicia sesión para gestionar tu presskit y revisar tus proyectos."
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "editorScript": "file:./index.js"
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/collaborator-projects",
+  "version": "2.1.0",
+  "title": "Collaborator Projects",
+  "category": "widgets",
+  "icon": "networking",
+  "description": "Displays the related projects of a collaborator.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["collaborator", "projects", "memberships", "portfolio"],
+  "attributes": {
+    "userId": {
+      "type": "number",
+      "default": 0
+    },
+    "postsPerPage": {
+      "type": "number",
+      "default": 6
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}

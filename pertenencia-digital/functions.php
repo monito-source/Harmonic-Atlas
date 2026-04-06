@@ -116,9 +116,20 @@ const PD_PROJECT_POST_TYPE = 'proyecto';
 const PD_PROJECT_AREA_TAX = 'area_proyecto';
 
 /**
+ * Indica si el tema debe mantener el módulo legacy de proyectos.
+ */
+function pd_use_legacy_project_module(): bool {
+    return ! defined( 'WPSSB_PROJECTS_CENTRALIZED' ) || ! WPSSB_PROJECTS_CENTRALIZED;
+}
+
+/**
  * Registra el rol de colaboradores digitales.
  */
 function pd_register_collaborator_role(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     if ( null === get_role( 'pd_colaborador' ) ) {
         add_role(
             'pd_colaborador',
@@ -131,12 +142,18 @@ function pd_register_collaborator_role(): void {
     }
 }
 
-add_action( 'init', 'pd_register_collaborator_role' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'init', 'pd_register_collaborator_role' );
+}
 
 /**
  * Registra el CPT de proyectos.
  */
 function pd_register_proyecto_cpt(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     $labels = [
         'name'               => __( 'Proyectos', 'pertenencia-digital' ),
         'singular_name'      => __( 'Proyecto', 'pertenencia-digital' ),
@@ -167,12 +184,18 @@ function pd_register_proyecto_cpt(): void {
     );
 }
 
-add_action( 'init', 'pd_register_proyecto_cpt' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'init', 'pd_register_proyecto_cpt' );
+}
 
 /**
  * Registra la taxonomía de áreas para proyectos.
  */
 function pd_register_proyecto_area_taxonomy(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     $labels = [
         'name'          => __( 'Áreas del proyecto', 'pertenencia-digital' ),
         'singular_name' => __( 'Área del proyecto', 'pertenencia-digital' ),
@@ -201,7 +224,9 @@ function pd_register_proyecto_area_taxonomy(): void {
     );
 }
 
-add_action( 'init', 'pd_register_proyecto_area_taxonomy' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'init', 'pd_register_proyecto_area_taxonomy' );
+}
 
 /**
  * Sanitiza IDs numéricos en un array.
@@ -231,6 +256,10 @@ function pd_sanitize_id_list( $value ): array {
  * Meta del CPT proyecto.
  */
 function pd_register_proyecto_meta(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     register_post_meta(
         PD_PROJECT_POST_TYPE,
         'pd_proyecto_colaboradores',
@@ -312,12 +341,18 @@ function pd_register_proyecto_meta(): void {
     );
 }
 
-add_action( 'init', 'pd_register_proyecto_meta' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'init', 'pd_register_proyecto_meta' );
+}
 
 /**
  * Meta boxes para proyectos.
  */
 function pd_add_proyecto_meta_boxes(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     add_meta_box(
         'pd-proyecto-colaboradores',
         __( 'Colaboradores', 'pertenencia-digital' ),
@@ -355,7 +390,9 @@ function pd_add_proyecto_meta_boxes(): void {
     );
 }
 
-add_action( 'add_meta_boxes', 'pd_add_proyecto_meta_boxes' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'add_meta_boxes', 'pd_add_proyecto_meta_boxes' );
+}
 
 /**
  * Obtiene usuarios colaboradores.
@@ -474,12 +511,18 @@ function pd_save_proyecto_meta( int $post_id, WP_Post $post ): void {
     update_post_meta( $post_id, 'pd_proyecto_links', $links );
 }
 
-add_action( 'save_post_' . PD_PROJECT_POST_TYPE, 'pd_save_proyecto_meta', 10, 2 );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'save_post_' . PD_PROJECT_POST_TYPE, 'pd_save_proyecto_meta', 10, 2 );
+}
 
 /**
  * Scripts para meta boxes.
  */
 function pd_enqueue_proyecto_meta_assets( string $hook ): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     if ( ! in_array( $hook, [ 'post.php', 'post-new.php' ], true ) ) {
         if ( in_array( $hook, [ 'profile.php', 'user-edit.php' ], true ) ) {
             wp_enqueue_media();
@@ -511,7 +554,9 @@ function pd_enqueue_proyecto_meta_assets( string $hook ): void {
     );
 }
 
-add_action( 'admin_enqueue_scripts', 'pd_enqueue_proyecto_meta_assets' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'admin_enqueue_scripts', 'pd_enqueue_proyecto_meta_assets' );
+}
 
 /**
  * Shortcodes de colaboradores y proyectos.
@@ -562,7 +607,9 @@ function pd_shortcode_colaboradores(): string {
     return $output;
 }
 
-add_shortcode( 'pd_colaboradores', 'pd_shortcode_colaboradores' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_colaboradores', 'pd_shortcode_colaboradores' );
+}
 
 function pd_shortcode_proyecto_colaboradores(): string {
     $post_id = get_the_ID();
@@ -599,7 +646,9 @@ function pd_shortcode_proyecto_colaboradores(): string {
     return $output;
 }
 
-add_shortcode( 'pd_proyecto_colaboradores', 'pd_shortcode_proyecto_colaboradores' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_proyecto_colaboradores', 'pd_shortcode_proyecto_colaboradores' );
+}
 
 function pd_shortcode_proyecto_galeria(): string {
     $post_id = get_the_ID();
@@ -627,7 +676,9 @@ function pd_shortcode_proyecto_galeria(): string {
     return $output;
 }
 
-add_shortcode( 'pd_proyecto_galeria', 'pd_shortcode_proyecto_galeria' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_proyecto_galeria', 'pd_shortcode_proyecto_galeria' );
+}
 
 function pd_shortcode_proyecto_contacto(): string {
     $post_id = get_the_ID();
@@ -644,7 +695,9 @@ function pd_shortcode_proyecto_contacto(): string {
     return '<div class="pd-proyecto-contacto">' . wpautop( wp_kses_post( $contacto ) ) . '</div>';
 }
 
-add_shortcode( 'pd_proyecto_contacto', 'pd_shortcode_proyecto_contacto' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_proyecto_contacto', 'pd_shortcode_proyecto_contacto' );
+}
 
 function pd_shortcode_proyecto_presskit(): string {
     $post_id = get_the_ID();
@@ -691,12 +744,18 @@ function pd_shortcode_proyecto_presskit(): string {
     return $output;
 }
 
-add_shortcode( 'pd_proyecto_presskit', 'pd_shortcode_proyecto_presskit' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_proyecto_presskit', 'pd_shortcode_proyecto_presskit' );
+}
 
 /**
  * Meta para presskit de colaboradores.
  */
 function pd_register_colaborador_meta(): void {
+    if ( ! pd_use_legacy_project_module() ) {
+        return;
+    }
+
     register_meta(
         'user',
         'pd_colaborador_tagline',
@@ -760,7 +819,9 @@ function pd_register_colaborador_meta(): void {
     );
 }
 
-add_action( 'init', 'pd_register_colaborador_meta' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'init', 'pd_register_colaborador_meta' );
+}
 
 function pd_render_colaborador_presskit_fields( WP_User $user ): void {
     $tagline  = get_user_meta( $user->ID, 'pd_colaborador_tagline', true );
@@ -794,8 +855,10 @@ function pd_render_colaborador_presskit_fields( WP_User $user ): void {
     echo '</table>';
 }
 
-add_action( 'show_user_profile', 'pd_render_colaborador_presskit_fields' );
-add_action( 'edit_user_profile', 'pd_render_colaborador_presskit_fields' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'show_user_profile', 'pd_render_colaborador_presskit_fields' );
+    add_action( 'edit_user_profile', 'pd_render_colaborador_presskit_fields' );
+}
 
 function pd_save_colaborador_presskit_fields( int $user_id ): void {
     if ( ! current_user_can( 'edit_user', $user_id ) ) {
@@ -809,8 +872,10 @@ function pd_save_colaborador_presskit_fields( int $user_id ): void {
     update_user_meta( $user_id, 'pd_colaborador_galeria', isset( $_POST['pd_colaborador_galeria'] ) ? pd_sanitize_id_list( wp_unslash( $_POST['pd_colaborador_galeria'] ) ) : [] );
 }
 
-add_action( 'personal_options_update', 'pd_save_colaborador_presskit_fields' );
-add_action( 'edit_user_profile_update', 'pd_save_colaborador_presskit_fields' );
+if ( pd_use_legacy_project_module() ) {
+    add_action( 'personal_options_update', 'pd_save_colaborador_presskit_fields' );
+    add_action( 'edit_user_profile_update', 'pd_save_colaborador_presskit_fields' );
+}
 
 function pd_shortcode_colaborador_presskit( array $atts = [] ): string {
     $atts = shortcode_atts( [ 'id' => 0 ], $atts );
@@ -870,7 +935,9 @@ function pd_shortcode_colaborador_presskit( array $atts = [] ): string {
     return $output;
 }
 
-add_shortcode( 'pd_colaborador_presskit', 'pd_shortcode_colaborador_presskit' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_colaborador_presskit', 'pd_shortcode_colaborador_presskit' );
+}
 
 function pd_shortcode_colaborador_galeria( array $atts = [] ): string {
     $atts = shortcode_atts( [ 'id' => 0 ], $atts );
@@ -901,7 +968,9 @@ function pd_shortcode_colaborador_galeria( array $atts = [] ): string {
     return $output;
 }
 
-add_shortcode( 'pd_colaborador_galeria', 'pd_shortcode_colaborador_galeria' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_colaborador_galeria', 'pd_shortcode_colaborador_galeria' );
+}
 
 function pd_shortcode_colaborador_contacto( array $atts = [] ): string {
     $atts = shortcode_atts( [ 'id' => 0 ], $atts );
@@ -923,7 +992,9 @@ function pd_shortcode_colaborador_contacto( array $atts = [] ): string {
     return '<div class="pd-proyecto-contacto">' . wpautop( wp_kses_post( $contacto ) ) . '</div>';
 }
 
-add_shortcode( 'pd_colaborador_contacto', 'pd_shortcode_colaborador_contacto' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_colaborador_contacto', 'pd_shortcode_colaborador_contacto' );
+}
 
 function pd_shortcode_colaborador_proyectos( array $atts = [] ): string {
     $atts = shortcode_atts( [ 'id' => 0 ], $atts );
@@ -973,7 +1044,9 @@ function pd_shortcode_colaborador_proyectos( array $atts = [] ): string {
     return $output;
 }
 
-add_shortcode( 'pd_colaborador_proyectos', 'pd_shortcode_colaborador_proyectos' );
+if ( pd_use_legacy_project_module() ) {
+    add_shortcode( 'pd_colaborador_proyectos', 'pd_shortcode_colaborador_proyectos' );
+}
 
 /**
  * Renderiza enlaces legales públicos para el footer y la portada.
@@ -1050,6 +1123,12 @@ function pd_ensure_theme_pages(): void {
 
     $child_pages = [
         'musica' => [
+            [
+                'title'    => 'Mi pertenencia',
+                'slug'     => 'mi-pertenencia',
+                'content'  => '<!-- wp:paragraph --><p>Gestiona aquí tu presskit y tus proyectos asociados.</p><!-- /wp:paragraph -->',
+                'template' => 'mi-pertenencia',
+            ],
             [
                 'title'    => 'Press Kit',
                 'slug'     => 'presskit',
@@ -1202,13 +1281,17 @@ function pd_ensure_theme_pages(): void {
         }
     }
 
-    pd_register_proyecto_area_taxonomy();
+    if ( function_exists( 'wpssb_register_project_area_taxonomy' ) ) {
+        wpssb_register_project_area_taxonomy();
+    } elseif ( pd_use_legacy_project_module() ) {
+        pd_register_proyecto_area_taxonomy();
+    }
 
-    if ( ! term_exists( 'musica', PD_PROJECT_AREA_TAX ) ) {
+    if ( taxonomy_exists( PD_PROJECT_AREA_TAX ) && ! term_exists( 'musica', PD_PROJECT_AREA_TAX ) ) {
         wp_insert_term( 'Música', PD_PROJECT_AREA_TAX, [ 'slug' => 'musica' ] );
     }
 
-    if ( ! term_exists( 'tecnologias-web', PD_PROJECT_AREA_TAX ) ) {
+    if ( taxonomy_exists( PD_PROJECT_AREA_TAX ) && ! term_exists( 'tecnologias-web', PD_PROJECT_AREA_TAX ) ) {
         wp_insert_term( 'Tecnologías y web', PD_PROJECT_AREA_TAX, [ 'slug' => 'tecnologias-web' ] );
     }
 }

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/project-contact",
+  "version": "2.1.0",
+  "title": "Project Contact",
+  "category": "widgets",
+  "icon": "email-alt",
+  "description": "Displays the contact information of the current project.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["project", "contact", "email", "booking"],
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}
