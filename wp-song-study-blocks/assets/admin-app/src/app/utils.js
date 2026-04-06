@@ -145,6 +145,10 @@ export function endsWithJoiner(text) {
 }
 
 const HOLD_CHORD_TOKENS = new Set(['null', 'still'])
+const HOLD_CHORD_LABELS = {
+  null: 'Silencio',
+  still: 'Mantener',
+}
 
 const NOTE_TO_SEMITONE = {
   C: 0,
@@ -283,7 +287,11 @@ export function getChordPreviewValue(value) {
     return sanitized
   }
 
-  return isHoldChordToken(raw) ? raw : ''
+  if (isHoldChordToken(raw)) {
+    return HOLD_CHORD_LABELS[raw.toLowerCase()] || raw
+  }
+
+  return ''
 }
 
 export function transposePitchToken(value, semitoneShift = 0, preferFlats = false) {

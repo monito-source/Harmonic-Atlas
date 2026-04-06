@@ -74,10 +74,43 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     setCameraReady(false)
   }
 
+  const prepareAudioStream = async () => {
+    if (streamRef.current) {
+      setAudioReady(true)
+      return true
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setCaptureError('Tu navegador no permite grabar audio desde esta interfaz.')
+      return false
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      setAudioReady(true)
+      return true
+    } catch (error) {
+      setCaptureError(error?.message || 'No fue posible acceder al micrófono.')
+      return false
+    }
+  }
+
   const closeCapture = () => {
     stopStream()
     setCaptureMode(null)
     setCaptureError(null)
+  }
+
+  const cancelAudioCapture = () => {
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null
+      try {
+        recorder.stop()
+      } catch {}
+    }
+    closeCapture()
   }
 
   const refreshDriveStatus = async () => {
@@ -120,8 +153,10 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     return false
   }
 
+  const isCompactAudioRecorder = target?.compactRecorder === true
+
   useEffect(() => {
-    if (!captureMode) {
+    if (!captureMode || (isCompactAudioRecorder && captureMode === 'recordAudio')) {
       return undefined
     }
 
@@ -172,7 +207,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
       cancelled = true
       stopStream()
     }
-  }, [captureMode])
+  }, [captureMode, isCompactAudioRecorder])
 
   const handleImportFile = async (mode, event) => {
     const file = event.target.files?.[0] || null
@@ -196,7 +231,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
   const startAudioRecording = () => {
     if (!streamRef.current) {
       setCaptureError('No fue posible acceder al micrófono.')
-      return
+      return false
     }
 
     try {
@@ -211,8 +246,11 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
       }
       mediaRecorder.start()
       setIsRecording(true)
+      setCaptureMode('recordAudio')
+      return true
     } catch {
       setCaptureError('No fue posible iniciar la grabación.')
+      return false
     }
   }
 
@@ -303,9 +341,31 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     }
   }
   const openRecordAudio = async () => {
-    if (await ensureDriveReady()) {
-      setCaptureMode('recordAudio')
+    if (!(await ensureDriveReady())) {
+      return
     }
+
+    if (isCompactAudioRecorder) {
+      if (isRecording) {
+        await stopAudioRecordingAndUpload()
+        return
+      }
+
+      setCaptureError(null)
+      setCaptureMode('recordAudio')
+      const ready = await prepareAudioStream()
+      if (!ready) {
+        setCaptureMode(null)
+        return
+      }
+      const started = startAudioRecording()
+      if (!started) {
+        closeCapture()
+      }
+      return
+    }
+
+    setCaptureMode('recordAudio')
   }
   const openCapturePhoto = async () => {
     if (await ensureDriveReady()) {
@@ -336,8 +396,34 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
           </button>
         ) : null}
         {canShowMode('recordAudio') ? (
-          <button type="button" className="button button-small" onClick={openRecordAudio} disabled={disabled || isCheckingDrive}>
-            {renderActionContent('recordAudio')}
+          <button
+            type="button"
+            className={`button button-small ${isCompactAudioRecorder ? 'wpss-inline-record-button' : ''} ${isRecording ? 'is-recording' : ''}`}
+            onClick={openRecordAudio}
+            disabled={disabled || isCheckingDrive}
+            aria-label={
+              uploadingMode === 'recordAudio'
+                ? 'Subiendo grabación'
+                : isRecording
+                  ? 'Detener y subir grabación'
+                  : 'Grabar audio'
+            }
+            title={
+              uploadingMode === 'recordAudio'
+                ? 'Subiendo grabación'
+                : isRecording
+                  ? 'Detener y subir grabación'
+                  : 'Grabar audio'
+            }
+          >
+            {isCompactAudioRecorder ? (
+              <span className="wpss-inline-record-button__content">
+                {uploadingMode === 'recordAudio' ? <Spinner label="Subiendo audio a Google Drive" /> : null}
+                <span className={`wpss-inline-record-button__glyph ${isRecording ? 'is-recording' : ''}`} aria-hidden="true" />
+              </span>
+            ) : (
+              renderActionContent('recordAudio')
+            )}
           </button>
         ) : null}
         {canShowMode('importPhoto') ? (
@@ -377,7 +463,28 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
         </div>
       ) : null}
 
-      {captureMode ? (
+      {isCompactAudioRecorder && (captureMode === 'recordAudio' || captureError) ? (
+        <div className={`wpss-inline-recorder-status ${captureError ? 'has-error' : ''}`} role={captureError ? 'alert' : 'status'}>
+          <span>
+            {captureError
+              ? captureError
+              : uploadingMode === 'recordAudio'
+                ? 'Subiendo grabacion...'
+                : isRecording
+                  ? 'Grabando. Pulsa el icono otra vez para detener y subir.'
+                  : audioReady
+                    ? 'Microfono listo.'
+                    : 'Preparando microfono...'}
+          </span>
+          {captureMode === 'recordAudio' && uploadingMode !== 'recordAudio' ? (
+            <button type="button" className="button button-small button-secondary" onClick={cancelAudioCapture}>
+              Cancelar
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {captureMode && !(isCompactAudioRecorder && captureMode === 'recordAudio') ? (
         <div className="wpss-inline-capture" role="dialog" aria-modal="true">
           <button type="button" className="wpss-inline-capture__backdrop" aria-label="Cerrar" onClick={closeCapture} />
           <div className="wpss-inline-capture__panel">

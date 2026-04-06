@@ -13,19 +13,29 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Registra los bloques SSR del plugin.
  */
 function wpssb_register_blocks() {
-    register_block_type(
-        WPSSB_PATH . 'build/interface',
-        [
-            'render_callback' => 'wpssb_render_block_interface',
-        ]
-    );
+    $dynamic_blocks = [
+        'interface'               => 'wpssb_render_block_interface',
+        'song-list'               => 'wpssb_render_block_song_list',
+        'project-collaborators'   => 'wpssb_render_block_project_collaborators',
+        'project-presskit'        => 'wpssb_render_block_project_presskit',
+        'project-gallery'         => 'wpssb_render_block_project_gallery',
+        'project-contact'         => 'wpssb_render_block_project_contact',
+        'project-directory'       => 'wpssb_render_block_project_directory',
+        'collaborator-presskit'   => 'wpssb_render_block_collaborator_presskit',
+        'collaborator-gallery'    => 'wpssb_render_block_collaborator_gallery',
+        'collaborator-contact'    => 'wpssb_render_block_collaborator_contact',
+        'current-membership'      => 'wpssb_render_block_current_membership',
+        'collaborator-projects'   => 'wpssb_render_block_collaborator_projects',
+    ];
 
-    register_block_type(
-        WPSSB_PATH . 'build/song-list',
-        [
-            'render_callback' => 'wpssb_render_block_song_list',
-        ]
-    );
+    foreach ( $dynamic_blocks as $block_directory => $render_callback ) {
+        register_block_type(
+            WPSSB_PATH . 'build/' . $block_directory,
+            [
+                'render_callback' => $render_callback,
+            ]
+        );
+    }
 }
 add_action( 'init', 'wpssb_register_blocks' );
 

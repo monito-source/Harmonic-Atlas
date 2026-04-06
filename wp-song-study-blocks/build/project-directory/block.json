@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/project-directory",
+  "version": "2.1.0",
+  "title": "Project Directory",
+  "category": "widgets",
+  "icon": "screenoptions",
+  "description": "Displays a reusable listing of projects with optional area and membership filters.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["projects", "directory", "area", "memberships"],
+  "attributes": {
+    "areaSlug": {
+      "type": "string",
+      "default": ""
+    },
+    "postsPerPage": {
+      "type": "number",
+      "default": 9
+    },
+    "showImage": {
+      "type": "boolean",
+      "default": true
+    },
+    "showExcerpt": {
+      "type": "boolean",
+      "default": true
+    },
+    "showArea": {
+      "type": "boolean",
+      "default": true
+    },
+    "showCollaborators": {
+      "type": "boolean",
+      "default": false
+    },
+    "onlyCurrentUser": {
+      "type": "boolean",
+      "default": false
+    },
+    "emptyMessage": {
+      "type": "string",
+      "default": "No hay proyectos publicados todavía."
+    },
+    "loginMessage": {
+      "type": "string",
+      "default": "Inicia sesión para ver tus proyectos relacionados."
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}

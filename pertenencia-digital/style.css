@@ -403,6 +403,212 @@ body .wpss-public-reader {
   font-size: 1.05rem;
 }
 
+.pd-proyecto-card__areas,
+.pd-proyecto-card__collaborators,
+.pd-membership-shell__eyebrow,
+.pd-membership-shell__meta,
+.pd-membership-form__hint {
+  color: var(--pd-color-muted);
+  font-size: 0.95rem;
+}
+
+.pd-proyecto-card__title,
+.pd-proyecto-card__excerpt {
+  margin: 0.75rem 0 0;
+}
+
+.pd-membership-shell {
+  display: grid;
+  gap: 1.75rem;
+}
+
+.pd-membership-shell__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 1.5rem;
+  border-radius: var(--pd-radius-lg);
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.08), rgba(255, 255, 255, 0.95));
+  box-shadow: var(--pd-shadow-card);
+}
+
+.pd-membership-shell__identity {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pd-membership-shell__avatar {
+  border-radius: 20px;
+}
+
+.pd-membership-shell__title {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+}
+
+.pd-membership-shell__eyebrow,
+.pd-membership-shell__meta {
+  margin: 0.25rem 0 0;
+}
+
+.pd-membership-shell__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.pd-membership-shell__actions .wp-block-button__link,
+.pd-membership-form .wp-block-button__link {
+  border-radius: 999px;
+}
+
+.pd-membership-feedback {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  box-shadow: var(--pd-shadow-card);
+}
+
+.pd-membership-feedback.is-success {
+  background: rgba(22, 101, 52, 0.1);
+  color: #166534;
+}
+
+.pd-membership-feedback.is-error {
+  background: rgba(153, 27, 27, 0.1);
+  color: #991b1b;
+}
+
+.pd-membership-shell__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.pd-membership-editor,
+.pd-membership-panel {
+  background: var(--pd-color-surface);
+  border-radius: var(--pd-radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--pd-shadow-card);
+}
+
+.pd-membership-switcher {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.pd-membership-switcher label {
+  display: grid;
+  gap: 0.45rem;
+  flex: 1 1 280px;
+}
+
+.pd-membership-switcher select {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem;
+  background: #fff;
+  font: inherit;
+}
+
+.pd-membership-sidebar {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.pd-membership-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.pd-membership-form label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.pd-membership-gallery-field {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.pd-membership-gallery-field__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pd-membership-gallery-field__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.pd-membership-form input,
+.pd-membership-form textarea {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem;
+  background: #fff;
+  font: inherit;
+}
+
+.pd-membership-form textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.pd-membership-form .wp-block-button__link {
+  width: fit-content;
+  border: 0;
+  cursor: pointer;
+}
+
+.pd-membership-gallery-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.75rem;
+}
+
+.pd-membership-gallery-preview__item {
+  margin: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--pd-shadow-card);
+  aspect-ratio: 1 / 1;
+}
+
+.pd-membership-gallery-preview__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pd-membership-gallery-preview__empty {
+  margin: 0;
+  color: var(--pd-color-muted);
+}
+
+.pd-membership-panel__gallery {
+  margin-top: 1.5rem;
+}
+
+.pd-membership-panel__gallery h3 {
+  margin-bottom: 0.9rem;
+}
+
 body .wpss-public-reader__layout {
   max-width: none;
   min-height: calc(100vh - 120px);
@@ -551,5 +757,9 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   .pd-header-musica-tecnologia {
     --pd-header-padding-inline: clamp(0.85rem, 3vw, 1.1rem);
     --pd-header-padding-block: clamp(1rem, 3vw, 1.25rem);
+  }
+
+  .pd-membership-shell__grid {
+    grid-template-columns: 1fr;
   }
 }

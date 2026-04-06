@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/project-collaborators",
+  "version": "2.1.0",
+  "title": "Project Collaborators",
+  "category": "widgets",
+  "icon": "groups",
+  "description": "Displays the users related to the current project.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["project", "collaborators", "members", "presskit"],
+  "attributes": {
+    "showAvatar": {
+      "type": "boolean",
+      "default": true
+    },
+    "showBio": {
+      "type": "boolean",
+      "default": true
+    },
+    "showLink": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}

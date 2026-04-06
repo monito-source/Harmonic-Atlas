@@ -38,6 +38,8 @@ if ( ! defined( 'WPSS_VERSION' ) ) {
     define( 'WPSS_VERSION', WPSSB_VERSION );
 }
 
+require_once WPSSB_PATH . 'includes/songbook-access.php';
+
 /**
  * Carga traducciones del plugin de bloques.
  */
@@ -71,6 +73,7 @@ function wpssb_load_legacy_backend() {
 
 wpssb_load_legacy_backend();
 
+require_once WPSSB_PATH . 'includes/projects.php';
 require_once WPSSB_PATH . 'includes/shared-render.php';
 require_once WPSSB_PATH . 'includes/blocks.php';
 
@@ -104,9 +107,17 @@ add_action( 'init', 'wpssb_register_content_types', 5 );
  */
 function wpssb_activate_plugin() {
     wpssb_register_content_types();
+    wpssb_register_collaborator_role();
+    wpssb_register_project_post_type();
+    wpssb_register_project_area_taxonomy();
+    wpss_register_songbook_access();
 
     if ( function_exists( 'wpss_register_colega_role' ) ) {
         wpss_register_colega_role();
+    }
+
+    if ( function_exists( 'wpss_register_invitado_role' ) ) {
+        wpss_register_invitado_role();
     }
 
     flush_rewrite_rules();

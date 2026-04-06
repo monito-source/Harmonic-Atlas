@@ -149,8 +149,7 @@ function wpssb_user_can_view_songbook() {
         return wpss_user_can_view_songbook();
     }
 
-    $capability = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
-    return current_user_can( 'manage_options' ) || current_user_can( $capability );
+    return function_exists( 'wpss_user_can_read_songbook' ) ? wpss_user_can_read_songbook() : false;
 }
 
 /**
@@ -160,7 +159,7 @@ function wpssb_user_can_view_songbook() {
  * @return array
  */
 function wpssb_get_public_reader_data() {
-    $can_manage = current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
+    $can_manage = function_exists( 'wpss_user_can_manage_songbook' ) ? wpss_user_can_manage_songbook() : current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
     $is_admin   = current_user_can( 'manage_options' );
     $can_read   = wpssb_user_can_view_songbook();
 

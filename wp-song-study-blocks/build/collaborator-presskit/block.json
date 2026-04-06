@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/collaborator-presskit",
+  "version": "2.1.0",
+  "title": "Collaborator Presskit",
+  "category": "widgets",
+  "icon": "id-alt",
+  "description": "Displays the presskit of a collaborator.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["collaborator", "presskit", "artist", "author"],
+  "attributes": {
+    "userId": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}

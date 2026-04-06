@@ -311,6 +311,7 @@ if ( ! function_exists( 'wpss_get_asset_version_fallback' ) ) {
  * @return array
  */
 function wpss_get_admin_localized_data() {
+    $manage_cap = defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts';
     $tonicas = [
         'C',
         'C#',
@@ -368,6 +369,8 @@ function wpss_get_admin_localized_data() {
         'wpRestNonce'  => wp_create_nonce( 'wp_rest' ),
         'wpssNonce'    => wp_create_nonce( 'wpss' ),
         'isAdmin'      => current_user_can( 'manage_options' ),
+        'canManage'    => function_exists( 'wpss_user_can_manage_songbook' ) ? wpss_user_can_manage_songbook() : current_user_can( $manage_cap ),
+        'canRead'      => function_exists( 'wpss_user_can_read_songbook' ) ? wpss_user_can_read_songbook() : current_user_can( $manage_cap ),
         'currentUserId' => get_current_user_id(),
         'googleDriveStatus' => function_exists( 'wpss_get_google_drive_status_payload' )
             ? wpss_get_google_drive_status_payload( get_current_user_id() )

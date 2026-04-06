@@ -663,7 +663,7 @@ export default function SongMediaPanel({
         <label className="wpss-field">
           <span>Visibilidad</span>
           <select value={draft.visibility_mode} onChange={(event) => setDraft((prev) => ({ ...prev, visibility_mode: event.target.value }))}>
-            <option value="private">Privado</option>
+            <option value="private">Mismo acceso que la canción</option>
             <option value="public">Para todo el cancionero</option>
             <option value="groups">Solo agrupaciones musicales</option>
             <option value="users">Solo usuarios específicos</option>
@@ -830,7 +830,7 @@ export default function SongMediaPanel({
                           disabled={!canManage}
                           onChange={(event) => updateAttachmentDraft(attachment.id, { ...attachmentDraft, visibility_mode: event.target.value })}
                         >
-                          <option value="private">Privado</option>
+                          <option value="private">Mismo acceso que la canción</option>
                           <option value="public">Para todo el cancionero</option>
                           <option value="groups">Solo agrupaciones</option>
                           <option value="users">Solo usuarios</option>

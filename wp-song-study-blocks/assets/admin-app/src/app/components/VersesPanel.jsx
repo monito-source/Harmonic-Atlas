@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
 import {
@@ -16,6 +16,10 @@ import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
 
 const TOUCH_DRAG_ACTIVATION_DELAY = 180
 const TOUCH_DRAG_CANCEL_DISTANCE = 10
+const SPECIAL_CHORD_SUGGESTIONS = [
+  { value: 'null', display: 'Silencio', count: 0, order: -2 },
+  { value: 'still', display: 'Mantener', count: 0, order: -1 },
+]
 
 const buildContentIndicators = ({ attachments = [], comments = [], midiClips = [] }) => {
   const safeAttachments = Array.isArray(attachments) ? attachments : []
@@ -33,6 +37,95 @@ const buildContentIndicators = ({ attachments = [], comments = [], midiClips = [
     indicators.push({ key: 'midi', title: 'Tiene MIDI', tabId: 'midi' })
   }
   return indicators
+}
+
+const normalizeChordSuggestionValue = (value) => {
+  const normalized = value ? String(value).trim() : ''
+  if (!normalized || normalized === '?') {
+    return ''
+  }
+  const normalizedToken = normalized.toLowerCase()
+  if (normalizedToken === 'silencio') {
+    return 'null'
+  }
+  if (normalizedToken === 'mantener' || normalizedToken === 'sostener') {
+    return 'still'
+  }
+  const preview = getChordPreviewValue(normalized)
+  const display = preview ? String(preview).trim() : normalized
+  return display && display !== '?' ? normalized : ''
+}
+
+const buildChordSuggestionLibrary = (verses = []) => {
+  const items = new Map()
+  let order = 0
+  ;(Array.isArray(verses) ? verses : []).forEach((verse) => {
+    const segments = Array.isArray(verse?.segmentos) ? verse.segmentos : []
+    segments.forEach((segment) => {
+      const value = normalizeChordSuggestionValue(segment?.acorde)
+      if (!value) {
+        return
+      }
+      const key = value.toLowerCase()
+      const existing = items.get(key)
+      if (existing) {
+        existing.count += 1
+        return
+      }
+      items.set(key, {
+        value,
+        display: getChordPreviewValue(value) || value,
+        count: 1,
+        order,
+      })
+      order += 1
+    })
+  })
+  return Array.from(items.values()).sort((a, b) =>
+    b.count - a.count
+    || a.order - b.order
+    || String(a.display || a.value || '').localeCompare(String(b.display || b.value || ''), 'es', {
+      sensitivity: 'base',
+    }),
+  )
+}
+
+const filterChordSuggestions = (library = [], query = '') => {
+  const items = Array.isArray(library) ? library : []
+  const normalizedQuery = query ? String(query).trim().toLowerCase() : ''
+  const specials = SPECIAL_CHORD_SUGGESTIONS.filter((item) => {
+    if (!normalizedQuery) {
+      return true
+    }
+    return (
+      item.value.includes(normalizedQuery)
+      || item.display.toLowerCase().includes(normalizedQuery)
+    )
+  })
+  if (!normalizedQuery) {
+    return specials.concat(items).slice(0, 8)
+  }
+  const exact = []
+  const startsWith = []
+  const contains = []
+  items.forEach((item) => {
+    const value = String(item?.value || '').toLowerCase()
+    const display = String(item?.display || '').toLowerCase()
+    const haystack = `${value} ${display}`.trim()
+    if (!haystack.includes(normalizedQuery)) {
+      return
+    }
+    if (value === normalizedQuery || display === normalizedQuery) {
+      exact.push(item)
+      return
+    }
+    if (value.startsWith(normalizedQuery) || display.startsWith(normalizedQuery)) {
+      startsWith.push(item)
+      return
+    }
+    contains.push(item)
+  })
+  return specials.concat(exact, startsWith, contains).slice(0, 8)
 }
 
 function ContentIndicatorIcon({ type }) {
@@ -181,13 +274,25 @@ export default function VersesPanel({
   const [openNotes, setOpenNotes] = useState(() => new Set())
   const [moveTargets, setMoveTargets] = useState({})
   const [segmentMoveTargets, setSegmentMoveTargets] = useState({})
+  const [chordSuggestionsState, setChordSuggestionsState] = useState({
+    verseIndex: null,
+    segmentIndex: null,
+    query: '',
+    highlightedIndex: 0,
+  })
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const dragDropHandledRef = useRef(false)
   const touchDragSessionRef = useRef(null)
   const touchDragTimerRef = useRef(null)
   const editorsRef = useRef(new Map())
+  const chordInputRefs = useRef(new Map())
   const pendingSegmentFocusRef = useRef(null)
+  const chordSuggestionLibrary = useMemo(() => buildChordSuggestionLibrary(safeVerses), [safeVerses])
+  const visibleChordSuggestions = useMemo(
+    () => filterChordSuggestions(chordSuggestionLibrary, chordSuggestionsState.query),
+    [chordSuggestionLibrary, chordSuggestionsState.query],
+  )
 
   const clearSelection = useCallback(() => {
     setSelection((prev) => {
@@ -657,9 +762,65 @@ export default function VersesPanel({
   }
 
   const handleSegmentChordBlur = (verseIndex, segmentIndex, value) => {
-    const normalized = value ? String(value).trim() : ''
+    const normalized = normalizeChordSuggestionValue(value) || (value ? String(value).trim() : '')
     handleSegmentChange(verseIndex, segmentIndex, 'acorde', normalized || '?')
   }
+
+  const openChordSuggestions = useCallback((verseIndex, segmentIndex, query = '') => {
+    setChordSuggestionsState({
+      verseIndex,
+      segmentIndex,
+      query: String(query || ''),
+      highlightedIndex: 0,
+    })
+  }, [])
+
+  const closeChordSuggestions = useCallback(() => {
+    setChordSuggestionsState({
+      verseIndex: null,
+      segmentIndex: null,
+      query: '',
+      highlightedIndex: 0,
+    })
+  }, [])
+
+  const applyChordSuggestion = useCallback((verseIndex, segmentIndex, nextValue) => {
+    const normalized = nextValue ? String(nextValue).trim() : ''
+    handleSegmentChange(verseIndex, segmentIndex, 'acorde', normalized)
+    setChordSuggestionsState({
+      verseIndex,
+      segmentIndex,
+      query: normalized,
+      highlightedIndex: 0,
+    })
+    const key = `${verseIndex}:${segmentIndex}`
+    const input = chordInputRefs.current.get(key)
+    if (input) {
+      requestAnimationFrame(() => {
+        input.focus()
+        const end = normalized.length
+        if (typeof input.setSelectionRange === 'function') {
+          input.setSelectionRange(end, end)
+        }
+      })
+    }
+  }, [handleSegmentChange])
+
+  useEffect(() => {
+    if (chordSuggestionsState.verseIndex === null || chordSuggestionsState.segmentIndex === null) {
+      return
+    }
+    if (!visibleChordSuggestions.length) {
+      setChordSuggestionsState((prev) =>
+        prev.highlightedIndex === 0 ? prev : { ...prev, highlightedIndex: 0 },
+      )
+      return
+    }
+    setChordSuggestionsState((prev) => {
+      const nextIndex = Math.min(prev.highlightedIndex, visibleChordSuggestions.length - 1)
+      return nextIndex === prev.highlightedIndex ? prev : { ...prev, highlightedIndex: nextIndex }
+    })
+  }, [visibleChordSuggestions, chordSuggestionsState.verseIndex, chordSuggestionsState.segmentIndex])
 
   const handleSegmentTextBlur = (verseIndex, segmentIndex, html, element) => {
     const normalizedHtml = normalizeSegmentHtml(html)
@@ -1448,6 +1609,10 @@ export default function VersesPanel({
                         const segmentChordLabel = (chordValue ? String(chordValue).trim() : '') || '?'
                         const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
                         const chordInputSize = Math.max(2, String(segment?.acorde || '').length + 1)
+                        const isChordSuggestionsOpen =
+                          chordSuggestionsState.verseIndex === verseIndex
+                          && chordSuggestionsState.segmentIndex === segmentIndex
+                          && visibleChordSuggestions.length > 0
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
                         const segmentMoveKey = `${verseIndex}:${segmentIndex}`
@@ -1564,19 +1729,110 @@ export default function VersesPanel({
                               </span>
                             </button>
                             <div className="wpss-segment__fields">
-                              <label>
+                              <label className="wpss-segment__chord-field">
                                 <span>Acorde</span>
                                 <input
                                   type="text"
                                   size={chordInputSize}
                                   value={segment.acorde || ''}
-                                  onChange={(event) =>
+                                  ref={(node) => {
+                                    const key = `${verseIndex}:${segmentIndex}`
+                                    if (!node) {
+                                      chordInputRefs.current.delete(key)
+                                      return
+                                    }
+                                    chordInputRefs.current.set(key, node)
+                                  }}
+                                  onFocus={(event) => {
+                                    openChordSuggestions(verseIndex, segmentIndex, event.target.value)
+                                  }}
+                                  onClick={(event) => {
+                                    openChordSuggestions(verseIndex, segmentIndex, event.target.value)
+                                  }}
+                                  onChange={(event) => {
                                     handleSegmentChange(verseIndex, segmentIndex, 'acorde', event.target.value)
-                                  }
-                                  onBlur={(event) =>
+                                    openChordSuggestions(verseIndex, segmentIndex, event.target.value)
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (!visibleChordSuggestions.length && event.key !== 'ArrowDown') {
+                                      if (event.key === 'Escape') {
+                                        closeChordSuggestions()
+                                      }
+                                      return
+                                    }
+                                    if (event.key === 'ArrowDown') {
+                                      event.preventDefault()
+                                      if (!visibleChordSuggestions.length) {
+                                        openChordSuggestions(verseIndex, segmentIndex, event.currentTarget.value)
+                                        return
+                                      }
+                                      setChordSuggestionsState((prev) => ({
+                                        ...prev,
+                                        highlightedIndex:
+                                          (prev.highlightedIndex + 1) % visibleChordSuggestions.length,
+                                      }))
+                                      return
+                                    }
+                                    if (event.key === 'ArrowUp') {
+                                      event.preventDefault()
+                                      setChordSuggestionsState((prev) => ({
+                                        ...prev,
+                                        highlightedIndex:
+                                          prev.highlightedIndex <= 0
+                                            ? visibleChordSuggestions.length - 1
+                                            : prev.highlightedIndex - 1,
+                                      }))
+                                      return
+                                    }
+                                    if (event.key === 'Enter') {
+                                      const suggestion =
+                                        visibleChordSuggestions[
+                                          Math.max(
+                                            0,
+                                            Math.min(
+                                              chordSuggestionsState.highlightedIndex,
+                                              visibleChordSuggestions.length - 1,
+                                            ),
+                                          )
+                                        ]
+                                      if (suggestion) {
+                                        event.preventDefault()
+                                        applyChordSuggestion(verseIndex, segmentIndex, suggestion.value)
+                                      }
+                                      return
+                                    }
+                                    if (event.key === 'Escape') {
+                                      event.preventDefault()
+                                      closeChordSuggestions()
+                                    }
+                                  }}
+                                  onBlur={(event) => {
                                     handleSegmentChordBlur(verseIndex, segmentIndex, event.target.value)
-                                  }
+                                    closeChordSuggestions()
+                                  }}
                                 />
+                                {isChordSuggestionsOpen ? (
+                                  <div className="wpss-chord-suggestions" role="listbox" aria-label="Sugerencias de acorde">
+                                    {visibleChordSuggestions.map((item, suggestionIndex) => (
+                                      <button
+                                        key={`${item.value}-${suggestionIndex}`}
+                                        type="button"
+                                        className={`wpss-chord-suggestion ${
+                                          chordSuggestionsState.highlightedIndex === suggestionIndex
+                                            ? 'is-active'
+                                            : ''
+                                        }`}
+                                        onMouseDown={(event) => {
+                                          event.preventDefault()
+                                          applyChordSuggestion(verseIndex, segmentIndex, item.value)
+                                        }}
+                                      >
+                                        <strong>{item.display || item.value}</strong>
+                                        <span>{item.count > 1 ? `${item.count} usos` : '1 uso'}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </label>
                               <div>
                                 <span>Texto</span>

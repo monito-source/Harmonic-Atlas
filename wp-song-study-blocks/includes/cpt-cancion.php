@@ -98,7 +98,9 @@ function wpss_register_cpt_cancion() {
     register_post_type( 'cancion', $args );
 
     $capability_cb = static function() {
-        return current_user_can( 'edit_posts' );
+        return function_exists( 'wpss_user_can_manage_songbook' )
+            ? wpss_user_can_manage_songbook()
+            : current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
     };
 
     $meta_single_text = [
@@ -211,6 +213,99 @@ function wpss_register_cpt_cancion() {
             'auth_callback'     => $capability_cb,
             'sanitize_callback' => 'absint',
             'default'           => 0,
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_wpss_visibility_mode',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'string',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_key',
+            'default'           => 'private',
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_wpss_visibility_project_ids',
+        [
+            'show_in_rest'      => [
+                'schema' => [
+                    'type'  => 'array',
+                    'items' => [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
+            'single'            => true,
+            'type'              => 'array',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'wpssb_sanitize_id_list',
+            'default'           => [],
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_wpss_visibility_group_ids',
+        [
+            'show_in_rest'      => [
+                'schema' => [
+                    'type'  => 'array',
+                    'items' => [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
+            'single'            => true,
+            'type'              => 'array',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => function_exists( 'wpss_sanitize_media_group_ids' ) ? 'wpss_sanitize_media_group_ids' : 'wpssb_sanitize_id_list',
+            'default'           => [],
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_wpss_visibility_user_ids',
+        [
+            'show_in_rest'      => [
+                'schema' => [
+                    'type'  => 'array',
+                    'items' => [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
+            'single'            => true,
+            'type'              => 'array',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => function_exists( 'wpss_sanitize_media_explicit_user_ids' ) ? 'wpss_sanitize_media_explicit_user_ids' : 'wpssb_sanitize_id_list',
+            'default'           => [],
+        ]
+    );
+
+    register_post_meta(
+        'cancion',
+        '_wpss_rehearsal_project_ids',
+        [
+            'show_in_rest'      => [
+                'schema' => [
+                    'type'  => 'array',
+                    'items' => [
+                        'type' => 'integer',
+                    ],
+                ],
+            ],
+            'single'            => true,
+            'type'              => 'array',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'wpssb_sanitize_id_list',
+            'default'           => [],
         ]
     );
 }

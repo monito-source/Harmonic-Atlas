@@ -2738,6 +2738,41 @@ function wpss_sanitize_media_explicit_user_ids( $user_ids ) {
 }
 
 /**
+ * Sanitiza IDs de proyectos para adjuntos de ensayo.
+ *
+ * @param mixed $project_ids IDs.
+ * @return int[]
+ */
+function wpss_sanitize_media_project_ids( $project_ids ) {
+    if ( ! is_array( $project_ids ) ) {
+        return [];
+    }
+
+    $result = [];
+    foreach ( $project_ids as $value ) {
+        if ( is_array( $value ) && isset( $value['id'] ) ) {
+            $value = $value['id'];
+        }
+
+        $project_id = absint( $value );
+        if ( $project_id <= 0 ) {
+            continue;
+        }
+
+        $project = get_post( $project_id );
+        if ( ! $project || 'proyecto' !== $project->post_type ) {
+            continue;
+        }
+
+        if ( ! in_array( $project_id, $result, true ) ) {
+            $result[] = $project_id;
+        }
+    }
+
+    return $result;
+}
+
+/**
  * Sanitiza IDs de agrupaciones para ACL.
  *
  * @param mixed $group_ids IDs.
@@ -2782,6 +2817,7 @@ function wpss_sanitize_song_media_attachments( $attachments ) {
     $allowed_visibility = [ 'public', 'private', 'groups', 'users' ];
     $allowed_type       = [ 'audio', 'photo' ];
     $allowed_anchor     = [ 'song', 'section', 'verse', 'segment' ];
+    $allowed_roles      = [ 'default', 'rehearsal' ];
 
     foreach ( $attachments as $attachment ) {
         if ( $attachment instanceof Traversable ) {
@@ -2798,6 +2834,7 @@ function wpss_sanitize_song_media_attachments( $attachments ) {
         $type        = isset( $attachment['type'] ) ? sanitize_key( $attachment['type'] ) : 'audio';
         $anchor_type = isset( $attachment['anchor_type'] ) ? sanitize_key( $attachment['anchor_type'] ) : 'song';
         $visibility  = isset( $attachment['visibility_mode'] ) ? sanitize_key( $attachment['visibility_mode'] ) : 'private';
+        $role        = isset( $attachment['attachment_role'] ) ? sanitize_key( $attachment['attachment_role'] ) : 'default';
 
         if ( '' === $id || ! in_array( $type, $allowed_type, true ) || ! in_array( $anchor_type, $allowed_anchor, true ) ) {
             continue;
@@ -2807,18 +2844,32 @@ function wpss_sanitize_song_media_attachments( $attachments ) {
             $visibility = 'private';
         }
 
+        if ( ! in_array( $role, $allowed_roles, true ) ) {
+            $role = 'default';
+        }
+
         $group_ids = wpss_sanitize_media_group_ids( isset( $attachment['visibility_group_ids'] ) ? $attachment['visibility_group_ids'] : [] );
         $user_ids  = wpss_sanitize_media_explicit_user_ids( isset( $attachment['visibility_user_ids'] ) ? $attachment['visibility_user_ids'] : [] );
+        $project_ids = wpss_sanitize_media_project_ids( isset( $attachment['project_ids'] ) ? $attachment['project_ids'] : [] );
+
+        if ( 'rehearsal' === $role ) {
+            $type        = 'audio';
+            $visibility  = 'private';
+        } else {
+            $project_ids = [];
+        }
 
         $item = [
             'id'                   => $id,
             'type'                 => $type,
+            'attachment_role'      => $role,
             'title'                => isset( $attachment['title'] ) ? sanitize_text_field( $attachment['title'] ) : '',
             'source_kind'          => isset( $attachment['source_kind'] ) ? sanitize_key( $attachment['source_kind'] ) : 'import',
             'anchor_type'          => $anchor_type,
             'section_id'           => isset( $attachment['section_id'] ) ? sanitize_key( $attachment['section_id'] ) : '',
             'verse_index'          => isset( $attachment['verse_index'] ) ? max( 0, absint( $attachment['verse_index'] ) ) : 0,
             'segment_index'        => isset( $attachment['segment_index'] ) ? max( 0, absint( $attachment['segment_index'] ) ) : 0,
+            'project_ids'          => $project_ids,
             'visibility_mode'      => $visibility,
             'visibility_group_ids' => $group_ids,
             'visibility_user_ids'  => $user_ids,
@@ -2964,23 +3015,59 @@ function wpss_current_user_can_access_song_attachment( array $attachment, $song_
         return true;
     }
 
+    $attachment_role = isset( $attachment['attachment_role'] ) ? sanitize_key( $attachment['attachment_role'] ) : 'default';
+    $settings        = wpss_get_song_media_access_settings( $song_id );
+    $visibility      = isset( $settings['visibility_mode'] ) ? sanitize_key( $settings['visibility_mode'] ) : 'private';
+
     $user_id = absint( $user_id ? $user_id : get_current_user_id() );
-    if ( $user_id <= 0 ) {
-        return false;
-    }
 
     $owner_user_id = isset( $attachment['owner_user_id'] ) ? absint( $attachment['owner_user_id'] ) : 0;
-    if ( $owner_user_id > 0 && $owner_user_id === $user_id ) {
+    if ( $user_id > 0 && $owner_user_id > 0 && $owner_user_id === $user_id ) {
         return true;
+    }
+
+    if ( 'rehearsal' === $attachment_role ) {
+        if ( $user_id <= 0 ) {
+            return false;
+        }
+
+        if ( function_exists( 'wpss_user_can_manage_songbook' ) && wpss_user_can_manage_songbook( $user_id ) ) {
+            return true;
+        }
+
+        if ( ! function_exists( 'wpss_user_can_read_song' ) || ! wpss_user_can_read_song( $song_id, $user_id ) ) {
+            return false;
+        }
+
+        $project_ids = wpss_sanitize_media_project_ids( isset( $attachment['project_ids'] ) ? $attachment['project_ids'] : [] );
+        if ( empty( $project_ids ) ) {
+            return false;
+        }
+
+        return function_exists( 'wpssb_user_belongs_to_projects' ) && wpssb_user_belongs_to_projects( $user_id, $project_ids );
+    }
+
+    if ( 'public' === $visibility ) {
+        if ( $user_id <= 0 ) {
+            return wpss_is_song_public_site_visible( $song_id );
+        }
+
+        return function_exists( 'wpss_user_can_read_song' ) && wpss_user_can_read_song( $song_id, $user_id );
+    }
+
+    if ( $user_id <= 0 ) {
+        return false;
     }
 
     if ( wpss_current_user_can_manage_song( $song_id ) ) {
         return true;
     }
 
-    $settings   = wpss_get_song_media_access_settings( $song_id );
-    $visibility = isset( $settings['visibility_mode'] ) ? sanitize_key( $settings['visibility_mode'] ) : 'private';
-    if ( 'public' === $visibility ) {
+    if ( ! function_exists( 'wpss_user_can_read_song' ) || ! wpss_user_can_read_song( $song_id, $user_id ) ) {
+        return false;
+    }
+
+    if ( 'private' === $visibility ) {
         return true;
     }
 
@@ -2998,6 +3085,25 @@ function wpss_current_user_can_access_song_attachment( array $attachment, $song_
     }
 
     return false;
+}
+
+/**
+ * Resuelve proyectos legibles para un adjunto de respuesta.
+ *
+ * @param int[] $project_ids IDs proyecto.
+ * @return array
+ */
+function wpss_prepare_song_media_projects_for_response( $project_ids ) {
+    $items = [];
+
+    foreach ( wpss_sanitize_media_project_ids( $project_ids ) as $project_id ) {
+        $items[] = [
+            'id'     => $project_id,
+            'titulo' => sanitize_text_field( get_the_title( $project_id ) ),
+        ];
+    }
+
+    return $items;
 }
 
 /**
@@ -3019,12 +3125,15 @@ function wpss_prepare_song_media_attachment_for_response( array $attachment, $so
     return [
         'id'                   => $attachment['id'],
         'type'                 => $attachment['type'],
+        'attachment_role'      => isset( $attachment['attachment_role'] ) ? sanitize_key( $attachment['attachment_role'] ) : 'default',
         'title'                => $attachment['title'],
         'source_kind'          => $attachment['source_kind'],
         'anchor_type'          => $attachment['anchor_type'],
         'section_id'           => $attachment['section_id'],
         'verse_index'          => $attachment['verse_index'],
         'segment_index'        => $attachment['segment_index'],
+        'project_ids'          => wpss_sanitize_media_project_ids( isset( $attachment['project_ids'] ) ? $attachment['project_ids'] : [] ),
+        'projects'             => wpss_prepare_song_media_projects_for_response( isset( $attachment['project_ids'] ) ? $attachment['project_ids'] : [] ),
         'visibility_mode'      => $settings['visibility_mode'],
         'visibility_group_ids' => array_map( 'intval', $settings['visibility_group_ids'] ),
         'visibility_user_ids'  => array_map( 'intval', $settings['visibility_user_ids'] ),
@@ -3126,6 +3235,14 @@ function wpss_current_user_can_manage_song_attachment( array $attachment, $song_
     $owner_user_id = isset( $attachment['owner_user_id'] ) ? absint( $attachment['owner_user_id'] ) : 0;
     if ( $owner_user_id > 0 && $owner_user_id === $user_id ) {
         return true;
+    }
+
+    $attachment_role = isset( $attachment['attachment_role'] ) ? sanitize_key( $attachment['attachment_role'] ) : 'default';
+    if ( 'rehearsal' === $attachment_role ) {
+        if ( function_exists( 'wpss_user_can_manage_songbook' ) && wpss_user_can_manage_songbook( $user_id ) ) {
+            return true;
+        }
+        return false;
     }
 
     $author_id = (int) get_post_field( 'post_author', $song_id );
@@ -3330,11 +3447,28 @@ function wpss_rest_upload_song_media_to_google_drive( WP_REST_Request $request )
         return new WP_REST_Response( [ 'message' => __( 'Primero guarda la canción antes de adjuntar archivos.', 'wp-song-study' ) ], 400 );
     }
 
-    if ( ! wpss_current_user_can_manage_song( $song_id ) ) {
+    $user_id = get_current_user_id();
+    $attachment_role = sanitize_key( (string) $request->get_param( 'attachment_role' ) );
+    if ( ! in_array( $attachment_role, [ 'default', 'rehearsal' ], true ) ) {
+        $attachment_role = 'default';
+    }
+
+    $project_ids = wpss_sanitize_media_project_ids(
+        json_decode( (string) $request->get_param( 'project_ids' ), true )
+    );
+
+    if ( 'rehearsal' === $attachment_role ) {
+        if ( ! function_exists( 'wpss_user_can_upload_song_rehearsal' ) || ! wpss_user_can_upload_song_rehearsal( $song_id, $project_ids, $user_id ) ) {
+            return new WP_REST_Response( [ 'message' => __( 'No puedes adjuntar ensayos a esta canción o proyecto.', 'wp-song-study' ) ], 403 );
+        }
+
+        if ( empty( $project_ids ) ) {
+            return new WP_REST_Response( [ 'message' => __( 'Selecciona un proyecto para registrar el ensayo.', 'wp-song-study' ) ], 400 );
+        }
+    } elseif ( ! wpss_current_user_can_manage_song( $song_id ) ) {
         return new WP_REST_Response( [ 'message' => __( 'No puedes adjuntar archivos a una canción que no administras.', 'wp-song-study' ) ], 403 );
     }
 
-    $user_id = get_current_user_id();
     $config  = wpss_get_google_drive_user_config( $user_id );
     if ( empty( $config['connected'] ) ) {
         return new WP_REST_Response( [ 'message' => __( 'Conecta tu Google Drive antes de subir audio o fotos.', 'wp-song-study' ) ], 400 );
@@ -3381,17 +3515,56 @@ function wpss_rest_upload_song_media_to_google_drive( WP_REST_Request $request )
         $type = str_starts_with( $mime_type, 'image/' ) ? 'photo' : 'audio';
     }
 
+    if ( 'rehearsal' === $attachment_role ) {
+        $type = 'audio';
+    }
+
     $settings = wpss_get_song_media_access_settings( $song_id );
+    $title    = sanitize_text_field( (string) $request->get_param( 'title' ) );
+
+    if ( '' === $title && 'rehearsal' === $attachment_role ) {
+        $anchor_type   = sanitize_key( (string) $request->get_param( 'anchor_type' ) );
+        $section_id    = sanitize_key( (string) $request->get_param( 'section_id' ) );
+        $verse_index   = max( 0, absint( $request->get_param( 'verse_index' ) ) );
+        $segment_index = max( 0, absint( $request->get_param( 'segment_index' ) ) );
+        $snapshot      = wpss_get_song_media_structure_snapshot( $song_id );
+        $section_name  = '';
+
+        if ( 'section' === $anchor_type && '' !== $section_id && ! empty( $snapshot['sections'] ) ) {
+            foreach ( $snapshot['sections'] as $section ) {
+                if ( ! is_array( $section ) ) {
+                    continue;
+                }
+
+                if ( $section_id === sanitize_key( (string) ( $section['id'] ?? '' ) ) ) {
+                    $section_name = sanitize_text_field( (string) ( $section['nombre'] ?? '' ) );
+                    break;
+                }
+            }
+        }
+
+        if ( 'section' === $anchor_type ) {
+            $title = $section_name ? sprintf( __( 'Ensayo · %s', 'wp-song-study' ), $section_name ) : __( 'Ensayo de sección', 'wp-song-study' );
+        } elseif ( 'verse' === $anchor_type ) {
+            $title = sprintf( __( 'Ensayo · verso %d', 'wp-song-study' ), $verse_index + 1 );
+        } elseif ( 'segment' === $anchor_type ) {
+            $title = sprintf( __( 'Ensayo · fragmento %d', 'wp-song-study' ), $segment_index + 1 );
+        } else {
+            $title = __( 'Ensayo general', 'wp-song-study' );
+        }
+    }
 
     $attachment = [
         'id'                   => 'media-' . sanitize_key( wp_generate_uuid4() ),
         'type'                 => $type,
-        'title'                => sanitize_text_field( (string) $request->get_param( 'title' ) ),
+        'attachment_role'      => $attachment_role,
+        'title'                => $title,
         'source_kind'          => sanitize_key( (string) $request->get_param( 'source_kind' ) ),
         'anchor_type'          => sanitize_key( (string) $request->get_param( 'anchor_type' ) ),
         'section_id'           => sanitize_key( (string) $request->get_param( 'section_id' ) ),
         'verse_index'          => max( 0, absint( $request->get_param( 'verse_index' ) ) ),
         'segment_index'        => max( 0, absint( $request->get_param( 'segment_index' ) ) ),
+        'project_ids'          => 'rehearsal' === $attachment_role ? $project_ids : [],
         'visibility_mode'      => $settings['visibility_mode'],
         'visibility_group_ids' => $settings['visibility_group_ids'],
         'visibility_user_ids'  => $settings['visibility_user_ids'],
@@ -3465,14 +3638,27 @@ function wpss_rest_stream_song_media_attachment( WP_REST_Request $request ) {
         return new WP_Error( 'wpss_media_owner_missing', __( 'El adjunto no tiene un propietario de Drive válido.', 'wp-song-study' ), [ 'status' => 500 ] );
     }
 
+    $range_header = '';
+    if ( isset( $_SERVER['HTTP_RANGE'] ) ) {
+        $candidate_range = wp_unslash( $_SERVER['HTTP_RANGE'] );
+        if ( is_string( $candidate_range ) && preg_match( '/^bytes=\d*-\d*(,\d*-\d*)*$/', $candidate_range ) ) {
+            $range_header = $candidate_range;
+        }
+    }
+
+    $request_headers = [
+        'Accept' => isset( $attachment['mime_type'] ) ? $attachment['mime_type'] : '*/*',
+    ];
+    if ( '' !== $range_header ) {
+        $request_headers['Range'] = $range_header;
+    }
+
     $download = wpss_google_drive_request(
         $owner_user_id,
         'GET',
         'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $attachment['file_id'] ) . '?alt=media',
         [
-            'headers' => [
-                'Accept' => isset( $attachment['mime_type'] ) ? $attachment['mime_type'] : '*/*',
-            ],
+            'headers' => $request_headers,
         ]
     );
 
@@ -3480,21 +3666,34 @@ function wpss_rest_stream_song_media_attachment( WP_REST_Request $request ) {
         return new WP_Error( 'wpss_media_download_failed', $download->get_error_message(), [ 'status' => 500 ] );
     }
 
-    $mime_type = ! empty( $attachment['mime_type'] ) ? $attachment['mime_type'] : 'application/octet-stream';
-    $body      = (string) $download['body'];
-    $length    = strlen( $body );
+    $mime_type        = ! empty( $attachment['mime_type'] ) ? $attachment['mime_type'] : 'application/octet-stream';
+    $body             = (string) $download['body'];
+    $download_headers = isset( $download['headers'] ) ? $download['headers'] : [];
+    $status_code      = ! empty( $download['code'] ) ? (int) $download['code'] : 200;
+    $length_header    = '';
+    $range_response   = '';
+
+    if ( is_array( $download_headers ) || $download_headers instanceof ArrayAccess ) {
+        $length_header  = isset( $download_headers['content-length'] ) ? (string) $download_headers['content-length'] : '';
+        $range_response = isset( $download_headers['content-range'] ) ? (string) $download_headers['content-range'] : '';
+    }
+
+    $length = '' !== $length_header ? (int) $length_header : strlen( $body );
 
     while ( ob_get_level() > 0 ) {
         ob_end_clean();
     }
 
-    status_header( 200 );
+    status_header( 206 === $status_code ? 206 : 200 );
     nocache_headers();
     header( 'Content-Type: ' . $mime_type );
     header( 'Content-Length: ' . $length );
     header( 'Cache-Control: private, max-age=300' );
     header( 'Content-Disposition: inline; filename="' . rawurlencode( ! empty( $attachment['file_name'] ) ? $attachment['file_name'] : $attachment['id'] ) . '"' );
-    header( 'Accept-Ranges: none' );
+    header( 'Accept-Ranges: bytes' );
+    if ( '' !== $range_response ) {
+        header( 'Content-Range: ' . $range_response );
+    }
 
     echo $body;
     exit;
@@ -3533,12 +3732,14 @@ function wpss_rest_update_song_media_attachment( WP_REST_Request $request ) {
     $next_attachment = [
         'id'                   => $attachment['id'],
         'type'                 => isset( $params['type'] ) ? $params['type'] : $attachment['type'],
+        'attachment_role'      => isset( $attachment['attachment_role'] ) ? $attachment['attachment_role'] : 'default',
         'title'                => array_key_exists( 'title', $params ) ? $params['title'] : $attachment['title'],
         'source_kind'          => array_key_exists( 'source_kind', $params ) ? $params['source_kind'] : $attachment['source_kind'],
         'anchor_type'          => array_key_exists( 'anchor_type', $params ) ? $params['anchor_type'] : $attachment['anchor_type'],
         'section_id'           => array_key_exists( 'section_id', $params ) ? $params['section_id'] : $attachment['section_id'],
         'verse_index'          => array_key_exists( 'verse_index', $params ) ? $params['verse_index'] : $attachment['verse_index'],
         'segment_index'        => array_key_exists( 'segment_index', $params ) ? $params['segment_index'] : $attachment['segment_index'],
+        'project_ids'          => isset( $attachment['project_ids'] ) ? $attachment['project_ids'] : [],
         'visibility_mode'      => $settings['visibility_mode'],
         'visibility_group_ids' => $settings['visibility_group_ids'],
         'visibility_user_ids'  => $settings['visibility_user_ids'],

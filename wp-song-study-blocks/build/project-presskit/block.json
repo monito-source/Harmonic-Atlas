@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/project-presskit",
+  "version": "2.1.0",
+  "title": "Project Presskit",
+  "category": "widgets",
+  "icon": "format-status",
+  "description": "Displays the presskit information of the current project.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["project", "presskit", "bio", "links"],
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"]
+  },
+  "usesContext": ["postId", "postType"],
+  "editorScript": "file:./index.js"
+}
