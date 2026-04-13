@@ -18,6 +18,61 @@ add_action(
     }
 );
 
+/**
+ * Devuelve las plantillas de página personalizadas del tema.
+ *
+ * @return array<string, string>
+ */
+function pd_get_custom_page_templates(): array {
+    return [
+        'inicio'                 => __( 'Inicio / Landing', 'pertenencia-digital' ),
+        'presskit'               => __( 'Press Kit', 'pertenencia-digital' ),
+        'mi-pertenencia'         => __( 'Mi pertenencia', 'pertenencia-digital' ),
+        'proyectos-musica'       => __( 'Proyectos (Música)', 'pertenencia-digital' ),
+        'proyectos-tecnologias'  => __( 'Proyectos (Tecnologías y web)', 'pertenencia-digital' ),
+    ];
+}
+
+/**
+ * Refuerza el registro de plantillas de página en el selector del editor.
+ *
+ * En algunos flujos de FSE la detección vía theme.json no se refleja de inmediato
+ * en el selector de plantilla. Este filtro actúa como fallback para asegurar que
+ * las plantillas del tema sí aparezcan disponibles para páginas.
+ *
+ * @param array              $page_templates Plantillas detectadas por WordPress.
+ * @param WP_Theme|null      $theme          Tema actual.
+ * @param WP_Post|null       $post           Post actual.
+ * @param string             $post_type      Tipo de post.
+ * @return array
+ */
+function pd_register_page_templates_fallback( array $page_templates, $theme = null, $post = null, string $post_type = 'page' ): array {
+    if ( 'page' !== $post_type ) {
+        return $page_templates;
+    }
+
+    return array_merge( $page_templates, pd_get_custom_page_templates() );
+}
+add_filter( 'theme_page_templates', 'pd_register_page_templates_fallback', 10, 4 );
+
+/**
+ * Registra la categoría de patrones del tema.
+ */
+function pd_register_block_pattern_categories(): void {
+    if ( ! function_exists( 'register_block_pattern_category' ) ) {
+        return;
+    }
+
+    register_block_pattern_category(
+        'pertenencia-digital',
+        [
+            'label'       => __( 'Pertenencia Digital', 'pertenencia-digital' ),
+            'description' => __( 'Patrones reutilizables del tema Pertenencia Digital.', 'pertenencia-digital' ),
+        ]
+    );
+}
+add_action( 'init', 'pd_register_block_pattern_categories' );
+
 add_action(
     'wp_enqueue_scripts',
     function () {
@@ -76,7 +131,24 @@ function pd_is_child_of_musica_page(): bool {
 }
 
 /**
- * Usa una cabecera reducida para páginas hijas de "música".
+ * Determina si la página actual usa la plantilla editorial de presskit.
+ */
+function pd_is_presskit_page(): bool {
+    if ( ! is_page() ) {
+        return false;
+    }
+
+    $current_page_id = get_queried_object_id();
+
+    if ( ! $current_page_id ) {
+        return false;
+    }
+
+    return 'presskit' === get_page_template_slug( $current_page_id );
+}
+
+/**
+ * Usa la cabecera de música para páginas hijas de "música" y presskits.
  */
 add_filter(
     'render_block_data',
@@ -89,7 +161,7 @@ add_filter(
             return $parsed_block;
         }
 
-        if ( ! pd_is_child_of_musica_page() ) {
+        if ( ! pd_is_child_of_musica_page() && ! pd_is_presskit_page() ) {
             return $parsed_block;
         }
 
@@ -1267,6 +1339,13 @@ function pd_ensure_theme_pages(): void {
                     'post_content' => $page['content'],
                 ]
             );
+        }
+
+        if ( ! empty( $page['template'] ) ) {
+            $current_template = get_post_meta( $page_id, '_wp_page_template', true );
+            if ( ! $current_template || 'default' === $current_template ) {
+                update_post_meta( $page_id, '_wp_page_template', $page['template'] );
+            }
         }
 
         if ( 'politica-de-privacidad' === $page['slug'] ) {

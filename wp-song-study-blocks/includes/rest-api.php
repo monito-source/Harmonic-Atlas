@@ -5739,8 +5739,125 @@ function wpss_rest_save_campos_armonicos( WP_REST_Request $request ) {
  *
  * @return array
  */
+function wpss_build_default_piano_chord( $id, $name, $root, array $notes, $quality, array $aliases = [], array $enarmonics = [] ) {
+    $clean_notes = array_values(
+        array_filter(
+            array_map( 'sanitize_text_field', $notes ),
+            static function( $note ) {
+                return '' !== $note;
+            }
+        )
+    );
+
+    $clean_aliases = array_values(
+        array_filter(
+            array_unique(
+                array_map( 'sanitize_text_field', $aliases )
+            ),
+            static function( $alias ) {
+                return '' !== $alias;
+            }
+        )
+    );
+
+    $clean_enarmonics = array_values(
+        array_filter(
+            array_unique(
+                array_map( 'sanitize_text_field', $enarmonics )
+            ),
+            static function( $alias ) {
+                return '' !== $alias;
+            }
+        )
+    );
+
+    return [
+        'id' => sanitize_key( $id ),
+        'name' => sanitize_text_field( $name ),
+        'aliases' => $clean_aliases,
+        'root_base' => sanitize_text_field( $root ),
+        'enarmonics' => $clean_enarmonics,
+        'quality' => sanitize_key( $quality ),
+        'quality_other' => '',
+        'voices' => 3,
+        'paradigm' => 'functional',
+        'notes' => $clean_notes,
+        'voicing' => $clean_notes,
+        'relations' => [],
+        'evolution' => [],
+        'diagrams' => [
+            'piano' => [
+                [
+                    'label' => __( 'Triada', 'wp-song-study' ),
+                    'baseFret' => 1,
+                    'frets' => [],
+                    'fingers' => [],
+                    'keys' => $clean_notes,
+                    'notes' => $clean_notes,
+                ],
+            ],
+        ],
+    ];
+}
+
 function wpss_get_default_acordes() {
-    return [];
+    $defaults = [];
+
+    $major_specs = [
+        [ 'id' => 'triad-major-c', 'name' => 'C', 'root' => 'C', 'notes' => [ 'C', 'E', 'G' ], 'aliases' => [ 'Cmaj' ] ],
+        [ 'id' => 'triad-major-db', 'name' => 'Db', 'root' => 'Db', 'notes' => [ 'Db', 'F', 'Ab' ], 'aliases' => [ 'C#', 'Dbmaj', 'C#maj' ], 'enarmonics' => [ 'C#' ] ],
+        [ 'id' => 'triad-major-d', 'name' => 'D', 'root' => 'D', 'notes' => [ 'D', 'F#', 'A' ], 'aliases' => [ 'Dmaj' ] ],
+        [ 'id' => 'triad-major-eb', 'name' => 'Eb', 'root' => 'Eb', 'notes' => [ 'Eb', 'G', 'Bb' ], 'aliases' => [ 'D#', 'Ebmaj', 'D#maj' ], 'enarmonics' => [ 'D#' ] ],
+        [ 'id' => 'triad-major-e', 'name' => 'E', 'root' => 'E', 'notes' => [ 'E', 'G#', 'B' ], 'aliases' => [ 'Emaj', 'Fb', 'Fbmaj' ], 'enarmonics' => [ 'Fb' ] ],
+        [ 'id' => 'triad-major-f', 'name' => 'F', 'root' => 'F', 'notes' => [ 'F', 'A', 'C' ], 'aliases' => [ 'Fmaj', 'E#', 'E#maj' ], 'enarmonics' => [ 'E#' ] ],
+        [ 'id' => 'triad-major-fsharp', 'name' => 'F#', 'root' => 'F#', 'notes' => [ 'F#', 'A#', 'C#' ], 'aliases' => [ 'Gb', 'F#maj', 'Gbmaj' ], 'enarmonics' => [ 'Gb' ] ],
+        [ 'id' => 'triad-major-g', 'name' => 'G', 'root' => 'G', 'notes' => [ 'G', 'B', 'D' ], 'aliases' => [ 'Gmaj' ] ],
+        [ 'id' => 'triad-major-ab', 'name' => 'Ab', 'root' => 'Ab', 'notes' => [ 'Ab', 'C', 'Eb' ], 'aliases' => [ 'G#', 'Abmaj', 'G#maj' ], 'enarmonics' => [ 'G#' ] ],
+        [ 'id' => 'triad-major-a', 'name' => 'A', 'root' => 'A', 'notes' => [ 'A', 'C#', 'E' ], 'aliases' => [ 'Amaj' ] ],
+        [ 'id' => 'triad-major-bb', 'name' => 'Bb', 'root' => 'Bb', 'notes' => [ 'Bb', 'D', 'F' ], 'aliases' => [ 'A#', 'Bbmaj', 'A#maj' ], 'enarmonics' => [ 'A#' ] ],
+        [ 'id' => 'triad-major-b', 'name' => 'B', 'root' => 'B', 'notes' => [ 'B', 'D#', 'F#' ], 'aliases' => [ 'Bmaj', 'Cb', 'Cbmaj' ], 'enarmonics' => [ 'Cb' ] ],
+    ];
+
+    $minor_specs = [
+        [ 'id' => 'triad-minor-c', 'name' => 'Cm', 'root' => 'C', 'notes' => [ 'C', 'Eb', 'G' ], 'aliases' => [ 'Cmin' ] ],
+        [ 'id' => 'triad-minor-csharp', 'name' => 'C#m', 'root' => 'C#', 'notes' => [ 'C#', 'E', 'G#' ], 'aliases' => [ 'Dbm', 'C#min', 'Dbmin' ], 'enarmonics' => [ 'Dbm' ] ],
+        [ 'id' => 'triad-minor-d', 'name' => 'Dm', 'root' => 'D', 'notes' => [ 'D', 'F', 'A' ], 'aliases' => [ 'Dmin' ] ],
+        [ 'id' => 'triad-minor-eb', 'name' => 'Ebm', 'root' => 'Eb', 'notes' => [ 'Eb', 'Gb', 'Bb' ], 'aliases' => [ 'D#m', 'Ebmin', 'D#min' ], 'enarmonics' => [ 'D#m' ] ],
+        [ 'id' => 'triad-minor-e', 'name' => 'Em', 'root' => 'E', 'notes' => [ 'E', 'G', 'B' ], 'aliases' => [ 'Emin', 'Fbm', 'Fbmin' ], 'enarmonics' => [ 'Fbm' ] ],
+        [ 'id' => 'triad-minor-f', 'name' => 'Fm', 'root' => 'F', 'notes' => [ 'F', 'Ab', 'C' ], 'aliases' => [ 'Fmin', 'E#m', 'E#min' ], 'enarmonics' => [ 'E#m' ] ],
+        [ 'id' => 'triad-minor-fsharp', 'name' => 'F#m', 'root' => 'F#', 'notes' => [ 'F#', 'A', 'C#' ], 'aliases' => [ 'Gbm', 'F#min', 'Gbmin' ], 'enarmonics' => [ 'Gbm' ] ],
+        [ 'id' => 'triad-minor-g', 'name' => 'Gm', 'root' => 'G', 'notes' => [ 'G', 'Bb', 'D' ], 'aliases' => [ 'Gmin' ] ],
+        [ 'id' => 'triad-minor-gsharp', 'name' => 'G#m', 'root' => 'G#', 'notes' => [ 'G#', 'B', 'D#' ], 'aliases' => [ 'Abm', 'G#min', 'Abmin' ], 'enarmonics' => [ 'Abm' ] ],
+        [ 'id' => 'triad-minor-a', 'name' => 'Am', 'root' => 'A', 'notes' => [ 'A', 'C', 'E' ], 'aliases' => [ 'Amin' ] ],
+        [ 'id' => 'triad-minor-bb', 'name' => 'Bbm', 'root' => 'Bb', 'notes' => [ 'Bb', 'Db', 'F' ], 'aliases' => [ 'A#m', 'Bbmin', 'A#min' ], 'enarmonics' => [ 'A#m' ] ],
+        [ 'id' => 'triad-minor-b', 'name' => 'Bm', 'root' => 'B', 'notes' => [ 'B', 'D', 'F#' ], 'aliases' => [ 'Bmin', 'Cbm', 'Cbmin' ], 'enarmonics' => [ 'Cbm' ] ],
+    ];
+
+    foreach ( $major_specs as $spec ) {
+        $defaults[] = wpss_build_default_piano_chord(
+            $spec['id'],
+            $spec['name'],
+            $spec['root'],
+            $spec['notes'],
+            'major',
+            isset( $spec['aliases'] ) ? $spec['aliases'] : [],
+            isset( $spec['enarmonics'] ) ? $spec['enarmonics'] : []
+        );
+    }
+
+    foreach ( $minor_specs as $spec ) {
+        $defaults[] = wpss_build_default_piano_chord(
+            $spec['id'],
+            $spec['name'],
+            $spec['root'],
+            $spec['notes'],
+            'minor',
+            isset( $spec['aliases'] ) ? $spec['aliases'] : [],
+            isset( $spec['enarmonics'] ) ? $spec['enarmonics'] : []
+        );
+    }
+
+    return $defaults;
 }
 
 /**
@@ -5888,7 +6005,27 @@ function wpss_normalize_acorde_item( $item, $index = 0 ) {
                     }
                 }
 
-                if ( '' === $label && empty( $frets ) && empty( $shape_notes ) ) {
+                $shape_keys = [];
+                if ( isset( $shape['keys'] ) && is_array( $shape['keys'] ) ) {
+                    foreach ( $shape['keys'] as $key ) {
+                        $key = sanitize_text_field( $key );
+                        if ( '' !== $key ) {
+                            $shape_keys[] = $key;
+                        }
+                    }
+                }
+
+                $shape_fingers = [];
+                if ( isset( $shape['fingers'] ) && is_array( $shape['fingers'] ) ) {
+                    foreach ( $shape['fingers'] as $finger ) {
+                        $finger = sanitize_text_field( $finger );
+                        if ( '' !== $finger ) {
+                            $shape_fingers[] = $finger;
+                        }
+                    }
+                }
+
+                if ( '' === $label && empty( $frets ) && empty( $shape_notes ) && empty( $shape_keys ) ) {
                     continue;
                 }
 
@@ -5896,6 +6033,8 @@ function wpss_normalize_acorde_item( $item, $index = 0 ) {
                     'label'   => $label,
                     'baseFret'=> $base_fret,
                     'frets'   => $frets,
+                    'fingers' => $shape_fingers,
+                    'keys'    => $shape_keys,
                     'notes'   => $shape_notes,
                 ];
             }
@@ -5925,6 +6064,31 @@ function wpss_normalize_acorde_item( $item, $index = 0 ) {
 }
 
 /**
+ * Construye una clave estable para detectar acordes equivalentes.
+ *
+ * @param array $acorde Acorde normalizado.
+ * @return string
+ */
+function wpss_get_acorde_identity_key( array $acorde ) {
+    $root          = isset( $acorde['root_base'] ) ? sanitize_text_field( $acorde['root_base'] ) : '';
+    $quality       = isset( $acorde['quality'] ) ? sanitize_key( $acorde['quality'] ) : '';
+    $quality_other = isset( $acorde['quality_other'] ) ? sanitize_text_field( $acorde['quality_other'] ) : '';
+    $voices        = isset( $acorde['voices'] ) ? absint( $acorde['voices'] ) : 0;
+    $name          = isset( $acorde['name'] ) ? sanitize_key( $acorde['name'] ) : '';
+
+    $quality_token = '' !== $quality ? $quality : sanitize_key( $quality_other );
+    if ( '' !== $root && '' !== $quality_token ) {
+        return sprintf( 'rqv:%s|%s|%d', sanitize_key( $root ), $quality_token, $voices );
+    }
+
+    if ( '' !== $name ) {
+        return 'name:' . $name;
+    }
+
+    return '';
+}
+
+/**
  * Obtiene la biblioteca de acordes.
  *
  * @return array
@@ -5938,25 +6102,41 @@ function wpss_get_acordes_library() {
     }
 
     $library = [];
+    $identity_map = [];
     $index = 0;
+    foreach ( $defaults as $item ) {
+        $acorde = wpss_normalize_acorde_item( $item, $index );
+        $index++;
+        if ( ! $acorde ) {
+            continue;
+        }
+        $identity = wpss_get_acorde_identity_key( $acorde );
+        if ( '' !== $identity && isset( $identity_map[ $identity ] ) && $identity_map[ $identity ] !== $acorde['id'] ) {
+            unset( $library[ $identity_map[ $identity ] ] );
+        }
+        $library[ $acorde['id'] ] = $acorde;
+        if ( '' !== $identity ) {
+            $identity_map[ $identity ] = $acorde['id'];
+        }
+    }
+
     foreach ( $stored as $item ) {
         $acorde = wpss_normalize_acorde_item( $item, $index );
         $index++;
         if ( ! $acorde ) {
             continue;
         }
-        $library[] = $acorde;
-    }
-
-    foreach ( $defaults as $item ) {
-        $acorde = wpss_normalize_acorde_item( $item, $index );
-        $index++;
-        if ( $acorde ) {
-            $library[] = $acorde;
+        $identity = wpss_get_acorde_identity_key( $acorde );
+        if ( '' !== $identity && isset( $identity_map[ $identity ] ) && $identity_map[ $identity ] !== $acorde['id'] ) {
+            unset( $library[ $identity_map[ $identity ] ] );
+        }
+        $library[ $acorde['id'] ] = $acorde;
+        if ( '' !== $identity ) {
+            $identity_map[ $identity ] = $acorde['id'];
         }
     }
 
-    return $library;
+    return array_values( $library );
 }
 
 /**
@@ -5967,6 +6147,7 @@ function wpss_get_acordes_library() {
  */
 function wpss_save_acordes_library( array $items ) {
     $normalized = [];
+    $identity_map = [];
     $index = 0;
     foreach ( $items as $item ) {
         $acorde = wpss_normalize_acorde_item( $item, $index );
@@ -5974,7 +6155,17 @@ function wpss_save_acordes_library( array $items ) {
         if ( ! $acorde ) {
             continue;
         }
+        $identity = wpss_get_acorde_identity_key( $acorde );
+
+        if ( '' !== $identity && isset( $identity_map[ $identity ] ) ) {
+            $normalized[ $identity_map[ $identity ] ] = $acorde;
+            continue;
+        }
+
         $normalized[] = $acorde;
+        if ( '' !== $identity ) {
+            $identity_map[ $identity ] = count( $normalized ) - 1;
+        }
     }
 
     update_option( 'wpss_acordes', array_values( $normalized ), false );

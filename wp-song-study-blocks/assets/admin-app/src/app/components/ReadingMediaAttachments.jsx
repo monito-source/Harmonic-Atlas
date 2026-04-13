@@ -43,6 +43,16 @@ function ForwardIcon() {
   )
 }
 
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="13" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  )
+}
+
 function formatCreatedAt(value) {
   if (!value) return ''
   const normalized = String(value).replace(' ', 'T')
@@ -220,11 +230,14 @@ function ReadingAttachmentCard({ attachment, compact = false, minimal = false, o
 
 function AudioAttachmentPlayer({ attachment, minimal = false }) {
   const audioRef = useRef(null)
+  const menuRef = useRef(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(Number(attachment?.duration_seconds) || 0)
   const [currentTime, setCurrentTime] = useState(0)
   const [seekValue, setSeekValue] = useState(0)
   const [isSeeking, setIsSeeking] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
+  const speedOptions = [0.75, 1, 1.25, 1.5, 2]
 
   useEffect(() => {
     setDuration(Number(attachment?.duration_seconds) || 0)
@@ -232,7 +245,16 @@ function AudioAttachmentPlayer({ attachment, minimal = false }) {
     setSeekValue(0)
     setIsPlaying(false)
     setIsSeeking(false)
+    setPlaybackRate(1)
   }, [attachment?.id, attachment?.duration_seconds])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) {
+      return
+    }
+    audio.playbackRate = playbackRate
+  }, [playbackRate])
 
   const resolvedDuration = duration > 0 ? duration : 0
   const progressMax = resolvedDuration > 0 ? resolvedDuration : 0
@@ -316,6 +338,18 @@ function AudioAttachmentPlayer({ attachment, minimal = false }) {
     }
   }
 
+  const closeMenu = () => {
+    const menu = menuRef.current
+    if (menu && menu.hasAttribute('open')) {
+      menu.removeAttribute('open')
+    }
+  }
+
+  const handlePlaybackRateChange = (nextRate) => {
+    setPlaybackRate(nextRate)
+    closeMenu()
+  }
+
   return (
     <div className={`wpss-audio-player ${minimal ? 'is-minimal' : ''}`.trim()}>
       <audio
@@ -362,36 +396,100 @@ function AudioAttachmentPlayer({ attachment, minimal = false }) {
           <span>5</span>
         </button>
         {!minimal ? (
-          <div className="wpss-audio-player__timeline">
-            <input
-              type="range"
-              min="0"
-              max={String(progressMax || 0)}
-              step="0.1"
-              value={String(Math.min(visualCurrentTime, progressMax || visualCurrentTime))}
-              onPointerDown={() => setIsSeeking(true)}
-              onChange={(event) => applySeekValue(event.target.value)}
-              onInput={(event) => applySeekValue(event.currentTarget.value)}
-              onPointerUp={() => {
-                setIsSeeking(false)
-                syncCurrentTime()
-              }}
-              onKeyUp={(event) => {
-                applySeekValue(event.currentTarget.value)
-                syncCurrentTime()
-              }}
-              aria-label="Mover reproducción"
-              disabled={!progressMax}
-            />
-            <div className="wpss-audio-player__time">
-              <span>{formatDuration(visualCurrentTime)}</span>
-              <span>{formatDuration(resolvedDuration)}</span>
+          <>
+            <div className="wpss-audio-player__timeline">
+              <input
+                type="range"
+                min="0"
+                max={String(progressMax || 0)}
+                step="0.1"
+                value={String(Math.min(visualCurrentTime, progressMax || visualCurrentTime))}
+                onPointerDown={() => setIsSeeking(true)}
+                onChange={(event) => applySeekValue(event.target.value)}
+                onInput={(event) => applySeekValue(event.currentTarget.value)}
+                onPointerUp={() => {
+                  setIsSeeking(false)
+                  syncCurrentTime()
+                }}
+                onKeyUp={(event) => {
+                  applySeekValue(event.currentTarget.value)
+                  syncCurrentTime()
+                }}
+                aria-label="Mover reproducción"
+                disabled={!progressMax}
+              />
+              <div className="wpss-audio-player__time">
+                <span>{formatDuration(visualCurrentTime)}</span>
+                <span>{formatDuration(resolvedDuration)}</span>
+              </div>
             </div>
-          </div>
+            <details ref={menuRef} className="wpss-audio-player__menu">
+              <summary aria-label="Más opciones de audio">
+                <MoreIcon />
+              </summary>
+              <div className="wpss-audio-player__menu-panel">
+                <div className="wpss-audio-player__menu-group">
+                  <strong>Velocidad</strong>
+                  <div className="wpss-audio-player__speed-list">
+                    {speedOptions.map((speed) => (
+                      <button
+                        key={`speed-${speed}`}
+                        type="button"
+                        className={`wpss-audio-player__speed-button ${playbackRate === speed ? 'is-active' : ''}`}
+                        onClick={() => handlePlaybackRateChange(speed)}
+                      >
+                        {`${speed}x`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <a
+                  className="wpss-audio-player__menu-link"
+                  href={attachment?.stream_url || '#'}
+                  download={attachment?.file_name || attachment?.title || 'adjunto'}
+                  onClick={closeMenu}
+                >
+                  Descargar
+                </a>
+              </div>
+            </details>
+          </>
         ) : (
-          <span className="wpss-audio-player__time wpss-audio-player__time--minimal">
-            {`${formatDuration(visualCurrentTime)} / ${formatDuration(resolvedDuration)}`}
-          </span>
+          <>
+            <span className="wpss-audio-player__time wpss-audio-player__time--minimal">
+              {`${formatDuration(visualCurrentTime)} / ${formatDuration(resolvedDuration)}`}
+            </span>
+            <details ref={menuRef} className="wpss-audio-player__menu">
+              <summary aria-label="Más opciones de audio">
+                <MoreIcon />
+              </summary>
+              <div className="wpss-audio-player__menu-panel">
+                <div className="wpss-audio-player__menu-group">
+                  <strong>Velocidad</strong>
+                  <div className="wpss-audio-player__speed-list">
+                    {speedOptions.map((speed) => (
+                      <button
+                        key={`speed-minimal-${speed}`}
+                        type="button"
+                        className={`wpss-audio-player__speed-button ${playbackRate === speed ? 'is-active' : ''}`}
+                        onClick={() => handlePlaybackRateChange(speed)}
+                      >
+                        {`${speed}x`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <a
+                  className="wpss-audio-player__menu-link"
+                  href={attachment?.stream_url || '#'}
+                  download={attachment?.file_name || attachment?.title || 'adjunto'}
+                  onClick={closeMenu}
+                >
+                  Descargar
+                </a>
+              </div>
+            </details>
+          </>
         )}
       </div>
     </div>

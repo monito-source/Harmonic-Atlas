@@ -25,6 +25,10 @@ if ( ! defined( 'WPSSB_PROJECT_AREA_TAX' ) ) {
     define( 'WPSSB_PROJECT_AREA_TAX', 'area_proyecto' );
 }
 
+if ( ! defined( 'WPSSB_COLLABORATOR_TARGET_META' ) ) {
+    define( 'WPSSB_COLLABORATOR_TARGET_META', '_wpssb_collaborator_user_id' );
+}
+
 /**
  * Sanitiza listas de IDs.
  *
@@ -417,6 +421,67 @@ function wpssb_add_project_meta_boxes() {
 add_action( 'add_meta_boxes', 'wpssb_add_project_meta_boxes' );
 
 /**
+ * Registra el meta box para elegir el usuario objetivo de una página pública.
+ *
+ * @return void
+ */
+function wpssb_add_collaborator_target_meta_box() {
+    add_meta_box(
+        'wpssb-collaborator-target',
+        __( 'Usuario objetivo del presskit', 'wp-song-study-blocks' ),
+        'wpssb_render_collaborator_target_meta_box',
+        'page',
+        'side',
+        'default'
+    );
+}
+add_action( 'add_meta_boxes_page', 'wpssb_add_collaborator_target_meta_box' );
+
+/**
+ * Renderiza el selector de usuario objetivo en páginas.
+ *
+ * @param WP_Post $post Post actual.
+ * @return void
+ */
+function wpssb_render_collaborator_target_meta_box( WP_Post $post ) {
+    wp_nonce_field( 'wpssb_save_collaborator_target_meta', 'wpssb_collaborator_target_nonce' );
+
+    $selected_user_id = absint( get_post_meta( $post->ID, WPSSB_COLLABORATOR_TARGET_META, true ) );
+    $page_template    = (string) get_page_template_slug( $post->ID );
+    $users            = get_users(
+        [
+            'orderby' => 'display_name',
+            'order'   => 'ASC',
+        ]
+    );
+
+    echo '<p>' . esc_html__( 'Elige qué colaborador, colega músico o administrador representa esta página. Los bloques públicos de presskit, galería, contacto y proyectos usarán este usuario antes de tomar el autor de la página.', 'wp-song-study-blocks' ) . '</p>';
+
+    if ( 'presskit' === $page_template ) {
+        echo '<p><strong>' . esc_html__( 'La plantilla actual es Press Kit.', 'wp-song-study-blocks' ) . '</strong></p>';
+    }
+
+    echo '<label class="screen-reader-text" for="wpssb_collaborator_target_user">' . esc_html__( 'Usuario objetivo', 'wp-song-study-blocks' ) . '</label>';
+    echo '<select id="wpssb_collaborator_target_user" name="wpssb_collaborator_target_user" class="widefat">';
+    echo '<option value="0">' . esc_html__( 'Autor de la página (por defecto)', 'wp-song-study-blocks' ) . '</option>';
+
+    foreach ( $users as $user ) {
+        if ( ! $user instanceof WP_User ) {
+            continue;
+        }
+
+        printf(
+            '<option value="%1$d" %2$s>%3$s</option>',
+            (int) $user->ID,
+            selected( $selected_user_id, (int) $user->ID, false ),
+            esc_html( $user->display_name . ' · ' . $user->user_email )
+        );
+    }
+
+    echo '</select>';
+}
+
+/**
  * Render del meta box de miembros.
  *
  * @param WP_Post $post Post actual.
@@ -554,6 +619,57 @@ function wpssb_save_project_meta( $post_id, $post ) {
 add_action( 'save_post_' . WPSSB_PROJECT_POST_TYPE, 'wpssb_save_project_meta', 10, 2 );
 
 /**
+ * Guarda el usuario objetivo vinculado a una página pública.
+ *
+ * @param int $post_id ID del post.
+ * @param WP_Post $post Post actual.
+ * @return void
+ */
+function wpssb_save_collaborator_target_meta( $post_id, $post ) {
+    if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+        return;
+    }
+
+    if ( ! $post instanceof WP_Post || 'page' !== $post->post_type ) {
+        return;
+    }
+
+    if ( ! isset( $_POST['wpssb_collaborator_target_nonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['wpssb_collaborator_target_nonce'] ), 'wpssb_save_collaborator_target_meta' ) ) {
+        return;
+    }
+
+    if ( ! current_user_can( 'edit_post', $post_id ) ) {
+        return;
+    }
+
+    $user_id = isset( $_POST['wpssb_collaborator_target_user'] ) ? absint( wp_unslash( $_POST['wpssb_collaborator_target_user'] ) ) : 0;
+
+    if ( $user_id > 0 ) {
+        update_post_meta( $post_id, WPSSB_COLLABORATOR_TARGET_META, $user_id );
+        return;
+    }
+
+    delete_post_meta( $post_id, WPSSB_COLLABORATOR_TARGET_META );
+}
+add_action( 'save_post_page', 'wpssb_save_collaborator_target_meta', 10, 2 );
+
+/**
+ * Obtiene el usuario objetivo explícito configurado para una página o post.
+ *
+ * @param int $post_id ID del post.
+ * @return int
+ */
+function wpssb_get_explicit_collaborator_target_user_id( $post_id ) {
+    $post_id = absint( $post_id );
+
+    if ( ! $post_id ) {
+        return 0;
+    }
+
+    return absint( get_post_meta( $post_id, WPSSB_COLLABORATOR_TARGET_META, true ) );
+}
+
+/**
  * Carga assets admin para proyectos y perfiles.
  *
  * @param string $hook Hook actual.
@@ -655,6 +771,92 @@ function wpssb_save_collaborator_presskit_fields( $user_id ) {
 }
 add_action( 'personal_options_update', 'wpssb_save_collaborator_presskit_fields' );
 add_action( 'edit_user_profile_update', 'wpssb_save_collaborator_presskit_fields' );
+
+/**
+ * Indica si el tema activo expone una template FSE concreta.
+ *
+ * El slug coincide con el valor guardado en `_wp_page_template` para block themes.
+ *
+ * @param string $slug Slug de template sin extensión.
+ * @return bool
+ */
+function wpssb_theme_has_block_template_slug( $slug ) {
+    $slug = sanitize_title( (string) $slug );
+
+    if ( '' === $slug ) {
+        return false;
+    }
+
+    $candidate_paths = array_unique(
+        array_filter(
+            [
+                trailingslashit( get_stylesheet_directory() ) . 'templates/' . $slug . '.html',
+                trailingslashit( get_template_directory() ) . 'templates/' . $slug . '.html',
+            ]
+        )
+    );
+
+    foreach ( $candidate_paths as $candidate_path ) {
+        if ( file_exists( $candidate_path ) ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Devuelve la template preferida para la página editorial de presskit.
+ *
+ * La capa visual debe vivir en el tema; el plugin solo la detecta y la utiliza
+ * cuando existe para no duplicar markup ni acoplarse a un tema concreto.
+ *
+ * @return string
+ */
+function wpssb_get_preferred_presskit_page_template() {
+    return wpssb_theme_has_block_template_slug( 'presskit' ) ? 'presskit' : '';
+}
+
+/**
+ * Asigna la template `presskit` a páginas llamadas `presskit` cuando el tema activo
+ * la declara y la página todavía usa la template por defecto.
+ *
+ * @return void
+ */
+function wpssb_sync_presskit_page_template_assignment() {
+    $template_slug = wpssb_get_preferred_presskit_page_template();
+
+    if ( '' === $template_slug ) {
+        return;
+    }
+
+    $presskit_pages = get_posts(
+        [
+            'post_type'      => 'page',
+            'post_status'    => [ 'publish', 'draft', 'pending', 'private' ],
+            'name'           => 'presskit',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        ]
+    );
+
+    foreach ( $presskit_pages as $page_id ) {
+        $page_id = (int) $page_id;
+        if ( $page_id <= 0 ) {
+            continue;
+        }
+
+        $current_template = (string) get_post_meta( $page_id, '_wp_page_template', true );
+
+        if ( '' !== $current_template && 'default' !== $current_template ) {
+            continue;
+        }
+
+        update_post_meta( $page_id, '_wp_page_template', $template_slug );
+    }
+}
+add_action( 'admin_init', 'wpssb_sync_presskit_page_template_assignment' );
 
 /**
  * Indica si el usuario actual puede editar su propio presskit desde frontend.
@@ -996,6 +1198,34 @@ function wpssb_render_project_card( $post_id, $settings = [] ) {
 }
 
 /**
+ * Resuelve el slug de área para el directorio de proyectos según el contexto actual.
+ *
+ * Si el bloque no recibe `areaSlug`, intenta usar el término actual en archivos de
+ * la taxonomía `area_proyecto` para que el tema pueda reutilizar el mismo bloque
+ * en plantillas FSE sin duplicar queries manuales.
+ *
+ * @param string $area_slug Slug explícito del bloque.
+ * @return string
+ */
+function wpssb_resolve_project_directory_area_slug( $area_slug ) {
+    $area_slug = sanitize_title( (string) $area_slug );
+
+    if ( '' !== $area_slug ) {
+        return $area_slug;
+    }
+
+    if ( is_tax( WPSSB_PROJECT_AREA_TAX ) ) {
+        $term = get_queried_object();
+
+        if ( $term instanceof WP_Term && WPSSB_PROJECT_AREA_TAX === $term->taxonomy ) {
+            return sanitize_title( $term->slug );
+        }
+    }
+
+    return '';
+}
+
+/**
  * Renderiza un directorio reusable de proyectos.
  *
  * @param array $settings Ajustes del directorio.
@@ -1026,7 +1256,7 @@ function wpssb_render_project_directory_markup( $settings = [] ) {
         'order'          => 'DESC',
     ];
 
-    $area_slug = sanitize_title( $settings['area_slug'] );
+    $area_slug = wpssb_resolve_project_directory_area_slug( $settings['area_slug'] );
     if ( $area_slug ) {
         $query_args['tax_query'] = [
             [
@@ -1405,13 +1635,22 @@ function wpssb_resolve_block_collaborator_user_id( $attributes = [], $block = nu
     }
 
     if ( ! $user_id && $block instanceof WP_Block && ! empty( $block->context['postId'] ) ) {
-        $user_id = (int) get_post_field( 'post_author', (int) $block->context['postId'] );
+        $post_id = (int) $block->context['postId'];
+        $user_id = wpssb_get_explicit_collaborator_target_user_id( $post_id );
+
+        if ( ! $user_id ) {
+            $user_id = (int) get_post_field( 'post_author', $post_id );
+        }
     }
 
     if ( ! $user_id ) {
         $post_id = get_the_ID();
         if ( $post_id ) {
-            $user_id = (int) get_post_field( 'post_author', $post_id );
+            $user_id = wpssb_get_explicit_collaborator_target_user_id( $post_id );
+
+            if ( ! $user_id ) {
+                $user_id = (int) get_post_field( 'post_author', $post_id );
+            }
         }
     }
 

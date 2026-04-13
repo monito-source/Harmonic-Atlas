@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
+import { getDriveWarningText, isDriveOperational } from '../driveStatus.js'
 
 function Spinner({ label = 'Cargando' }) {
   return <span className="wpss-inline-spinner" aria-label={label} />
@@ -51,13 +52,11 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
   const [isCheckingDrive, setIsCheckingDrive] = useState(false)
   const [showDriveWarning, setShowDriveWarning] = useState(false)
 
-  const driveReady = !!driveStatus?.configured && !!driveStatus?.connected
+  const driveReady = isDriveOperational(driveStatus)
   const profileUrl = wpData?.adminUrls?.profilePage || '#'
   const drivePageUrl = wpData?.adminUrls?.drivePage || '#'
   const connectUrl = driveStatus?.connect_url || drivePageUrl
-  const driveWarningText = driveStatus?.configured
-    ? 'Tu cuenta todavía no está conectada a Google Drive.'
-    : 'Primero debes configurar y vincular tu Google Drive personal.'
+  const driveWarningText = getDriveWarningText(driveStatus)
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -136,7 +135,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     const nextStatus = await refreshDriveStatus()
     setIsCheckingDrive(false)
 
-    if (nextStatus?.configured && nextStatus?.connected) {
+    if (isDriveOperational(nextStatus)) {
       setShowDriveWarning(false)
       return true
     }
@@ -145,9 +144,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     dispatch({
       type: 'SET_STATE',
       payload: {
-        error: nextStatus?.configured
-          ? 'Debes terminar de conectar tu Google Drive antes de adjuntar audios o fotos.'
-          : 'Debes configurar tu Google Drive personal en tu perfil antes de adjuntar audios o fotos.',
+        error: getDriveWarningText(nextStatus),
       },
     })
     return false

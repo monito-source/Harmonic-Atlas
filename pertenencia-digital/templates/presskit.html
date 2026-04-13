@@ -1,188 +1,119 @@
-<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
+<!-- wp:template-part {"slug":"header-musica-hijas","tagName":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"pd-presskit","layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-presskit">
+  <!-- wp:group {"align":"wide","className":"pd-presskit__masthead","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-presskit__masthead">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+    <p class="pd-eyebrow has-x-small-font-size">Press kit</p>
+    <!-- /wp:paragraph -->
 
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","right":"var(--wp--custom--layout--content-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+    <!-- wp:paragraph {"className":"pd-presskit__intro","fontSize":"medium"} -->
+    <p class="pd-presskit__intro has-medium-font-size">Biografía, materiales de prensa, proyectos y contacto en una sola vista.</p>
+    <!-- /wp:paragraph -->
 
-  <!-- HERO / IDENTIDAD -->
-  <!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|60","bottom":"var:preset|spacing|50"}}},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-group" style="padding-top:var(--wp--preset--spacing--60);padding-bottom:var(--wp--preset--spacing--50)">
+    <!-- wp:buttons {"className":"pd-presskit__nav","layout":{"type":"flex","justifyContent":"left","flexWrap":"wrap"}} -->
+    <div class="wp-block-buttons pd-presskit__nav">
+      <!-- wp:button {"className":"is-style-outline pd-presskit__jump"} -->
+      <div class="wp-block-button is-style-outline pd-presskit__jump"><a class="wp-block-button__link wp-element-button" href="#presskit">Perfil</a></div>
+      <!-- /wp:button -->
 
-    <!-- wp:columns {"verticalAlignment":"center"} -->
-    <div class="wp-block-columns are-vertically-aligned-center">
+      <!-- wp:button {"className":"is-style-outline pd-presskit__jump"} -->
+      <div class="wp-block-button is-style-outline pd-presskit__jump"><a class="wp-block-button__link wp-element-button" href="#contenido">Contenido</a></div>
+      <!-- /wp:button -->
 
-      <!-- wp:column {"width":"30%"} -->
-      <div class="wp-block-column" style="flex-basis:30%">
-        <!-- wp:image {"sizeSlug":"large","className":"is-style-rounded"} -->
-        <figure class="wp-block-image size-large is-style-rounded">
-          <img src="https://via.placeholder.com/600x600" alt="Artist Photo"/>
-        </figure>
-        <!-- /wp:image -->
-      </div>
-      <!-- /wp:column -->
+      <!-- wp:button {"className":"is-style-outline pd-presskit__jump"} -->
+      <div class="wp-block-button is-style-outline pd-presskit__jump"><a class="wp-block-button__link wp-element-button" href="#galeria">Galería</a></div>
+      <!-- /wp:button -->
 
-      <!-- wp:column {"width":"70%"} -->
-      <div class="wp-block-column" style="flex-basis:70%">
-        <!-- wp:heading {"level":1} -->
-        <h1>Nombre del Artista / Proyecto</h1>
-        <!-- /wp:heading -->
+      <!-- wp:button {"className":"is-style-outline pd-presskit__jump"} -->
+      <div class="wp-block-button is-style-outline pd-presskit__jump"><a class="wp-block-button__link wp-element-button" href="#proyectos">Proyectos</a></div>
+      <!-- /wp:button -->
 
-        <!-- wp:paragraph -->
-        <p>Tagline corto que define tu propuesta artística o profesional.</p>
+      <!-- wp:button {"className":"is-style-outline pd-presskit__jump"} -->
+      <div class="wp-block-button is-style-outline pd-presskit__jump"><a class="wp-block-button__link wp-element-button" href="#contacto">Contacto</a></div>
+      <!-- /wp:button -->
+    </div>
+    <!-- /wp:buttons -->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:group {"align":"wide","anchor":"presskit","className":"pd-presskit__surface pd-presskit__surface--hero","layout":{"type":"constrained"}} -->
+  <div id="presskit" class="wp-block-group alignwide pd-presskit__surface pd-presskit__surface--hero">
+    <!-- wp:wp-song-study/collaborator-presskit /-->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:group {"align":"wide","anchor":"contenido","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+  <div id="contenido" class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+    <p class="pd-eyebrow has-x-small-font-size">Biografía, música y prensa</p>
+    <!-- /wp:paragraph -->
+
+    <!-- wp:heading {"level":2} -->
+    <h2 class="wp-block-heading">Contenido editorial</h2>
+    <!-- /wp:heading -->
+
+    <!-- wp:paragraph -->
+    <p>Usa el contenido de esta página para insertar biografía extendida, embebidos, cobertura de prensa, logros y descargas. Puedes apoyarte en el patrón editorial de press kit del tema.</p>
+    <!-- /wp:paragraph -->
+
+    <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:group {"align":"wide","anchor":"galeria","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+  <div id="galeria" class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+    <p class="pd-eyebrow has-x-small-font-size">Fotos de prensa</p>
+    <!-- /wp:paragraph -->
+
+    <!-- wp:heading {"level":2} -->
+    <h2 class="wp-block-heading">Galería</h2>
+    <!-- /wp:heading -->
+
+    <!-- wp:wp-song-study/collaborator-gallery /-->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:columns {"align":"wide","className":"pd-presskit__split"} -->
+  <div class="wp-block-columns alignwide pd-presskit__split">
+    <!-- wp:column -->
+    <div class="wp-block-column">
+      <!-- wp:group {"anchor":"proyectos","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+      <div id="proyectos" class="wp-block-group pd-presskit__section pd-presskit__surface">
+        <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+        <p class="pd-eyebrow has-x-small-font-size">Trayectoria</p>
         <!-- /wp:paragraph -->
 
-        <!-- wp:social-links -->
-        <ul class="wp-block-social-links">
-          <!-- wp:social-link {"service":"instagram"} /-->
-          <!-- wp:social-link {"service":"spotify"} /-->
-          <!-- wp:social-link {"service":"youtube"} /-->
-        </ul>
-        <!-- /wp:social-links -->
-      </div>
-      <!-- /wp:column -->
+        <!-- wp:heading {"level":2} -->
+        <h2 class="wp-block-heading">Proyectos</h2>
+        <!-- /wp:heading -->
 
+        <!-- wp:wp-song-study/collaborator-projects /-->
+      </div>
+      <!-- /wp:group -->
     </div>
-    <!-- /wp:columns -->
+    <!-- /wp:column -->
 
-  </div>
-  <!-- /wp:group -->
+    <!-- wp:column -->
+    <div class="wp-block-column">
+      <!-- wp:group {"anchor":"contacto","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+      <div id="contacto" class="wp-block-group pd-presskit__section pd-presskit__surface">
+        <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+        <p class="pd-eyebrow has-x-small-font-size">Enlaces y booking</p>
+        <!-- /wp:paragraph -->
 
+        <!-- wp:heading {"level":2} -->
+        <h2 class="wp-block-heading">Contacto</h2>
+        <!-- /wp:heading -->
 
-  <!-- BIO -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Biografía</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:paragraph -->
-    <p>Texto largo con tu historia, trayectoria, influencias y propuesta. Aquí puedes tener versión corta o larga del press kit.</p>
-    <!-- /wp:paragraph -->
-
-  </div>
-  <!-- /wp:group -->
-
-
-  <!-- MÚSICA / MEDIA -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Música</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:embed {"url":"https://open.spotify.com/","type":"rich"} -->
-    <figure class="wp-block-embed is-type-rich">
-      <div class="wp-block-embed__wrapper">
-        https://open.spotify.com/
+        <!-- wp:wp-song-study/collaborator-contact /-->
       </div>
-    </figure>
-    <!-- /wp:embed -->
-
-  </div>
-  <!-- /wp:group -->
-
-
-  <!-- VIDEOS -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Videos</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:embed {"url":"https://youtube.com/","type":"video"} -->
-    <figure class="wp-block-embed is-type-video">
-      <div class="wp-block-embed__wrapper">
-        https://youtube.com/
-      </div>
-    </figure>
-    <!-- /wp:embed -->
-
-  </div>
-  <!-- /wp:group -->
-
-
-  <!-- PRENSA / LOGROS -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Prensa &amp; Logros</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:list -->
-    <ul>
-      <li>Medio / Revista — “Cita destacada sobre tu proyecto”</li>
-      <li>Festival importante donde participaste</li>
-      <li>Premio o reconocimiento</li>
-    </ul>
-    <!-- /wp:list -->
-
-  </div>
-  <!-- /wp:group -->
-
-
-  <!-- GALERÍA -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Fotos de Prensa</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:gallery {"columns":3} -->
-    <figure class="wp-block-gallery columns-3 is-cropped">
-      <ul class="blocks-gallery-grid">
-        <li class="blocks-gallery-item"><img src="https://via.placeholder.com/800x600" alt="Foto de prensa 1"/></li>
-        <li class="blocks-gallery-item"><img src="https://via.placeholder.com/800x600" alt="Foto de prensa 2"/></li>
-        <li class="blocks-gallery-item"><img src="https://via.placeholder.com/800x600" alt="Foto de prensa 3"/></li>
-      </ul>
-    </figure>
-    <!-- /wp:gallery -->
-
-  </div>
-  <!-- /wp:group -->
-
-
-  <!-- DESCARGAS -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60)">
-
-    <!-- wp:heading -->
-    <h2>Descargas</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:file -->
-    <div class="wp-block-file">
-      <a href="#">Descargar Press Kit (PDF)</a>
+      <!-- /wp:group -->
     </div>
-    <!-- /wp:file -->
-
+    <!-- /wp:column -->
   </div>
-  <!-- /wp:group -->
-
-
-  <!-- CONTACTO -->
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|60","bottom":"var:preset|spacing|70"}}}} -->
-  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--60);margin-bottom:var(--wp--preset--spacing--70)">
-
-    <!-- wp:heading -->
-    <h2>Contacto</h2>
-    <!-- /wp:heading -->
-
-    <!-- wp:paragraph -->
-    <p>Email: contacto@tudominio.com</p>
-    <!-- /wp:paragraph -->
-
-    <!-- wp:paragraph -->
-    <p>Booking / Management: Nombre o agencia</p>
-    <!-- /wp:paragraph -->
-
-  </div>
-  <!-- /wp:group -->
-
+  <!-- /wp:columns -->
 </main>
 <!-- /wp:group -->
-
 <!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->

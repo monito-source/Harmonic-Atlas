@@ -2613,6 +2613,48 @@
     color: #1e40af;
 }
 
+.wpss-chord-inline-tools {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.wpss-chord-inline-tools__meta {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.3;
+}
+
+.wpss-chord-quick-editor {
+    display: grid;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #f8fafc;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.wpss-chord-quick-editor__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wpss-chord-quick-editor__header p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.wpss-chord-quick-editor__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .wpss-segment__fields textarea {
     min-height: 60px;
 }
@@ -4965,6 +5007,51 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   border: 1px solid #ccd0d4;
 }
 
+.wpss-chords-admin {
+  display: grid;
+  gap: 20px;
+}
+
+.wpss-chords-admin__config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.wpss-chords-admin__library .wpss-card__body {
+  display: grid;
+  gap: 16px;
+}
+
+.wpss-chord-browser {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.wpss-chord-browser__status {
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+  align-self: center;
+}
+
+@media (max-width: 782px) {
+  .wpss-chord-browser {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wpss-chord-browser .wpss-field,
+  .wpss-chord-browser__status {
+    grid-column: 1 / -1;
+  }
+}
+
 .wpss-chords {
   display: grid;
   gap: 16px;
@@ -4973,6 +5060,48 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
 .wpss-chord-card .wpss-card__body {
   display: grid;
   gap: 16px;
+}
+
+.wpss-chord-card__tabs,
+.wpss-chord-card__instrument-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wpss-chord-card__tab,
+.wpss-chord-card__instrument-tab {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #1e3a8a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.wpss-chord-card__tab {
+  padding: 8px 12px;
+}
+
+.wpss-chord-card__instrument-tab {
+  padding: 6px 10px;
+}
+
+.wpss-chord-card__tab.is-active,
+.wpss-chord-card__instrument-tab.is-active {
+  background: #1e3a8a;
+  border-color: #1e3a8a;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.18);
+}
+
+.wpss-chord-card__tab:hover,
+.wpss-chord-card__instrument-tab:hover {
+  border-color: #2563eb;
 }
 
 .wpss-chord-diagrams {
@@ -4993,9 +5122,24 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   justify-content: space-between;
 }
 
+.wpss-chord-diagrams__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .wpss-chord-diagrams__list {
   display: grid;
   gap: 12px;
+}
+
+.wpss-chord-diagrams__reel {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
 }
 
 .wpss-chord-diagram {
@@ -5007,6 +5151,23 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   gap: 8px;
 }
 
+.wpss-chord-diagram--reel-item {
+  flex: 0 0 min(360px, calc(100vw - 120px));
+  min-width: 280px;
+  scroll-snap-align: start;
+}
+
+.wpss-chord-diagram__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wpss-chord-diagram__preview {
+  border-top: 1px dashed #d7dce0;
+  padding-top: 10px;
+}
+
 .wpss-reading__chord.wpss-chord-hover {
   position: relative;
   display: inline-flex;
@@ -5015,7 +5176,24 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
 }
 
 .wpss-reading__chord.wpss-chord-hover.has-data {
-  cursor: help;
+  cursor: pointer;
+}
+
+.wpss-chord-hover__trigger {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-decoration: inherit;
+  cursor: pointer;
+}
+
+.wpss-chord-hover__label {
+  display: inline;
 }
 
 .wpss-chord-tooltip {
@@ -5033,6 +5211,14 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   z-index: 20;
   font-size: 12px;
   color: #0f172a;
+}
+
+.wpss-chord-tooltip--popover {
+  position: fixed;
+  bottom: auto;
+  display: block;
+  z-index: 9999;
+  pointer-events: auto;
 }
 
 .wpss-chord-tooltip__title {
@@ -5053,43 +5239,114 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   margin-top: 8px;
 }
 
+.wpss-chord-tooltip__carousel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wpss-chord-tooltip__nav {
+  appearance: none;
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wpss-chord-tooltip__nav:hover {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+.wpss-chord-tooltip__nav-status {
+  font-size: 11px;
+  color: #475569;
+  text-align: center;
+  flex: 1;
+}
+
 .wpss-chord-hover:focus .wpss-chord-tooltip,
 .wpss-chord-hover:hover .wpss-chord-tooltip,
-.wpss-chord-hover:focus-within .wpss-chord-tooltip {
+.wpss-chord-hover:focus-within .wpss-chord-tooltip,
+.wpss-chord-hover.is-open .wpss-chord-tooltip {
   display: block;
 }
 
-.wpss-guitar-diagram {
+.wpss-chord-diagram-preview {
   display: grid;
   gap: 6px;
 }
 
-.wpss-guitar-diagram__label {
+.wpss-chord-diagram-preview__label {
   font-size: 11px;
   color: #1f2937;
 }
 
-.wpss-guitar-diagram__open,
-.wpss-guitar-diagram__row,
-.wpss-guitar-diagram__frets {
+.wpss-chord-diagram-preview__meta {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.wpss-fretted-diagram {
   display: grid;
-  grid-template-columns: repeat(6, 12px);
+  gap: 4px;
+}
+
+.wpss-fretted-diagram__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wpss-fretted-diagram__tuning,
+.wpss-fretted-diagram__open,
+.wpss-fretted-diagram__row,
+.wpss-fretted-diagram__frets {
+  display: grid;
+  grid-template-columns: repeat(var(--wpss-diagram-strings, 6), 12px);
   gap: 4px;
   justify-content: start;
 }
 
-.wpss-guitar-diagram__open-cell {
+.wpss-fretted-diagram__tuning-cell,
+.wpss-fretted-diagram__open-cell {
   font-size: 10px;
   text-align: center;
   color: #64748b;
 }
 
-.wpss-guitar-diagram__grid {
+.wpss-fretted-diagram__open-cell.is-button,
+.wpss-fretted-diagram__cell.is-button {
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.wpss-fretted-diagram__open-cell.is-button {
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.wpss-fretted-diagram__open-cell.is-button.has-state {
+  border-style: solid;
+  color: #1d4ed8;
+}
+
+.wpss-fretted-diagram__grid {
   display: grid;
   gap: 4px;
 }
 
-.wpss-guitar-diagram__cell {
+.wpss-fretted-diagram__cell {
   width: 12px;
   height: 12px;
   border-radius: 999px;
@@ -5097,18 +5354,156 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
   background: #fff;
 }
 
-.wpss-guitar-diagram__cell.is-active {
+.wpss-fretted-diagram__cell.is-button:hover,
+.wpss-fretted-diagram__open-cell.is-button:hover {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+.wpss-fretted-diagram__cell.is-active {
   background: #2563eb;
   border-color: #2563eb;
 }
 
-.wpss-guitar-diagram__fret-label {
+.wpss-fretted-diagram__fret-label {
   font-size: 9px;
   color: #94a3b8;
   text-align: center;
 }
 
-.wpss-chord-diagram__notes {
+.wpss-piano-diagram {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.wpss-piano-diagram__key {
+  min-width: 18px;
+  padding: 8px 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+  text-align: center;
+  font-size: 9px;
+  color: #334155;
+}
+
+.wpss-piano-diagram__key.is-sharp {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.wpss-piano-diagram__key.is-active {
+  border-color: #2563eb;
+  box-shadow: inset 0 0 0 1px #2563eb;
+}
+
+.wpss-piano-diagram__key.is-active.is-sharp {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  border-color: #1d4ed8;
+}
+
+.wpss-wind-diagram {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #d7dce0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.wpss-wind-diagram__spine {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 50%;
+  width: 10px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+  opacity: 0.75;
+}
+
+.wpss-wind-diagram__body {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 240px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    "octave side"
+    "left side"
+    "right side";
+  gap: 10px 12px;
+}
+
+.wpss-wind-diagram__group {
+  display: grid;
+  gap: 4px;
+}
+
+.wpss-wind-diagram__group--octave {
+  grid-area: octave;
+}
+
+.wpss-wind-diagram__group--left {
+  grid-area: left;
+}
+
+.wpss-wind-diagram__group--right {
+  grid-area: right;
+}
+
+.wpss-wind-diagram__group--side {
+  grid-area: side;
+  align-content: start;
+}
+
+.wpss-wind-diagram__group-label {
+  font-size: 10px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wpss-wind-diagram__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wpss-wind-diagram__key {
+  min-width: 38px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.wpss-wind-diagram__key.is-button {
+  appearance: none;
+  cursor: pointer;
+}
+
+.wpss-wind-diagram__key.is-button:hover {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+.wpss-wind-diagram__key.is-active {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.wpss-chord-diagram-preview__notes {
   display: grid;
   gap: 4px;
   font-size: 11px;
@@ -5184,7 +5579,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
 }
 
 .wpss-chord-config {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .wpss-chord-config__section {

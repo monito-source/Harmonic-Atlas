@@ -39,6 +39,31 @@
           "slug": "blanco",
           "name": "Blanco",
           "color": "#ffffff"
+        },
+        {
+          "slug": "texto-suave",
+          "name": "Texto suave",
+          "color": "#64748b"
+        },
+        {
+          "slug": "borde-suave",
+          "name": "Borde suave",
+          "color": "#cbd5e1"
+        },
+        {
+          "slug": "resalte-header",
+          "name": "Resalte header",
+          "color": "#8fd3ff"
+        },
+        {
+          "slug": "exito",
+          "name": "Éxito",
+          "color": "#166534"
+        },
+        {
+          "slug": "error",
+          "name": "Error",
+          "color": "#991b1b"
         }
       ]
     },
@@ -52,6 +77,11 @@
         }
       ],
       "fontSizes": [
+        {
+          "slug": "x-small",
+          "size": "0.85rem",
+          "name": "XS"
+        },
         {
           "slug": "small",
           "size": "0.9rem",
@@ -107,21 +137,36 @@
           "size": "1.5rem"
         },
         {
+          "slug": "55",
+          "name": "L+",
+          "size": "1.75rem"
+        },
+        {
           "slug": "60",
           "name": "XL",
           "size": "2.25rem"
         },
         {
+          "slug": "65",
+          "name": "XL+",
+          "size": "2.5rem"
+        },
+        {
           "slug": "70",
           "name": "2XL",
           "size": "3rem"
+        },
+        {
+          "slug": "80",
+          "name": "3XL",
+          "size": "4rem"
         }
       ]
     },
     "blocks": {
       "core/button": {
         "border": {
-          "radius": "10px"
+          "radius": "var(--wp--custom--radius--button)"
         },
         "color": {
           "background": "var:preset|color|azul-principal",
@@ -146,8 +191,10 @@
         "contentPadding": "clamp(0.95rem, 4vw, 2.5rem)"
       },
       "radius": {
+        "button": "10px",
         "card": "24px",
-        "hero": "28px"
+        "hero": "28px",
+        "pill": "999px"
       },
       "shadow": {
         "header": "0 18px 40px rgba(15, 23, 42, 0.16)",
@@ -184,7 +231,7 @@
       },
       "button": {
         "border": {
-          "radius": "10px"
+          "radius": "var(--wp--custom--radius--button)"
         },
         "color": {
           "background": "var:preset|color|azul-principal",
@@ -218,7 +265,7 @@
       },
       "core/button": {
         "border": {
-          "radius": "var(--wp--preset--spacing--20)"
+          "radius": "var(--wp--custom--radius--button)"
         },
         "spacing": {
           "padding": {
@@ -253,8 +300,22 @@
   ],
   "customTemplates": [
     {
+      "name": "inicio",
+      "title": "Inicio / Landing",
+      "postTypes": [
+        "page"
+      ]
+    },
+    {
       "name": "presskit",
       "title": "Press Kit",
+      "postTypes": [
+        "page"
+      ]
+    },
+    {
+      "name": "mi-pertenencia",
+      "title": "Mi pertenencia",
       "postTypes": [
         "page"
       ]

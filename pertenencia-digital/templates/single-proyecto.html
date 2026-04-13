@@ -1,10 +1,10 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"3rem","bottom":"3rem","left":"min(6%, 2rem)","right":"min(6%, 2rem)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:3rem;padding-right:min(6%, 2rem);padding-bottom:3rem;padding-left:min(6%, 2rem)">
+<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
   <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1.4rem"}},"layout":{"type":"constrained"}} -->
   <div class="wp-block-group alignwide">
-    <!-- wp:paragraph {"style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em","fontSize":"0.85rem"},"color":{"text":"#1e3a8a"}}} -->
-    <p style="color:#1e3a8a;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase">Proyecto</p>
+    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em"}}} -->
+    <p class="has-azul-principal-color has-text-color has-x-small-font-size" style="letter-spacing:0.08em;text-transform:uppercase">Proyecto</p>
     <!-- /wp:paragraph -->
     <!-- wp:post-title {"level":1,"fontSize":"x-large"} /-->
     <!-- wp:post-featured-image {"sizeSlug":"large","style":{"border":{"radius":"18px"}}} /-->
@@ -12,25 +12,25 @@
 
     <!-- wp:buttons {"style":{"spacing":{"blockGap":{"left":"0.75rem","top":"0.75rem"}}}} -->
     <div class="wp-block-buttons">
-      <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#presskit" style="border-radius:999px">Presskit</a></div>
+      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#presskit" style="border-radius:var(--wp--custom--radius--pill)">Presskit</a></div>
       <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#integrantes" style="border-radius:999px">Integrantes</a></div>
+      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#integrantes" style="border-radius:var(--wp--custom--radius--pill)">Integrantes</a></div>
       <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#galeria" style="border-radius:999px">Galería</a></div>
+      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#galeria" style="border-radius:var(--wp--custom--radius--pill)">Galería</a></div>
       <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#contacto" style="border-radius:999px">Contacto</a></div>
+      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#contacto" style="border-radius:var(--wp--custom--radius--pill)">Contacto</a></div>
       <!-- /wp:button -->
     </div>
     <!-- /wp:buttons -->
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"presskit","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="presskit" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"presskit","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="presskit" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Presskit del proyecto</h2>
     <!-- /wp:heading -->
@@ -38,8 +38,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"integrantes","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="integrantes" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"integrantes","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="integrantes" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Integrantes y colaboradores</h2>
     <!-- /wp:heading -->
@@ -47,8 +47,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"galeria","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="galeria" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"galeria","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="galeria" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Galería del proyecto</h2>
     <!-- /wp:heading -->
@@ -56,8 +56,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"contacto","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="contacto" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"contacto","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="contacto" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Contacto</h2>
     <!-- /wp:heading -->

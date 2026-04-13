@@ -1,19 +1,19 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"3rem","bottom":"3rem","left":"min(6%, 2rem)","right":"min(6%, 2rem)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:3rem;padding-right:min(6%, 2rem);padding-bottom:3rem;padding-left:min(6%, 2rem)">
-  <!-- wp:buttons {"style":{"spacing":{"blockGap":{"left":"0.75rem","top":"0.75rem"},"margin":{"bottom":"1.75rem"}}}} -->
-  <div class="wp-block-buttons" style="margin-bottom:1.75rem">
-    <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#presskit" style="border-radius:999px">Presskit</a></div>
+<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:buttons {"style":{"spacing":{"blockGap":{"left":"0.75rem","top":"0.75rem"},"margin":{"bottom":"var:preset|spacing|55"}}}} -->
+  <div class="wp-block-buttons" style="margin-bottom:var(--wp--preset--spacing--55)">
+    <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#presskit" style="border-radius:var(--wp--custom--radius--pill)">Presskit</a></div>
     <!-- /wp:button -->
-    <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#galeria" style="border-radius:999px">Galería</a></div>
+    <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#galeria" style="border-radius:var(--wp--custom--radius--pill)">Galería</a></div>
     <!-- /wp:button -->
-    <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#proyectos" style="border-radius:999px">Proyectos</a></div>
+    <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#proyectos" style="border-radius:var(--wp--custom--radius--pill)">Proyectos</a></div>
     <!-- /wp:button -->
-    <!-- wp:button {"backgroundColor":"white","textColor":"black","style":{"border":{"radius":"999px"}},"className":"is-style-outline"} -->
-    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-black-color has-white-background-color has-text-color has-background wp-element-button" href="#contacto" style="border-radius:999px">Contacto</a></div>
+    <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
+    <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#contacto" style="border-radius:var(--wp--custom--radius--pill)">Contacto</a></div>
     <!-- /wp:button -->
   </div>
   <!-- /wp:buttons -->
@@ -24,8 +24,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"galeria","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="galeria" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"galeria","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="galeria" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Galería del colaborador</h2>
     <!-- /wp:heading -->
@@ -33,8 +33,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"proyectos","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="proyectos" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"proyectos","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="proyectos" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Proyectos relacionados</h2>
     <!-- /wp:heading -->
@@ -42,8 +42,8 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"anchor":"contacto","style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="contacto" class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"anchor":"contacto","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div id="contacto" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Contacto</h2>
     <!-- /wp:heading -->

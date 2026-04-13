@@ -1,6 +1,14 @@
-<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","className":"pd-home","layout":{"type":"constrained"}} -->
-<main class="wp-block-group pd-home">
+<?php
+/**
+ * Title: Hero de inicio
+ * Slug: pertenencia-digital/hero-inicio
+ * Categories: pertenencia-digital, featured
+ * Inserter: true
+ * Description: Hero editorial para portada o páginas de presentación.
+ */
+?>
+<!-- wp:group {"className":"pd-home","layout":{"type":"constrained"}} -->
+<div class="wp-block-group pd-home">
   <!-- wp:group {"align":"wide","className":"pd-home__hero","layout":{"type":"flex","flexWrap":"wrap","verticalAlignment":"center","justifyContent":"space-between"}} -->
   <div class="wp-block-group alignwide pd-home__hero">
     <!-- wp:group {"className":"pd-home__about","layout":{"type":"constrained"}} -->
@@ -18,19 +26,19 @@
       <!-- /wp:paragraph -->
 
       <!-- wp:paragraph -->
-      <p>Este inicio destaca nuestras dos rutas principales para que la navegación sea directa: una dedicada a procesos musicales y otra enfocada en herramientas, plataformas y experiencias web.</p>
+      <p>Usa este bloque como arranque para una portada, una landing o una presentación institucional del proyecto.</p>
       <!-- /wp:paragraph -->
 
       <!-- wp:html -->
       <div class="pd-home__illustration" aria-hidden="true">
         <svg viewBox="0 0 640 420" role="img" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="pdHeroGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="pdPatternHeroGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stop-color="var(--wp--preset--color--azul-principal)"/>
               <stop offset="100%" stop-color="var(--wp--preset--color--resalte-header)"/>
             </linearGradient>
           </defs>
-          <rect width="640" height="420" rx="28" fill="url(#pdHeroGradient)"/>
+          <rect width="640" height="420" rx="28" fill="url(#pdPatternHeroGradient)"/>
           <circle cx="142" cy="120" r="38" fill="var(--wp--preset--color--blanco)" fill-opacity="0.18"/>
           <circle cx="498" cy="94" r="22" fill="var(--wp--preset--color--blanco)" fill-opacity="0.2"/>
           <path d="M168 290c22-86 92-140 184-140 70 0 133 34 166 88" stroke="var(--wp--preset--color--blanco)" stroke-width="16" stroke-linecap="round" fill="none" fill-opacity="0.8"/>
@@ -43,32 +51,7 @@
       <!-- /wp:html -->
     </div>
     <!-- /wp:group -->
-
-    <!-- wp:group {"className":"pd-home__cta-panel","layout":{"type":"constrained"}} -->
-    <div class="wp-block-group pd-home__cta-panel">
-      <!-- wp:heading {"level":2,"fontSize":"large"} -->
-      <h2 class="wp-block-heading has-large-font-size">Explora nuestros contenidos</h2>
-      <!-- /wp:heading -->
-
-      <!-- wp:paragraph {"textColor":"oscuro"} -->
-      <p class="has-oscuro-color has-text-color">Elige una de las dos secciones destacadas para comenzar tu recorrido.</p>
-      <!-- /wp:paragraph -->
-
-      <!-- wp:buttons {"layout":{"type":"flex","orientation":"vertical"}} -->
-      <div class="wp-block-buttons">
-        <!-- wp:button {"className":"pd-home__cta pd-home__cta--primary"} -->
-        <div class="wp-block-button pd-home__cta pd-home__cta--primary"><a class="wp-block-button__link wp-element-button" href="/musica">Ir a Música</a></div>
-        <!-- /wp:button -->
-
-        <!-- wp:button {"className":"is-style-outline pd-home__cta pd-home__cta--secondary","textColor":"azul-principal"} -->
-        <div class="wp-block-button is-style-outline pd-home__cta pd-home__cta--secondary"><a class="wp-block-button__link has-azul-principal-color has-text-color wp-element-button" href="/tecnologias-web">Ir a Tecnologías y web</a></div>
-        <!-- /wp:button -->
-      </div>
-      <!-- /wp:buttons -->
-    </div>
-    <!-- /wp:group -->
   </div>
   <!-- /wp:group -->
-</main>
+</div>
 <!-- /wp:group -->
-<!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->

@@ -86,6 +86,15 @@ function wpss_register_admin_pages() {
         'wpss_render_drive_page'
     );
 
+    $import_export_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Importar / Exportar', 'wp-song-study' ),
+        __( 'Importar / Exportar', 'wp-song-study' ),
+        $capability,
+        'wpss-import-export',
+        'wpss_render_import_export_page'
+    );
+
     add_submenu_page(
         $parent_slug,
         __( 'Drive Global', 'wp-song-study' ),
@@ -95,7 +104,7 @@ function wpss_register_admin_pages() {
         'wpss_render_google_drive_global_settings_page'
     );
 
-    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $drive_hook ];
+    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $drive_hook, $import_export_hook ];
 
     add_submenu_page(
         $parent_slug,
@@ -140,6 +149,13 @@ function wpss_render_groups_page() {
  */
 function wpss_render_drive_page() {
     echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="drive"></div>';
+}
+
+/**
+ * Renderiza el contenedor del SPA para importar y exportar canciones.
+ */
+function wpss_render_import_export_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="import-export"></div>';
 }
 
 /**
@@ -379,10 +395,13 @@ function wpss_get_admin_localized_data() {
                 'connected'  => false,
             ],
         'adminUrls'    => [
-            'drivePage'  => admin_url( 'admin.php?page=wpss-mi-drive' ),
-            'groupsPage' => admin_url( 'admin.php?page=wpss-agrupaciones' ),
-            'profilePage' => admin_url( 'profile.php' ),
+            'drivePage'        => admin_url( 'admin.php?page=wpss-mi-drive' ),
+            'groupsPage'       => admin_url( 'admin.php?page=wpss-agrupaciones' ),
+            'importExportPage' => admin_url( 'admin.php?page=wpss-import-export' ),
+            'profilePage'      => admin_url( 'profile.php' ),
         ],
+        'adminPostUrl' => admin_url( 'admin-post.php' ),
+        'songExportNonce' => wp_create_nonce( 'wpss_song_export' ),
         'midiRanges'   => wpss_get_midi_range_presets(),
         'midiRangeDefault' => wpss_get_midi_range_default(),
         'tonicas'      => $tonicas,
@@ -492,6 +511,7 @@ function wpss_get_admin_localized_data() {
             'chordsEmpty'   => __( 'Aún no hay acordes registrados.', 'wp-song-study' ),
             'chordsAdd'     => __( 'Añadir acorde', 'wp-song-study' ),
             'chordsRemove'  => __( 'Eliminar', 'wp-song-study' ),
+            'importExportView' => __( 'Importar / Exportar', 'wp-song-study' ),
         ],
     ];
 }

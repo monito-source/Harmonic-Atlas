@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { createEmptySegment, createEmptyVerse } from '../state.js'
 import {
+  buildChordLookup,
   formatSegmentsForStackedMode,
+  getChordFromLookup,
   getChordPreviewValue,
   getDefaultSectionName,
   getValidSegmentIndex,
+  isHoldChordToken,
   normalizeVerseOrder,
   stripHtml,
 } from '../utils.js'
@@ -13,6 +16,7 @@ import MidiClipList from './MidiClipList.jsx'
 import CommentEditor from './CommentEditor.jsx'
 import SectionsPanel from './SectionsPanel.jsx'
 import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
+import ChordQuickEditor from './ChordQuickEditor.jsx'
 
 const TOUCH_DRAG_ACTIVATION_DELAY = 180
 const TOUCH_DRAG_CANCEL_DISTANCE = 10
@@ -20,6 +24,23 @@ const SPECIAL_CHORD_SUGGESTIONS = [
   { value: 'null', display: 'Silencio', count: 0, order: -2 },
   { value: 'still', display: 'Mantener', count: 0, order: -1 },
 ]
+
+const createEmptyChord = (preferredName = '') => ({
+  id: `acorde-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+  name: String(preferredName || '').trim(),
+  aliases: [],
+  root_base: '',
+  enarmonics: [],
+  quality: '',
+  quality_other: '',
+  voices: 1,
+  notes: [],
+  voicing: [],
+  relations: [],
+  paradigm: '',
+  evolution: [],
+  diagrams: {},
+})
 
 const buildContentIndicators = ({ attachments = [], comments = [], midiClips = [] }) => {
   const safeAttachments = Array.isArray(attachments) ? attachments : []
@@ -226,11 +247,15 @@ export default function VersesPanel({
   onMoveSegmentToNewVerse,
   useContextualToolbar = false,
 }) {
-  const { wpData } = useAppState()
+  const { state, dispatch, api, wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
   const safeVerses = Array.isArray(verses) ? verses : []
   const safeSections = Array.isArray(sections) ? sections : []
   const safeAttachments = Array.isArray(songAttachments) ? songAttachments : []
+  const chordsState = state.chords || { library: [], draft: [] }
+  const chordsLibrary = Array.isArray(chordsState.library) ? chordsState.library : []
+  const chordLookup = useMemo(() => buildChordLookup(chordsLibrary), [chordsLibrary])
+  const canManageChords = !!wpData?.isAdmin
   const fallbackSection = safeSections[0]
   const activeSectionId =
     selectedSectionId && safeSections.some((section) => section.id === selectedSectionId)
@@ -280,6 +305,14 @@ export default function VersesPanel({
     query: '',
     highlightedIndex: 0,
   })
+  const [chordEditorState, setChordEditorState] = useState({
+    verseIndex: null,
+    segmentIndex: null,
+    token: '',
+    draft: null,
+    saving: false,
+    error: '',
+  })
   const dragRef = useRef({ type: null, verseIndex: null, segmentIndex: null })
   const dragOverRef = useRef({ verseIndex: null, segmentIndex: null })
   const dragDropHandledRef = useRef(false)
@@ -293,6 +326,14 @@ export default function VersesPanel({
     () => filterChordSuggestions(chordSuggestionLibrary, chordSuggestionsState.query),
     [chordSuggestionLibrary, chordSuggestionsState.query],
   )
+
+  const getEditableChordToken = useCallback((value) => {
+    const normalized = normalizeChordSuggestionValue(value) || String(value || '').trim()
+    if (!normalized || isHoldChordToken(normalized)) {
+      return ''
+    }
+    return normalized
+  }, [])
 
   const clearSelection = useCallback(() => {
     setSelection((prev) => {
@@ -805,6 +846,117 @@ export default function VersesPanel({
       })
     }
   }, [handleSegmentChange])
+
+  const openChordEditor = useCallback((verseIndex, segmentIndex, rawValue = '') => {
+    const token = getEditableChordToken(rawValue)
+    if (!token) {
+      return
+    }
+
+    const existing = getChordFromLookup(token, chordLookup)
+    const draft = existing
+      ? JSON.parse(JSON.stringify(existing))
+      : createEmptyChord(token)
+
+    if (!draft.name) {
+      draft.name = token
+    }
+
+    setChordEditorState({
+      verseIndex,
+      segmentIndex,
+      token,
+      draft,
+      saving: false,
+      error: '',
+    })
+  }, [chordLookup, getEditableChordToken])
+
+  const closeChordEditor = useCallback(() => {
+    setChordEditorState({
+      verseIndex: null,
+      segmentIndex: null,
+      token: '',
+      draft: null,
+      saving: false,
+      error: '',
+    })
+  }, [])
+
+  const handleChordEditorDraftChange = useCallback((nextDraft) => {
+    setChordEditorState((prev) => ({ ...prev, draft: nextDraft }))
+  }, [])
+
+  const handleSaveChordEditor = useCallback(() => {
+    if (!canManageChords || !chordEditorState.draft) {
+      return
+    }
+
+    const currentDraft = {
+      ...chordEditorState.draft,
+      name: String(chordEditorState.draft.name || chordEditorState.token || '').trim(),
+    }
+
+    if (!currentDraft.name) {
+      setChordEditorState((prev) => ({ ...prev, error: 'El acorde necesita un nombre.' }))
+      return
+    }
+
+    setChordEditorState((prev) => ({ ...prev, saving: true, error: '' }))
+
+    const library = Array.isArray(chordsState.library) ? chordsState.library : []
+    let found = false
+    const nextLibrary = library.map((item) => {
+      if (String(item?.id || '') !== String(currentDraft.id || '')) {
+        return item
+      }
+      found = true
+      return currentDraft
+    })
+    const payload = found ? nextLibrary : [...nextLibrary, currentDraft]
+
+    dispatch({
+      type: 'SET_STATE',
+      payload: {
+        chords: { ...chordsState, saving: true, error: null, feedback: null },
+      },
+    })
+
+    api
+      .saveChords(payload)
+      .then((response) => {
+        const items = Array.isArray(response.data?.acordes) ? response.data.acordes : payload
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            chords: {
+              ...chordsState,
+              library: items,
+              draft: JSON.parse(JSON.stringify(items)),
+              saving: false,
+              error: null,
+              feedback: found ? 'Acorde actualizado.' : 'Acorde creado.',
+            },
+            feedback: {
+              message: found ? 'Acorde actualizado desde escritura.' : 'Acorde creado desde escritura.',
+              type: 'success',
+            },
+            error: null,
+          },
+        })
+        closeChordEditor()
+      })
+      .catch(() => {
+        const message = wpData?.strings?.chordsError || 'No fue posible guardar el acorde.'
+        dispatch({
+          type: 'SET_STATE',
+          payload: {
+            chords: { ...chordsState, saving: false, error: message, feedback: null },
+          },
+        })
+        setChordEditorState((prev) => ({ ...prev, saving: false, error: message }))
+      })
+  }, [api, canManageChords, chordEditorState, chordsState, closeChordEditor, dispatch, wpData])
 
   useEffect(() => {
     if (chordSuggestionsState.verseIndex === null || chordSuggestionsState.segmentIndex === null) {
@@ -1609,10 +1761,16 @@ export default function VersesPanel({
                         const segmentChordLabel = (chordValue ? String(chordValue).trim() : '') || '?'
                         const segmentPreviewText = stripHtml(segment?.texto || '').trim() || '...'
                         const chordInputSize = Math.max(2, String(segment?.acorde || '').length + 1)
+                        const editableChordToken = getEditableChordToken(segment?.acorde)
+                        const libraryChord = editableChordToken ? getChordFromLookup(editableChordToken, chordLookup) : null
                         const isChordSuggestionsOpen =
                           chordSuggestionsState.verseIndex === verseIndex
                           && chordSuggestionsState.segmentIndex === segmentIndex
                           && visibleChordSuggestions.length > 0
+                        const isChordEditorOpen =
+                          chordEditorState.verseIndex === verseIndex
+                          && chordEditorState.segmentIndex === segmentIndex
+                          && !!chordEditorState.draft
                         const isDragOver =
                           dragOver.verseIndex === verseIndex && dragOver.segmentIndex === segmentIndex
                         const segmentMoveKey = `${verseIndex}:${segmentIndex}`
@@ -1832,6 +1990,35 @@ export default function VersesPanel({
                                       </button>
                                     ))}
                                   </div>
+                                ) : null}
+                                {editableChordToken && canManageChords ? (
+                                  <div className="wpss-chord-inline-tools">
+                                    <button
+                                      type="button"
+                                      className="button button-small button-secondary"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => openChordEditor(verseIndex, segmentIndex, segment?.acorde)}
+                                    >
+                                      {libraryChord ? 'Editar acorde' : `Crear acorde "${editableChordToken}"`}
+                                    </button>
+                                    <span className="wpss-chord-inline-tools__meta">
+                                      {libraryChord
+                                        ? 'Existe en la librería. Puedes ajustar diagramas sin salir de escritura.'
+                                        : 'Todavía no existe en la librería.'}
+                                    </span>
+                                  </div>
+                                ) : null}
+                                {isChordEditorOpen ? (
+                                  <ChordQuickEditor
+                                    chord={chordEditorState.draft}
+                                    saving={chordEditorState.saving}
+                                    error={chordEditorState.error}
+                                    title={libraryChord ? 'Editar acorde de la librería' : 'Crear acorde en la librería'}
+                                    subtitle={libraryChord ? editableChordToken : `Nuevo acorde desde "${editableChordToken}"`}
+                                    onChange={handleChordEditorDraftChange}
+                                    onSave={handleSaveChordEditor}
+                                    onCancel={closeChordEditor}
+                                  />
                                 ) : null}
                               </label>
                               <div>

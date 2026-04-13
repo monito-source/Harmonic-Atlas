@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
+import { getDriveWarningText, isDriveOperational } from '../driveStatus.js'
 
 function formatSeconds(value) {
   const total = Math.max(0, Math.round(Number(value) || 0))
@@ -216,6 +217,8 @@ export default function SongMediaPanel({
   const availableVerses = useMemo(() => (Array.isArray(song?.versos) ? song.versos : []), [song?.versos])
   const availableSections = useMemo(() => (Array.isArray(song?.secciones) ? song.secciones : []), [song?.secciones])
   const allAttachments = useMemo(() => (Array.isArray(song?.adjuntos) ? song.adjuntos : []), [song?.adjuntos])
+  const driveReady = isDriveOperational(driveStatus)
+  const driveWarningText = getDriveWarningText(driveStatus)
   const segmentOptions = useMemo(() => {
     const verse = availableVerses[Number(draft.verse_index) || 0]
     const count = Array.isArray(verse?.segmentos) ? verse.segmentos.length : 0
@@ -486,8 +489,8 @@ export default function SongMediaPanel({
       setError('Primero guarda la canción para poder subir audios o fotos.')
       return
     }
-    if (!driveStatus?.connected) {
-      setError('Conecta tu Google Drive antes de subir adjuntos.')
+    if (!driveReady) {
+      setError(driveWarningText)
       return
     }
 
@@ -559,6 +562,9 @@ export default function SongMediaPanel({
         {' · '}
         <a href={wpData?.adminUrls?.drivePage || '#'}>Abrir Mi Drive</a>
       </p>
+      {driveStatus?.connected && !driveReady ? (
+        <p className="wpss-error">{driveWarningText}</p>
+      ) : null}
 
       <div className="wpss-media-anchor-picker">
         <div className="wpss-media-anchor-picker__header">
