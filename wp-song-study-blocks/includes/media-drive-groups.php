@@ -277,6 +277,338 @@ function wpss_google_drive_debug_hint( $value ) {
 }
 
 /**
+ * Scopes OAuth requeridos para operar adjuntos con Drive.
+ *
+ * @return string[]
+ */
+function wpss_get_google_drive_oauth_scopes() {
+    return [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'openid',
+    ];
+}
+
+/**
+ * Normaliza scopes OAuth en un arreglo estable.
+ *
+ * @param mixed $raw_scopes Scopes crudos.
+ * @return string[]
+ */
+function wpss_normalize_google_drive_scopes( $raw_scopes ) {
+    if ( is_array( $raw_scopes ) ) {
+        $tokens = $raw_scopes;
+    } else {
+        $tokens = preg_split( '/\s+/', trim( (string) $raw_scopes ) );
+    }
+
+    if ( ! is_array( $tokens ) ) {
+        return [];
+    }
+
+    return array_values(
+        array_filter(
+            array_unique(
+                array_map(
+                    static function( $scope ) {
+                        return sanitize_text_field( (string) $scope );
+                    },
+                    $tokens
+                )
+            )
+        )
+    );
+}
+
+/**
+ * Etiquetas legibles para scopes conocidos.
+ *
+ * @return array<string,string>
+ */
+function wpss_get_google_drive_scope_labels() {
+    return [
+        'https://www.googleapis.com/auth/drive'          => __( 'Acceso completo a Google Drive para adjuntos del cancionero', 'wp-song-study' ),
+        'https://www.googleapis.com/auth/userinfo.email' => __( 'Lectura del email de la cuenta conectada', 'wp-song-study' ),
+        'openid'                                         => __( 'Identidad básica OpenID', 'wp-song-study' ),
+    ];
+}
+
+/**
+ * Capacidades operativas requeridas por la integración de Drive.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function wpss_get_google_drive_capabilities() {
+    $drive_scope = 'https://www.googleapis.com/auth/drive';
+
+    return [
+        'upload' => [
+            'label'           => __( 'Subir adjuntos', 'wp-song-study' ),
+            'required_scopes' => [ $drive_scope ],
+        ],
+        'stream' => [
+            'label'           => __( 'Reproducir y descargar adjuntos', 'wp-song-study' ),
+            'required_scopes' => [ $drive_scope ],
+        ],
+        'rename' => [
+            'label'           => __( 'Renombrar adjuntos', 'wp-song-study' ),
+            'required_scopes' => [ $drive_scope ],
+        ],
+        'move' => [
+            'label'           => __( 'Mover adjuntos dentro del árbol HarmonyAtlas', 'wp-song-study' ),
+            'required_scopes' => [ $drive_scope ],
+        ],
+        'delete' => [
+            'label'           => __( 'Eliminar adjuntos del Drive', 'wp-song-study' ),
+            'required_scopes' => [ $drive_scope ],
+        ],
+    ];
+}
+
+/**
+ * Devuelve scopes faltantes respecto a una lista requerida.
+ *
+ * @param array $granted_scopes  Scopes concedidos.
+ * @param array $required_scopes Scopes requeridos.
+ * @return string[]
+ */
+function wpss_get_google_drive_missing_scopes( array $granted_scopes, array $required_scopes ) {
+    return array_values( array_diff( wpss_normalize_google_drive_scopes( $required_scopes ), wpss_normalize_google_drive_scopes( $granted_scopes ) ) );
+}
+
+/**
+ * Determina si una operación tiene scopes suficientes.
+ *
+ * @param array  $granted_scopes Scopes concedidos.
+ * @param string $operation      Operación.
+ * @return bool
+ */
+function wpss_google_drive_has_scopes_for_operation( array $granted_scopes, $operation ) {
+    $capabilities = wpss_get_google_drive_capabilities();
+    $operation    = sanitize_key( (string) $operation );
+    $required     = isset( $capabilities[ $operation ]['required_scopes'] ) && is_array( $capabilities[ $operation ]['required_scopes'] )
+        ? $capabilities[ $operation ]['required_scopes']
+        : [];
+
+    return empty( wpss_get_google_drive_missing_scopes( $granted_scopes, $required ) );
+}
+
+/**
+ * Construye el reporte operativo por capacidad.
+ *
+ * @param array $granted_scopes Scopes concedidos.
+ * @return array<int,array<string,mixed>>
+ */
+function wpss_get_google_drive_capability_report( array $granted_scopes ) {
+    $scope_labels  = wpss_get_google_drive_scope_labels();
+    $capabilities  = wpss_get_google_drive_capabilities();
+    $report        = [];
+
+    foreach ( $capabilities as $id => $definition ) {
+        $required_scopes = isset( $definition['required_scopes'] ) && is_array( $definition['required_scopes'] )
+            ? $definition['required_scopes']
+            : [];
+        $missing_scopes = wpss_get_google_drive_missing_scopes( $granted_scopes, $required_scopes );
+
+        $report[] = [
+            'id'              => $id,
+            'label'           => isset( $definition['label'] ) ? sanitize_text_field( (string) $definition['label'] ) : $id,
+            'required_scopes' => $required_scopes,
+            'required_labels' => array_values(
+                array_map(
+                    static function( $scope ) use ( $scope_labels ) {
+                        return isset( $scope_labels[ $scope ] ) ? $scope_labels[ $scope ] : $scope;
+                    },
+                    $required_scopes
+                )
+            ),
+            'ready'           => empty( $missing_scopes ),
+            'missing_scopes'  => $missing_scopes,
+        ];
+    }
+
+    return $report;
+}
+
+/**
+ * Valida si la conexión Drive del usuario está lista para una operación.
+ *
+ * @param int    $user_id   Usuario.
+ * @param string $operation Operación.
+ * @return true|WP_Error
+ */
+function wpss_assert_google_drive_operation_ready( $user_id, $operation ) {
+    $user_id      = absint( $user_id );
+    $operation    = sanitize_key( (string) $operation );
+    $config       = wpss_get_google_drive_user_config( $user_id );
+    $capabilities = wpss_get_google_drive_capabilities();
+    $label        = isset( $capabilities[ $operation ]['label'] ) ? (string) $capabilities[ $operation ]['label'] : $operation;
+
+    if ( ! wpss_google_drive_is_configured_for_user( $user_id ) ) {
+        return new WP_Error(
+            'wpss_drive_config_missing',
+            sprintf( __( 'Google Drive no está configurado para %s.', 'wp-song-study' ), $label )
+        );
+    }
+
+    if ( empty( $config['connected'] ) || ( empty( $config['refresh_token'] ) && empty( $config['access_token'] ) ) ) {
+        return new WP_Error(
+            'wpss_drive_not_connected',
+            sprintf( __( 'Reconecta Google Drive antes de %s.', 'wp-song-study' ), mb_strtolower( $label ) )
+        );
+    }
+
+    $granted_scopes = wpss_normalize_google_drive_scopes( $config['granted_scopes'] ?? [] );
+    if ( ! wpss_google_drive_has_scopes_for_operation( $granted_scopes, $operation ) ) {
+        return new WP_Error(
+            'wpss_drive_scope_missing',
+            sprintf(
+                __( 'Tu conexión actual de Google Drive no tiene permisos suficientes para %s. Desconecta y vuelve a conectar tu cuenta desde Mi Drive.', 'wp-song-study' ),
+                mb_strtolower( $label )
+            )
+        );
+    }
+
+    return true;
+}
+
+/**
+ * Ejecuta un diagnóstico operativo de la conexión Drive.
+ *
+ * @param int $user_id Usuario.
+ * @return array<string,mixed>
+ */
+function wpss_get_google_drive_health_payload( $user_id ) {
+    $user_id         = absint( $user_id );
+    $configured      = wpss_google_drive_is_configured_for_user( $user_id );
+    $config          = wpss_get_google_drive_user_config( $user_id );
+    $granted_scopes  = wpss_normalize_google_drive_scopes( $config['granted_scopes'] ?? [] );
+    $required_scopes = wpss_get_google_drive_oauth_scopes();
+    $missing_scopes  = wpss_get_google_drive_missing_scopes( $granted_scopes, $required_scopes );
+    $checks          = [];
+
+    $checks[] = [
+        'id'      => 'oauth_config',
+        'label'   => __( 'Credenciales OAuth configuradas', 'wp-song-study' ),
+        'status'  => $configured ? 'pass' : 'error',
+        'message' => $configured
+            ? __( 'Hay credenciales OAuth disponibles para este usuario.', 'wp-song-study' )
+            : __( 'Faltan credenciales OAuth válidas en el perfil o en la configuración global.', 'wp-song-study' ),
+    ];
+
+    $connected = ! empty( $config['connected'] );
+    $checks[]  = [
+        'id'      => 'connection',
+        'label'   => __( 'Conexión activa', 'wp-song-study' ),
+        'status'  => $connected ? 'pass' : 'error',
+        'message' => $connected
+            ? __( 'La cuenta tiene tokens guardados.', 'wp-song-study' )
+            : __( 'La cuenta todavía no está vinculada a Google Drive.', 'wp-song-study' ),
+    ];
+
+    $has_refresh = ! empty( $config['refresh_token'] );
+    $checks[]    = [
+        'id'      => 'refresh_token',
+        'label'   => __( 'Refresh token disponible', 'wp-song-study' ),
+        'status'  => $has_refresh ? 'pass' : 'error',
+        'message' => $has_refresh
+            ? __( 'La sesión puede renovarse sin intervención manual.', 'wp-song-study' )
+            : __( 'Falta refresh token. Reconecta Google Drive para regenerarlo.', 'wp-song-study' ),
+    ];
+
+    $checks[] = [
+        'id'      => 'scopes',
+        'label'   => __( 'Scopes operativos suficientes', 'wp-song-study' ),
+        'status'  => empty( $missing_scopes ) ? 'pass' : 'error',
+        'message' => empty( $missing_scopes )
+            ? __( 'La conexión tiene los permisos requeridos para subir, mover, renombrar, borrar y reproducir adjuntos.', 'wp-song-study' )
+            : __( 'La conexión actual no tiene todos los permisos operativos requeridos.', 'wp-song-study' ),
+    ];
+
+    $token_ok      = false;
+    $token_message = __( 'No se intentó validar el access token porque faltan requisitos previos.', 'wp-song-study' );
+    if ( $configured && $connected && $has_refresh && empty( $missing_scopes ) ) {
+        $token = wpss_get_google_drive_access_token( $user_id );
+        if ( is_wp_error( $token ) ) {
+            $token_message = $token->get_error_message();
+        } else {
+            $token_ok      = true;
+            $token_message = __( 'El access token puede obtenerse correctamente.', 'wp-song-study' );
+        }
+    }
+    $checks[] = [
+        'id'      => 'token_probe',
+        'label'   => __( 'Renovación de token', 'wp-song-study' ),
+        'status'  => $token_ok ? 'pass' : ( $configured && $connected && $has_refresh && empty( $missing_scopes ) ? 'error' : 'warning' ),
+        'message' => $token_message,
+    ];
+
+    $about_ok      = false;
+    $about_message = __( 'No se intentó validar acceso operativo a Drive.', 'wp-song-study' );
+    if ( $token_ok ) {
+        $about = wpss_google_drive_request(
+            $user_id,
+            'GET',
+            add_query_arg(
+                [
+                    'fields'            => 'user(emailAddress),storageQuota(limit,usage)',
+                    'supportsAllDrives' => 'true',
+                ],
+                'https://www.googleapis.com/drive/v3/about'
+            )
+        );
+
+        if ( is_wp_error( $about ) ) {
+            $about_message = $about->get_error_message();
+        } else {
+            $about_ok      = true;
+            $about_message = __( 'Drive respondió correctamente a una consulta operativa.', 'wp-song-study' );
+        }
+    }
+    $checks[] = [
+        'id'      => 'drive_probe',
+        'label'   => __( 'Acceso operativo a Drive', 'wp-song-study' ),
+        'status'  => $about_ok ? 'pass' : ( $token_ok ? 'error' : 'warning' ),
+        'message' => $about_message,
+    ];
+
+    $has_errors   = (bool) array_filter( $checks, static function( $check ) { return 'error' === ( $check['status'] ?? '' ); } );
+    $has_warnings = (bool) array_filter( $checks, static function( $check ) { return 'warning' === ( $check['status'] ?? '' ); } );
+    $severity     = $has_errors ? 'error' : ( $has_warnings ? 'warning' : 'success' );
+    $summary      = $has_errors
+        ? __( 'La conexión Drive no está lista para operar adjuntos de forma confiable.', 'wp-song-study' )
+        : ( $has_warnings
+            ? __( 'La conexión Drive está parcialmente lista, pero hay validaciones pendientes.', 'wp-song-study' )
+            : __( 'La conexión Drive está lista para operar adjuntos.', 'wp-song-study' ) );
+
+    $recommended_action = $has_errors && ! empty( $missing_scopes )
+        ? __( 'Desconecta y vuelve a conectar tu cuenta en Mi Drive para conceder los permisos completos.', 'wp-song-study' )
+        : ( ! $configured
+            ? __( 'Completa o corrige las credenciales OAuth de Google Drive.', 'wp-song-study' )
+            : ( ! $connected
+                ? __( 'Conecta la cuenta de Google Drive antes de usar adjuntos.', 'wp-song-study' )
+                : '' ) );
+
+    return [
+        'checked_at'         => current_time( 'mysql' ),
+        'ok'                 => ! $has_errors,
+        'severity'           => $severity,
+        'summary'            => $summary,
+        'recommended_action' => $recommended_action,
+        'checks'             => $checks,
+        'capabilities'       => wpss_get_google_drive_capability_report( $granted_scopes ),
+        'operations_ready'   => [
+            'upload' => wpss_google_drive_has_scopes_for_operation( $granted_scopes, 'upload' ) && $token_ok && $about_ok,
+            'stream' => wpss_google_drive_has_scopes_for_operation( $granted_scopes, 'stream' ) && $token_ok && $about_ok,
+            'rename' => wpss_google_drive_has_scopes_for_operation( $granted_scopes, 'rename' ) && $token_ok && $about_ok,
+            'move'   => wpss_google_drive_has_scopes_for_operation( $granted_scopes, 'move' ) && $token_ok && $about_ok,
+            'delete' => wpss_google_drive_has_scopes_for_operation( $granted_scopes, 'delete' ) && $token_ok && $about_ok,
+        ],
+        'missing_scopes'     => $missing_scopes,
+    ];
+}
+
+/**
  * Codifica un valor en base64url.
  *
  * @param string $value Valor.
@@ -492,6 +824,7 @@ function wpss_get_google_drive_user_config( $user_id ) {
         'refresh_token'   => isset( $config['refresh_token'] ) ? (string) $config['refresh_token'] : '',
         'token_expires_at'=> isset( $config['token_expires_at'] ) ? absint( $config['token_expires_at'] ) : 0,
         'connected_at'    => isset( $config['connected_at'] ) ? sanitize_text_field( $config['connected_at'] ) : '',
+        'granted_scopes'  => wpss_normalize_google_drive_scopes( isset( $config['granted_scopes'] ) ? $config['granted_scopes'] : [] ),
     ];
 }
 
@@ -959,14 +1292,7 @@ function wpss_handle_google_drive_connect() {
         'access_type'           => 'offline',
         'prompt'                => 'consent',
         'include_granted_scopes'=> 'true',
-        'scope'                 => implode(
-            ' ',
-            [
-                'https://www.googleapis.com/auth/drive.file',
-                'https://www.googleapis.com/auth/userinfo.email',
-                'openid',
-            ]
-        ),
+        'scope'                 => implode( ' ', wpss_get_google_drive_oauth_scopes() ),
         'state'                 => $state,
     ];
 
@@ -984,6 +1310,7 @@ function wpss_complete_google_drive_callback( array $params ) {
     $state       = isset( $params['state'] ) ? sanitize_text_field( (string) $params['state'] ) : '';
     $code        = isset( $params['code'] ) ? sanitize_text_field( (string) $params['code'] ) : '';
     $oauth_error = isset( $params['error'] ) ? sanitize_key( (string) $params['error'] ) : '';
+    $callback_scopes = wpss_normalize_google_drive_scopes( isset( $params['scope'] ) ? $params['scope'] : [] );
 
     $signed_state  = wpss_parse_google_drive_oauth_state( $state );
     $state_key     = ! empty( $signed_state['flow_id'] ) ? $signed_state['flow_id'] : $state;
@@ -1012,6 +1339,7 @@ function wpss_complete_google_drive_callback( array $params ) {
             'state_length'  => strlen( $state ),
             'signed_user_id'=> ! empty( $signed_state['user_id'] ) ? absint( $signed_state['user_id'] ) : 0,
             'flow_id_prefix'=> ! empty( $signed_state['flow_id'] ) ? substr( (string) $signed_state['flow_id'], 0, 8 ) : '',
+            'callback_scopes' => $callback_scopes,
         ]
     );
 
@@ -1151,6 +1479,9 @@ function wpss_complete_google_drive_callback( array $params ) {
         'refresh_token'    => isset( $token_body['refresh_token'] ) ? sanitize_text_field( $token_body['refresh_token'] ) : '',
         'token_expires_at' => time() + max( 60, absint( isset( $token_body['expires_in'] ) ? $token_body['expires_in'] : 3600 ) ),
         'connected_at'     => ! empty( $existing_config['connected_at'] ) ? sanitize_text_field( $existing_config['connected_at'] ) : current_time( 'mysql' ),
+        'granted_scopes'   => wpss_normalize_google_drive_scopes(
+            ! empty( $token_body['scope'] ) ? $token_body['scope'] : $callback_scopes
+        ),
     ];
 
     if ( '' === $config['refresh_token'] ) {
@@ -1169,6 +1500,7 @@ function wpss_complete_google_drive_callback( array $params ) {
             'has_access_token'  => ! empty( $config['access_token'] ),
             'has_refresh_token' => ! empty( $config['refresh_token'] ),
             'account_email'     => $config['account_email'],
+            'granted_scopes'    => $config['granted_scopes'],
         ]
     );
 
@@ -1344,10 +1676,22 @@ function wpss_google_drive_request( $user_id, $method, $url, array $args = [] ) 
 
     $code = (int) wp_remote_retrieve_response_code( $response );
     if ( $code >= 400 ) {
+        $error_body = wp_remote_retrieve_body( $response );
+        $decoded    = json_decode( $error_body, true );
+        $message    = sprintf( 'Google Drive HTTP %d', $code );
+
+        if ( is_array( $decoded ) ) {
+            if ( ! empty( $decoded['error']['message'] ) ) {
+                $message = sprintf( 'Google Drive HTTP %d: %s', $code, sanitize_text_field( (string) $decoded['error']['message'] ) );
+            } elseif ( ! empty( $decoded['message'] ) ) {
+                $message = sprintf( 'Google Drive HTTP %d: %s', $code, sanitize_text_field( (string) $decoded['message'] ) );
+            }
+        }
+
         return new WP_Error(
             'wpss_drive_http_error',
-            sprintf( 'Google Drive HTTP %d', $code ),
-            [ 'body' => wp_remote_retrieve_body( $response ) ]
+            $message,
+            [ 'body' => $error_body ]
         );
     }
 
@@ -2032,18 +2376,30 @@ function wpss_google_drive_upload_song_media_bytes( $user_id, $song_id, $file_na
  * @param int    $owner_user_id Usuario origen.
  * @param string $file_id       File id.
  * @param string $mime_type     Mime esperado.
+ * @param array  $args          Argumentos extra para la petición.
  * @return array|WP_Error
  */
-function wpss_google_drive_download_file( $owner_user_id, $file_id, $mime_type = '' ) {
+function wpss_google_drive_download_file( $owner_user_id, $file_id, $mime_type = '', array $args = [] ) {
+    $file_id = sanitize_text_field( (string) $file_id );
+    $headers = isset( $args['headers'] ) && is_array( $args['headers'] ) ? $args['headers'] : [];
+    if ( empty( $headers['Accept'] ) ) {
+        $headers['Accept'] = $mime_type ? sanitize_text_field( $mime_type ) : '*/*';
+    }
+
+    $request_args            = $args;
+    $request_args['headers'] = $headers;
+
     return wpss_google_drive_request(
         absint( $owner_user_id ),
         'GET',
-        'https://www.googleapis.com/drive/v3/files/' . rawurlencode( sanitize_text_field( (string) $file_id ) ) . '?alt=media',
-        [
-            'headers' => [
-                'Accept' => $mime_type ? sanitize_text_field( $mime_type ) : '*/*',
+        add_query_arg(
+            [
+                'alt'               => 'media',
+                'supportsAllDrives' => 'true',
             ],
-        ]
+            'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $file_id )
+        ),
+        $request_args
     );
 }
 
@@ -2602,10 +2958,12 @@ function wpss_rest_delete_agrupacion_musical( WP_REST_Request $request ) {
  * @param int $user_id ID usuario.
  * @return array
  */
-function wpss_get_google_drive_status_payload( $user_id ) {
+function wpss_get_google_drive_status_payload( $user_id, $include_health = false ) {
     $config       = wpss_get_google_drive_user_config( $user_id );
     $credentials  = wpss_get_google_drive_oauth_credentials( $user_id );
     $last_error   = wpss_get_google_drive_last_error( $user_id );
+    $required_scopes = wpss_get_google_drive_oauth_scopes();
+    $granted_scopes  = wpss_normalize_google_drive_scopes( $config['granted_scopes'] ?? [] );
     $redirect_uri = wpss_get_google_drive_redirect_uri();
     $redirect_parts = wp_parse_url( $redirect_uri );
     $authorized_origin = '';
@@ -2617,7 +2975,7 @@ function wpss_get_google_drive_status_payload( $user_id ) {
         }
     }
 
-    return [
+    $payload = [
         'configured'    => wpss_google_drive_is_configured_for_user( $user_id ),
         'connected'     => ! empty( $config['connected'] ),
         'has_access_token' => ! empty( $config['has_access_token'] ),
@@ -2631,10 +2989,19 @@ function wpss_get_google_drive_status_payload( $user_id ) {
         'has_user_client_id' => '' !== wpss_get_google_drive_user_client_id( $user_id ),
         'has_user_client_secret' => '' !== wpss_get_google_drive_user_client_secret( $user_id ),
         'last_error'    => $last_error,
+        'granted_scopes' => $granted_scopes,
+        'required_scopes' => $required_scopes,
+        'has_required_scope' => empty( array_diff( $required_scopes, $granted_scopes ) ),
         'authorized_origin' => $authorized_origin,
         'connect_url'   => wpss_get_google_drive_connect_url( $user_id ),
         'redirect_uri'  => $redirect_uri,
     ];
+
+    if ( $include_health ) {
+        $payload['health'] = wpss_get_google_drive_health_payload( $user_id );
+    }
+
+    return $payload;
 }
 
 /**
@@ -2643,7 +3010,7 @@ function wpss_get_google_drive_status_payload( $user_id ) {
  * @return WP_REST_Response
  */
 function wpss_rest_get_google_drive_status() {
-    return rest_ensure_response( wpss_get_google_drive_status_payload( get_current_user_id() ) );
+    return rest_ensure_response( wpss_get_google_drive_status_payload( get_current_user_id(), true ) );
 }
 
 /**
@@ -2684,7 +3051,7 @@ function wpss_rest_save_google_drive_settings( WP_REST_Request $request ) {
 
     wpss_set_google_drive_user_config( $user_id, $config );
 
-    return rest_ensure_response( wpss_get_google_drive_status_payload( $user_id ) );
+    return rest_ensure_response( wpss_get_google_drive_status_payload( $user_id, true ) );
 }
 
 /**
@@ -2699,7 +3066,7 @@ function wpss_rest_disconnect_google_drive() {
     return rest_ensure_response(
         [
             'disconnected' => true,
-            'status'       => wpss_get_google_drive_status_payload( $user_id ),
+            'status'       => wpss_get_google_drive_status_payload( $user_id, true ),
         ]
     );
 }
@@ -3210,6 +3577,81 @@ function wpss_find_song_media_attachment_by_id( $song_id, $attachment_id ) {
 }
 
 /**
+ * Devuelve usuarios candidatos para resolver el propietario real de un adjunto.
+ *
+ * @param int   $song_id     Canción.
+ * @param array $attachment  Adjunto.
+ * @return int[]
+ */
+function wpss_get_song_media_attachment_owner_candidates( $song_id, array $attachment ) {
+    $song_id     = absint( $song_id );
+    $candidates  = [];
+    $owner_id    = isset( $attachment['owner_user_id'] ) ? absint( $attachment['owner_user_id'] ) : 0;
+    $current_id  = get_current_user_id();
+    $author_id   = (int) get_post_field( 'post_author', $song_id );
+
+    if ( $owner_id > 0 ) {
+        $candidates[] = $owner_id;
+    }
+
+    if ( $current_id > 0 ) {
+        $candidates[] = $current_id;
+    }
+
+    if ( $author_id > 0 ) {
+        $candidates[] = $author_id;
+    }
+
+    return array_values(
+        array_filter(
+            array_map( 'absint', array_unique( $candidates ) )
+        )
+    );
+}
+
+/**
+ * Persiste el owner de un adjunto cuando logramos recuperarlo.
+ *
+ * @param int    $song_id        Canción.
+ * @param string $attachment_id  ID del adjunto.
+ * @param int    $owner_user_id  Usuario propietario.
+ * @return void
+ */
+function wpss_backfill_song_media_attachment_owner_user( $song_id, $attachment_id, $owner_user_id ) {
+    $song_id       = absint( $song_id );
+    $attachment_id = sanitize_key( (string) $attachment_id );
+    $owner_user_id = absint( $owner_user_id );
+
+    if ( $song_id <= 0 || '' === $attachment_id || $owner_user_id <= 0 ) {
+        return;
+    }
+
+    $items = wpss_get_song_media_attachments_raw( $song_id );
+    if ( empty( $items ) ) {
+        return;
+    }
+
+    $changed = false;
+    foreach ( $items as &$item ) {
+        if ( ! is_array( $item ) || ( $item['id'] ?? '' ) !== $attachment_id ) {
+            continue;
+        }
+        if ( absint( $item['owner_user_id'] ?? 0 ) === $owner_user_id ) {
+            break;
+        }
+        $item['owner_user_id'] = $owner_user_id;
+        $item['updated_at']    = current_time( 'mysql' );
+        $changed               = true;
+        break;
+    }
+    unset( $item );
+
+    if ( $changed ) {
+        wpss_replace_song_media_attachments( $song_id, $items );
+    }
+}
+
+/**
  * Determina si el usuario actual puede administrar un adjunto dentro de la canción.
  *
  * @param array $attachment Adjunto.
@@ -3474,6 +3916,12 @@ function wpss_rest_upload_song_media_to_google_drive( WP_REST_Request $request )
         return new WP_REST_Response( [ 'message' => __( 'Conecta tu Google Drive antes de subir audio o fotos.', 'wp-song-study' ) ], 400 );
     }
 
+    $operational_ready = wpss_assert_google_drive_operation_ready( $user_id, 'upload' );
+    if ( is_wp_error( $operational_ready ) ) {
+        wpss_set_google_drive_last_error( $user_id, $operational_ready->get_error_code(), $operational_ready->get_error_message() );
+        return new WP_REST_Response( [ 'message' => $operational_ready->get_error_message() ], 400 );
+    }
+
     $files = $request->get_file_params();
     $file  = isset( $files['file'] ) ? $files['file'] : null;
 
@@ -3633,9 +4081,20 @@ function wpss_rest_stream_song_media_attachment( WP_REST_Request $request ) {
         }
     }
 
-    $owner_user_id = absint( $attachment['owner_user_id'] );
-    if ( $owner_user_id <= 0 ) {
+    $owner_candidates = wpss_get_song_media_attachment_owner_candidates( $song_id, $attachment );
+    if ( empty( $owner_candidates ) ) {
         return new WP_Error( 'wpss_media_owner_missing', __( 'El adjunto no tiene un propietario de Drive válido.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    $operation_gate = null;
+    foreach ( $owner_candidates as $candidate_owner_id ) {
+        $operation_gate = wpss_assert_google_drive_operation_ready( $candidate_owner_id, 'stream' );
+        if ( ! is_wp_error( $operation_gate ) ) {
+            break;
+        }
+    }
+    if ( is_wp_error( $operation_gate ) ) {
+        return new WP_Error( 'wpss_media_download_failed', $operation_gate->get_error_message(), [ 'status' => 500 ] );
     }
 
     $range_header = '';
@@ -3653,17 +4112,52 @@ function wpss_rest_stream_song_media_attachment( WP_REST_Request $request ) {
         $request_headers['Range'] = $range_header;
     }
 
-    $download = wpss_google_drive_request(
-        $owner_user_id,
-        'GET',
-        'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $attachment['file_id'] ) . '?alt=media',
-        [
-            'headers' => $request_headers,
-        ]
-    );
+    $download         = null;
+    $resolved_owner   = 0;
+    $last_error       = null;
+    foreach ( $owner_candidates as $candidate_owner_id ) {
+        $attempt = wpss_google_drive_download_file(
+            $candidate_owner_id,
+            $attachment['file_id'],
+            isset( $attachment['mime_type'] ) ? (string) $attachment['mime_type'] : '',
+            [
+                'headers' => $request_headers,
+            ]
+        );
+
+        if ( is_wp_error( $attempt ) ) {
+            $last_error = $attempt;
+            wpss_google_drive_debug_log(
+                'Falló la descarga de adjunto desde Drive.',
+                [
+                    'song_id'       => $song_id,
+                    'attachment_id' => $attachment_id,
+                    'candidate'     => $candidate_owner_id,
+                    'file_id'       => wpss_google_drive_debug_hint( (string) ( $attachment['file_id'] ?? '' ) ),
+                    'error'         => $attempt->get_error_message(),
+                ]
+            );
+            continue;
+        }
+
+        $download       = $attempt;
+        $resolved_owner = $candidate_owner_id;
+        break;
+    }
 
     if ( is_wp_error( $download ) ) {
         return new WP_Error( 'wpss_media_download_failed', $download->get_error_message(), [ 'status' => 500 ] );
+    }
+
+    if ( ! is_array( $download ) ) {
+        $message = $last_error instanceof WP_Error
+            ? $last_error->get_error_message()
+            : __( 'No fue posible descargar el adjunto desde Google Drive.', 'wp-song-study' );
+        return new WP_Error( 'wpss_media_download_failed', $message, [ 'status' => 500 ] );
+    }
+
+    if ( $resolved_owner > 0 && absint( $attachment['owner_user_id'] ?? 0 ) !== $resolved_owner ) {
+        wpss_backfill_song_media_attachment_owner_user( $song_id, $attachment_id, $resolved_owner );
     }
 
     $mime_type        = ! empty( $attachment['mime_type'] ) ? $attachment['mime_type'] : 'application/octet-stream';

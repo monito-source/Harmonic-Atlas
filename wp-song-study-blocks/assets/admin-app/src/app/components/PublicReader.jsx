@@ -13,6 +13,7 @@ import ReadingView from './ReadingView.jsx'
 import Editor from './Editor.jsx'
 import CollectionsManager from './CollectionsManager.jsx'
 import SongFiltersPanel from './SongFiltersPanel.jsx'
+import { isDriveOperational } from '../driveStatus.js'
 
 const SONG_REFRESH_INTERVAL_MS = 30000
 
@@ -61,7 +62,7 @@ export default function PublicReader() {
   const canViewSongbook = wpData?.canRead !== undefined ? !!wpData.canRead : canManage || isAdmin
   const currentUserId = wpData?.currentUserId || 0
   const driveStatus = wpData?.googleDriveStatus || {}
-  const driveReady = !!driveStatus?.configured && !!driveStatus?.connected
+  const driveReady = isDriveOperational(driveStatus)
   const [showDebugIds, setShowDebugIds] = useState(false)
   const listRefreshInFlightRef = useRef(false)
   const songsRef = useRef(state.songs)

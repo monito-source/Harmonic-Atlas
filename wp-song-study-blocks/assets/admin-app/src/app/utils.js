@@ -394,6 +394,20 @@ export function buildChordLookup(chords) {
     return lookup
   }
 
+  const getChordScore = (chord) => {
+    if (!chord || typeof chord !== 'object') {
+      return 0
+    }
+    const diagrams = chord?.diagrams && typeof chord.diagrams === 'object' ? chord.diagrams : {}
+    const diagramCount = Object.values(diagrams).reduce((total, shapes) => {
+      return total + (Array.isArray(shapes) ? shapes.length : 0)
+    }, 0)
+    const aliases = Array.isArray(chord.aliases) ? chord.aliases.length : 0
+    const notes = Array.isArray(chord.notes) ? chord.notes.length : 0
+    const voicing = Array.isArray(chord.voicing) ? chord.voicing.length : 0
+    return (diagramCount * 100) + (notes * 10) + (voicing * 5) + aliases
+  }
+
   chords.forEach((chord) => {
     if (!chord) {
       return
@@ -406,10 +420,17 @@ export function buildChordLookup(chords) {
 
     tokens.forEach((token) => {
       const key = normalizeChordToken(token)
-      if (!key || lookup.has(key)) {
+      if (!key) {
         return
       }
-      lookup.set(key, chord)
+      const existing = lookup.get(key)
+      if (!existing) {
+        lookup.set(key, chord)
+        return
+      }
+      if (getChordScore(chord) > getChordScore(existing)) {
+        lookup.set(key, chord)
+      }
     })
   })
 

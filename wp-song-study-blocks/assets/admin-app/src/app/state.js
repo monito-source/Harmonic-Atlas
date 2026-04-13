@@ -1,3 +1,8 @@
+import {
+  DEFAULT_CHORD_INSTRUMENT_ID,
+  sanitizeChordInstrumentId,
+} from './chordInstruments.js'
+
 export function createEmptySegment() {
   return { texto: '', acorde: '', midi_clips: [], comentarios: [] }
 }
@@ -92,7 +97,7 @@ const DEFAULT_READING_PREFERENCES = {
   readingFollowStructure: true,
   readingShowNotes: true,
   readingDoubleColumn: false,
-  readingInstrument: 'guitar',
+  readingInstrument: DEFAULT_CHORD_INSTRUMENT_ID,
   readingTransposeTarget: 'concert',
 }
 
@@ -119,8 +124,7 @@ function sanitizeStoredReadingPreferences(raw) {
       typeof raw.readingDoubleColumn === 'boolean'
         ? raw.readingDoubleColumn
         : DEFAULT_READING_PREFERENCES.readingDoubleColumn,
-    readingInstrument:
-      raw.readingInstrument === 'piano' ? 'piano' : DEFAULT_READING_PREFERENCES.readingInstrument,
+    readingInstrument: sanitizeChordInstrumentId(raw.readingInstrument),
     readingTransposeTarget:
       typeof raw.readingTransposeTarget === 'string' && raw.readingTransposeTarget.trim()
         ? raw.readingTransposeTarget.trim()

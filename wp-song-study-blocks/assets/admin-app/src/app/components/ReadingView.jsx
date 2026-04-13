@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAppState } from '../StateProvider.jsx'
 import {
   endsWithJoiner,
@@ -8,6 +9,7 @@ import {
   isHoldChordToken,
   getDefaultSectionName,
   getValidSegmentIndex,
+  transposePitchToken,
   transposeChordSymbol,
   stripHtml,
 } from '../utils.js'
@@ -22,6 +24,7 @@ import { buildMidiClipGroups, playMidiClipGroupsSequence, togglePlayback } from 
 import MidiClipList from './MidiClipList.jsx'
 import InlineMediaQuickActions from './InlineMediaQuickActions.jsx'
 import { mapSongToEditingSong, upsertSongInList } from '../songHydration.js'
+import ChordDiagram from './ChordDiagram.jsx'
 import ReadingMediaAttachments, {
   getSectionLevelAttachments,
   getSegmentLevelAttachments,
@@ -29,6 +32,14 @@ import ReadingMediaAttachments, {
   getVerseLevelAttachments,
   isRehearsalAttachment,
 } from './ReadingMediaAttachments.jsx'
+import {
+  CHORD_INSTRUMENTS,
+  DEFAULT_CHORD_INSTRUMENT_ID,
+  getChordInstrumentDefinition,
+  getChordInstrumentLabel,
+  sanitizeChordInstrumentId,
+} from '../chordInstruments.js'
+import { buildAutoWindShapes, getWindChordNoteCandidates } from '../saxFingerings.js'
 
 const formatCollectionAssignment = (collection) => {
   if (!collection || typeof collection !== 'object') return ''
@@ -42,6 +53,10 @@ const TRANSPOSE_TARGETS = [
   { id: 'sax-alto-eb', label: 'Sax alto (Eb)', semitones: 9 },
   { id: 'sax-tenor-bb', label: 'Sax tenor (Bb)', semitones: 2 },
 ]
+const INSTRUMENT_TRANSPOSE_TARGETS = {
+  'sax-alto': 'sax-alto-eb',
+  'sax-tenor': 'sax-tenor-bb',
+}
 const MOBILE_READING_QUERY = '(max-width: 860px)'
 const PRINT_BODY_CLASS = 'wpss-print-mode'
 const GLOBAL_READING_WIDTH_CLASS = 'wpss-reading-global-width'
@@ -222,7 +237,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     })
     return map
   }, [camposLibrary])
-  const readingInstrument = state.readingInstrument || 'guitar'
+  const readingInstrument = sanitizeChordInstrumentId(state.readingInstrument || DEFAULT_CHORD_INSTRUMENT_ID)
   const isDoubleColumn = !!state.readingDoubleColumn
   const transposeTargetId = state.readingTransposeTarget || 'concert'
   const transposeTarget = TRANSPOSE_TARGETS.find((target) => target.id === transposeTargetId) || TRANSPOSE_TARGETS[0]
@@ -1366,12 +1381,25 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
               <div className="wpss-reading__group-controls">
                 <select
                   value={readingInstrument}
-                  onChange={(event) =>
-                    dispatch({ type: 'SET_STATE', payload: { readingInstrument: event.target.value } })
-                  }
+                  onChange={(event) => {
+                    const nextInstrument = event.target.value
+                    const nextPayload = { readingInstrument: nextInstrument }
+                    const autoTransposeTarget = INSTRUMENT_TRANSPOSE_TARGETS[nextInstrument] || ''
+                    if (autoTransposeTarget) {
+                      nextPayload.readingTransposeTarget = autoTransposeTarget
+                    } else if (transposeTargetId !== 'concert' && !INSTRUMENT_TRANSPOSE_TARGETS[readingInstrument]) {
+                      nextPayload.readingTransposeTarget = 'concert'
+                    } else if (transposeTargetId !== 'concert' && INSTRUMENT_TRANSPOSE_TARGETS[readingInstrument]) {
+                      nextPayload.readingTransposeTarget = 'concert'
+                    }
+                    dispatch({ type: 'SET_STATE', payload: nextPayload })
+                  }}
                 >
-                  <option value="guitar">Guitarra</option>
-                  <option value="piano">Piano</option>
+                  {CHORD_INSTRUMENTS.map((instrument) => (
+                    <option key={instrument.id} value={instrument.id}>
+                      {instrument.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             ) : null}
@@ -1903,7 +1931,7 @@ function ReadingVerse({
                     className={cell.classes}
                     style={cell.hasNote ? { '--note-color': cell.noteColor } : undefined}
                   >
-                    {renderChordLabel(cell, chordLookup, chordInstrument, camposLookup, true)}
+                    {renderChordLabel(cell, chordLookup, chordInstrument, camposLookup, true, transposeSemitones)}
                     {showAttachments && cell.audioAttachments?.length ? (
                       <SegmentInlineAudioButtons
                         attachments={cell.audioAttachments}
@@ -1997,7 +2025,7 @@ function ReadingVerse({
               className={part.classes}
               style={part.classes.includes('has-note') ? { '--note-color': part.noteColor } : undefined}
             >
-              {renderChordLabel(part, chordLookup, chordInstrument, camposLookup, false)}
+              {renderChordLabel(part, chordLookup, chordInstrument, camposLookup, false, transposeSemitones)}
               {showAttachments && part.audioAttachments?.length ? (
                 <SegmentInlineAudioButtons
                   attachments={part.audioAttachments}
@@ -2100,13 +2128,16 @@ function resolveChordForTooltip(part, chordLookup) {
   if (!part || !chordLookup) {
     return null
   }
+  const chordLabelToken =
+    typeof part.chordLabel === 'string' ? part.chordLabel.replace(/^\[|\]$/g, '') : ''
   return (
     getChordFromLookup(part.chordLookupToken, chordLookup)
     || getChordFromLookup(part.chordSourceToken, chordLookup)
+    || getChordFromLookup(chordLabelToken, chordLookup)
   )
 }
 
-function renderChordLabel(part, chordLookup, chordInstrument, camposLookup, isStacked) {
+function renderChordLabel(part, chordLookup, chordInstrument, camposLookup, isStacked, transposeSemitones = 0) {
   if (!part?.chordLabel) {
     return null
   }
@@ -2124,6 +2155,8 @@ function renderChordLabel(part, chordLookup, chordInstrument, camposLookup, isSt
       chord={resolveChordForTooltip(part, chordLookup)}
       instrument={chordInstrument}
       camposLookup={camposLookup}
+      displayToken={part?.chordLookupToken || ''}
+      transposeSemitones={transposeSemitones}
       className={className}
     />
   )
@@ -2147,22 +2180,130 @@ function buildStackedCells(parts) {
   })
 }
 
-function ChordHover({ label, chord, instrument, camposLookup, className = '' }) {
+function ChordHover({
+  label,
+  chord,
+  instrument,
+  camposLookup,
+  displayToken = '',
+  transposeSemitones = 0,
+  className = '',
+}) {
   if (!label) {
     return null
   }
 
+  const rootRef = useRef(null)
+  const popoverRef = useRef(null)
+  const [isOpen, setIsOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState(null)
+  const shapes = Array.isArray(chord?.diagrams?.[instrument]) ? chord.diagrams[instrument] : []
   const hasChord = !!chord
-  const tooltip = hasChord ? (
-    <ChordTooltip chord={chord} instrument={instrument} camposLookup={camposLookup} />
-  ) : null
+  const canOpenPopover = hasChord
+  const syncPopoverPosition = useCallback(() => {
+    const root = rootRef.current
+    if (!root) {
+      return
+    }
+    const rect = root.getBoundingClientRect()
+    setPopoverStyle({
+      left: Math.max(12, rect.left),
+      top: Math.max(12, rect.top - 12),
+      transform: 'translateY(-100%)',
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined
+    }
+
+    syncPopoverPosition()
+
+    const handlePointerDown = (event) => {
+      const root = rootRef.current
+      const popover = popoverRef.current
+      if (!root) {
+        return
+      }
+      if (root.contains(event.target) || (popover && popover.contains(event.target))) {
+        return
+      }
+      setIsOpen(false)
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+
+    const handleWindowChange = () => {
+      syncPopoverPosition()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', handleWindowChange)
+    window.addEventListener('scroll', handleWindowChange, true)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', handleWindowChange)
+      window.removeEventListener('scroll', handleWindowChange, true)
+    }
+  }, [isOpen, syncPopoverPosition])
+
+  const tooltip = hasChord && isOpen && typeof document !== 'undefined' && popoverStyle
+    ? createPortal(
+      <span
+        ref={popoverRef}
+        className="wpss-chord-tooltip wpss-chord-tooltip--popover"
+        style={popoverStyle}
+      >
+        <ChordTooltip
+          chord={chord}
+          instrument={instrument}
+          camposLookup={camposLookup}
+          displayToken={displayToken}
+          transposeSemitones={transposeSemitones}
+        />
+      </span>,
+      document.body
+    )
+    : null
 
   return (
     <span
-      className={`wpss-reading__chord wpss-chord-hover ${className} ${hasChord ? 'has-data' : ''}`.trim()}
-      tabIndex={0}
+      ref={rootRef}
+      className={`wpss-reading__chord wpss-chord-hover ${className} ${hasChord ? 'has-data' : ''} ${isOpen ? 'is-open' : ''}`.trim()}
     >
-      {label}
+      {canOpenPopover ? (
+        <button
+          type="button"
+          className="wpss-chord-hover__trigger"
+          aria-expanded={isOpen}
+          onMouseEnter={() => {
+            syncPopoverPosition()
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            syncPopoverPosition()
+            setIsOpen(true)
+          }}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            syncPopoverPosition()
+            setIsOpen(true)
+          }}
+        >
+          {label}
+        </button>
+      ) : (
+        <span className="wpss-chord-hover__label">{label}</span>
+      )}
       {tooltip}
     </span>
   )
@@ -2186,24 +2327,40 @@ function PrintIcon() {
   )
 }
 
-function ChordTooltip({ chord, instrument, camposLookup }) {
+function ChordTooltip({ chord, instrument, camposLookup, displayToken = '', transposeSemitones = 0 }) {
   if (!chord) {
     return null
   }
+  const instrumentDefinition = getChordInstrumentDefinition(instrument)
+  const isWindInstrument = instrumentDefinition?.renderer === 'wind'
+  const [activeShapeIndex, setActiveShapeIndex] = useState(0)
   const aliases = Array.isArray(chord.aliases) ? chord.aliases : []
-  const notes = Array.isArray(chord.notes) ? chord.notes : []
-  const voicing = Array.isArray(chord.voicing) ? chord.voicing : []
+  const windNotes = isWindInstrument
+    ? getWindChordNoteCandidates(chord, transposeSemitones, displayToken)
+    : []
+  const notes = isWindInstrument ? windNotes : Array.isArray(chord.notes) ? chord.notes : []
+  const voicing = isWindInstrument ? windNotes : Array.isArray(chord.voicing) ? chord.voicing : []
   const enarmonics = Array.isArray(chord.enarmonics) ? chord.enarmonics : []
   const relations = Array.isArray(chord.relations) ? chord.relations : []
-  const root = chord.root_base || ''
+  const root = isWindInstrument
+    ? transposePitchToken(chord.root_base || '', transposeSemitones, String(chord.root_base || '').includes('b')) || displayToken || chord.root_base || ''
+    : chord.root_base || ''
   const voices = Number.isInteger(chord.voices) && chord.voices > 0 ? chord.voices : null
   const quality =
     chord.quality === 'other' ? chord.quality_other || 'Otro' : chord.quality || ''
   const paradigm = chord.paradigm || ''
   const evolution = Array.isArray(chord.evolution) ? chord.evolution : []
   const diagrams = chord?.diagrams?.[instrument]
-  const shapes = Array.isArray(diagrams) ? diagrams : []
-  const instrumentLabel = instrument === 'piano' ? 'Piano' : instrument === 'guitar' ? 'Guitarra' : instrument
+  const shapes = isWindInstrument
+    ? buildAutoWindShapes(chord, {
+      semitoneShift: transposeSemitones,
+      fallbackToken: displayToken,
+      existingShapes: Array.isArray(diagrams)
+        ? diagrams.map((shape) => ({ label: shape?.label || '' }))
+        : [],
+    })
+    : Array.isArray(diagrams) ? diagrams : []
+  const instrumentLabel = getChordInstrumentLabel(instrument)
   const relationLabels = relations
     .map((relation) => {
       const campoLabel =
@@ -2217,10 +2374,22 @@ function ChordTooltip({ chord, instrument, camposLookup }) {
       return `${campoLabel || 'Campo'}: ${grado || '—'}`
     })
     .filter(Boolean)
+  const transposedVoiceSummary = isWindInstrument && notes.length
+    ? notes.join(', ')
+    : ''
+  const activeWindShape = isWindInstrument && shapes.length
+    ? shapes[((activeShapeIndex % shapes.length) + shapes.length) % shapes.length]
+    : null
+
+  useEffect(() => {
+    setActiveShapeIndex(0)
+  }, [instrument, chord?.id, displayToken, shapes.length])
 
   return (
-    <span className="wpss-chord-tooltip">
-      <strong className="wpss-chord-tooltip__title">{chord.name || chord.id || 'Acorde'}</strong>
+    <>
+      <strong className="wpss-chord-tooltip__title">
+        {isWindInstrument && displayToken ? displayToken : chord.name || chord.id || 'Acorde'}
+      </strong>
       {root ? <span className="wpss-chord-tooltip__meta">Root: {root}</span> : null}
       {quality ? <span className="wpss-chord-tooltip__meta">Quality: {quality}</span> : null}
       {voices ? <span className="wpss-chord-tooltip__meta">Voces: {voices}</span> : null}
@@ -2233,11 +2402,14 @@ function ChordTooltip({ chord, instrument, camposLookup }) {
       {enarmonics.length ? (
         <span className="wpss-chord-tooltip__meta">Enarmónicos: {enarmonics.join(', ')}</span>
       ) : null}
-      {notes.length ? (
+      {notes.length && !isWindInstrument ? (
         <span className="wpss-chord-tooltip__meta">Notas: {notes.join(', ')}</span>
       ) : null}
-      {voicing.length ? (
+      {voicing.length && !isWindInstrument ? (
         <span className="wpss-chord-tooltip__meta">Voicing: {voicing.join(', ')}</span>
+      ) : null}
+      {transposedVoiceSummary ? (
+        <span className="wpss-chord-tooltip__meta">Voces sax: {transposedVoiceSummary}</span>
       ) : null}
       {paradigm ? (
         <span className="wpss-chord-tooltip__meta">Paradigma: {paradigm}</span>
@@ -2248,16 +2420,43 @@ function ChordTooltip({ chord, instrument, camposLookup }) {
         </span>
       ) : null}
       <span className="wpss-chord-tooltip__meta">Instrumento: {instrumentLabel}</span>
+      {isWindInstrument && shapes.length > 1 ? (
+        <span className="wpss-chord-tooltip__carousel">
+          <button
+            type="button"
+            className="wpss-chord-tooltip__nav"
+            onClick={() => setActiveShapeIndex((current) => current - 1)}
+            aria-label="Voz anterior"
+          >
+            ‹
+          </button>
+          <span className="wpss-chord-tooltip__nav-status">
+            Voz {((activeShapeIndex % shapes.length) + shapes.length) % shapes.length + 1} / {shapes.length}
+          </span>
+          <button
+            type="button"
+            className="wpss-chord-tooltip__nav"
+            onClick={() => setActiveShapeIndex((current) => current + 1)}
+            aria-label="Siguiente voz"
+          >
+            ›
+          </button>
+        </span>
+      ) : null}
       {shapes.length ? (
         <span className="wpss-chord-tooltip__diagrams">
-          {shapes.map((shape, index) => (
-            <ChordDiagram key={`diagram-${index}`} shape={shape} instrument={instrument} />
-          ))}
+          {isWindInstrument && activeWindShape ? (
+            <ChordDiagram shape={activeWindShape} instrument={instrument} />
+          ) : (
+            shapes.map((shape, index) => (
+              <ChordDiagram key={`diagram-${index}`} shape={shape} instrument={instrument} />
+            ))
+          )}
         </span>
       ) : (
         <span className="wpss-chord-tooltip__meta">Sin diagrama para este instrumento.</span>
       )}
-    </span>
+    </>
   )
 }
 
@@ -2273,83 +2472,6 @@ function formatRomanCase(value, mode) {
     return text.replace(/[ivxlcdm]/gi, (match) => match.toLowerCase())
   }
   return text
-}
-
-function ChordDiagram({ shape, instrument }) {
-  if (!shape) {
-    return null
-  }
-
-  if (instrument === 'guitar') {
-    return <GuitarDiagram shape={shape} />
-  }
-
-  const notes = Array.isArray(shape.notes) ? shape.notes : []
-  return (
-    <span className="wpss-chord-diagram__notes">
-      {shape.label ? <strong>{shape.label}</strong> : null}
-      <span>{notes.length ? notes.join(', ') : 'Sin notas'}</span>
-    </span>
-  )
-}
-
-function GuitarDiagram({ shape }) {
-  const fretsRaw = Array.isArray(shape.frets) ? shape.frets : []
-  const frets = fretsRaw.map((value) => {
-    if (typeof value === 'number') {
-      return value
-    }
-    const token = String(value || '').trim().toLowerCase()
-    if (token === 'x') return 'x'
-    const numeric = parseInt(token, 10)
-    return Number.isNaN(numeric) ? null : numeric
-  })
-  const parsedBase = parseInt(shape.baseFret, 10)
-  const baseFret = Number.isInteger(parsedBase) && parsedBase > 0 ? parsedBase : 1
-  const strings = ['E', 'A', 'D', 'G', 'B', 'e']
-  const maxFret = frets.reduce((acc, value) => (typeof value === 'number' ? Math.max(acc, value) : acc), 0)
-  const startFret = maxFret > baseFret + 3 ? Math.max(1, maxFret - 3) : baseFret
-  const fretRows = Array.from({ length: 4 }, (_, index) => startFret + index)
-
-  return (
-    <span className="wpss-guitar-diagram">
-      {shape.label ? <strong className="wpss-guitar-diagram__label">{shape.label}</strong> : null}
-      <span className="wpss-guitar-diagram__open">
-        {strings.map((stringLabel, index) => {
-          const value = frets[index]
-          const state = value === 'x' ? 'x' : value === 0 ? 'o' : ''
-          return (
-            <span key={`open-${stringLabel}`} className="wpss-guitar-diagram__open-cell">
-              {state}
-            </span>
-          )
-        })}
-      </span>
-      <span className="wpss-guitar-diagram__grid">
-        {fretRows.map((fret) => (
-          <span key={`fret-${fret}`} className="wpss-guitar-diagram__row">
-            {strings.map((stringLabel, index) => {
-              const value = frets[index]
-              const isActive = typeof value === 'number' && value === fret
-              return (
-                <span
-                  key={`cell-${stringLabel}-${fret}`}
-                  className={`wpss-guitar-diagram__cell ${isActive ? 'is-active' : ''}`}
-                />
-              )
-            })}
-          </span>
-        ))}
-      </span>
-      <span className="wpss-guitar-diagram__frets">
-        {fretRows.map((fret) => (
-          <span key={`label-${fret}`} className="wpss-guitar-diagram__fret-label">
-            {fret}
-          </span>
-        ))}
-      </span>
-    </span>
-  )
 }
 
 function SectionNotes({ notes, verseNotes, sectionTitle = '', children }) {

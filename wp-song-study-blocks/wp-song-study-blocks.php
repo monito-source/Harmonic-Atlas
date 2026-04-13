@@ -67,6 +67,7 @@ function wpssb_load_legacy_backend() {
     require_once WPSSB_PATH . 'includes/admin-pages.php';
     require_once WPSSB_PATH . 'includes/rest-api.php';
     require_once WPSSB_PATH . 'includes/media-drive-groups.php';
+    require_once WPSSB_PATH . 'includes/song-import-export.php';
     require_once WPSSB_PATH . 'includes/midi-settings.php';
     require_once WPSSB_PATH . 'includes/shortcodes.php';
 }
@@ -111,6 +112,7 @@ function wpssb_activate_plugin() {
     wpssb_register_project_post_type();
     wpssb_register_project_area_taxonomy();
     wpss_register_songbook_access();
+    wpssb_sync_presskit_page_template_assignment();
 
     if ( function_exists( 'wpss_register_colega_role' ) ) {
         wpss_register_colega_role();

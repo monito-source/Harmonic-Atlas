@@ -8,6 +8,7 @@ import {
   getStatusLabel,
 } from '../songStatus.js'
 import SongFiltersPanel from './SongFiltersPanel.jsx'
+import { isDriveOperational } from '../driveStatus.js'
 
 const SONG_REFRESH_INTERVAL_MS = 30000
 
@@ -30,7 +31,7 @@ export default function SongList({ onSelectSong, onNewSong }) {
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableTags = Array.isArray(state.songTags) ? state.songTags : []
   const driveStatus = wpData?.googleDriveStatus || {}
-  const driveReady = !!driveStatus?.configured && !!driveStatus?.connected
+  const driveReady = isDriveOperational(driveStatus)
   const isOwnSong = (song) => Number(song?.autor_id) === Number(currentUserId)
   const canDeleteSong = (song) => isOwnSong(song)
   const handleOpen = (song, targetTab) => {

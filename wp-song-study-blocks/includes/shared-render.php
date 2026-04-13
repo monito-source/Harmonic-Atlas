@@ -162,6 +162,47 @@ function wpssb_get_public_reader_data() {
     $can_manage = function_exists( 'wpss_user_can_manage_songbook' ) ? wpss_user_can_manage_songbook() : current_user_can( defined( 'WPSS_CAP_MANAGE' ) ? WPSS_CAP_MANAGE : 'edit_posts' );
     $is_admin   = current_user_can( 'manage_options' );
     $can_read   = wpssb_user_can_view_songbook();
+    $campos_library = function_exists( 'wpss_get_campos_armonicos_library' ) ? array_values( wpss_get_campos_armonicos_library() ) : [];
+    $campos_names = array_values(
+        array_unique(
+            array_filter(
+                array_merge(
+                    [],
+                    array_reduce(
+                        array_filter(
+                            $campos_library,
+                            static function( $campo ) {
+                                return ! empty( $campo['activo'] );
+                            }
+                        ),
+                        static function( $labels, $campo ) {
+                            if ( ! is_array( $campo ) ) {
+                                return $labels;
+                            }
+                            $item_labels = [];
+                            if ( ! empty( $campo['nombre'] ) ) {
+                                $item_labels[] = $campo['nombre'];
+                            }
+                            if ( ! empty( $campo['aliases'] ) && is_array( $campo['aliases'] ) ) {
+                                foreach ( $campo['aliases'] as $alias ) {
+                                    if ( ! empty( $alias ) ) {
+                                        $item_labels[] = $alias;
+                                    }
+                                }
+                            }
+                            if ( empty( $item_labels ) && ! empty( $campo['slug'] ) ) {
+                                $item_labels[] = $campo['slug'];
+                            }
+                            return array_merge( $labels, $item_labels );
+                        },
+                        []
+                    )
+                )
+            )
+        )
+    );
+    $acordes_library = function_exists( 'wpss_get_acordes_library' ) ? array_values( wpss_get_acordes_library() ) : [];
+    $acordes_config = function_exists( 'wpss_get_acordes_config' ) ? wpss_get_acordes_config() : [ 'paradigms' => [], 'qualities' => [] ];
 
     if ( function_exists( 'wpss_get_public_localized_data' ) ) {
         $data = wpss_get_public_localized_data();
@@ -187,6 +228,10 @@ function wpssb_get_public_reader_data() {
                 'configured' => false,
                 'connected'  => false,
             ];
+        $data['camposArmonicos'] = $campos_library;
+        $data['camposArmonicosNombres'] = $campos_names;
+        $data['chordsLibrary'] = $acordes_library;
+        $data['chordsConfig'] = is_array( $acordes_config ) ? $acordes_config : [ 'paradigms' => [], 'qualities' => [] ];
 
         return $data;
     }
@@ -212,10 +257,10 @@ function wpssb_get_public_reader_data() {
             'profilePage' => admin_url( 'profile.php' ),
         ],
         'tonicas'       => [ 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B' ],
-        'camposArmonicos' => [],
-        'camposArmonicosNombres' => [],
-        'chordsLibrary' => [],
-        'chordsConfig'  => [ 'paradigms' => [], 'qualities' => [] ],
+        'camposArmonicos' => $campos_library,
+        'camposArmonicosNombres' => $campos_names,
+        'chordsLibrary' => $acordes_library,
+        'chordsConfig'  => $acordes_config,
         'strings'       => [
             'filtersTitle' => __( 'Canciones disponibles', 'wp-song-study-blocks' ),
         ],

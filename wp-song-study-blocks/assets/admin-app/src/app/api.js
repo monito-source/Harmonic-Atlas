@@ -64,6 +64,20 @@ export function createApi(wpData) {
     }
   }
 
+  function buildAdminPostUrl(params = {}) {
+    const adminPostUrl = wpData?.adminPostUrl || ''
+    const query = new URLSearchParams()
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === null || typeof value === 'undefined' || value === '') {
+        return
+      }
+      query.set(key, String(value))
+    })
+
+    return `${adminPostUrl}?${query.toString()}`
+  }
+
   return {
     listSongs(overrides = {}) {
       const params = new URLSearchParams()
@@ -228,6 +242,16 @@ export function createApi(wpData) {
     },
     deleteSongAttachment(songId, attachmentId) {
       return request(`media/attachment/${songId}/${attachmentId}`, { method: 'DELETE' })
+    },
+    importSongPackage(formData) {
+      return request('canciones/import', { method: 'POST', body: formData, asJson: false })
+    },
+    buildSongExportUrl(params = {}) {
+      return buildAdminPostUrl({
+        action: 'wpss_song_export',
+        _wpnonce: wpData?.songExportNonce || '',
+        ...params,
+      })
     },
   }
 }
