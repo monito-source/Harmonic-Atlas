@@ -1,10 +1,10 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"3rem","bottom":"3rem","left":"min(6%, 2rem)","right":"min(6%, 2rem)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:3rem;padding-right:min(6%, 2rem);padding-bottom:3rem;padding-left:min(6%, 2rem)">
+<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
   <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1.2rem"}},"layout":{"type":"constrained"}} -->
   <div class="wp-block-group alignwide">
-    <!-- wp:paragraph {"style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em","fontSize":"0.85rem"},"color":{"text":"#1e3a8a"}}} -->
-    <p style="color:#1e3a8a;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase">Tecnologías y web</p>
+    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em"}}} -->
+    <p class="has-azul-principal-color has-text-color has-x-small-font-size" style="letter-spacing:0.08em;text-transform:uppercase">Tecnologías y web</p>
     <!-- /wp:paragraph -->
     <!-- wp:post-title {"level":1,"fontSize":"x-large"} /-->
     <!-- wp:paragraph -->
@@ -22,11 +22,14 @@
   </div>
   <!-- /wp:group -->
 
-  <!-- wp:group {"style":{"spacing":{"margin":{"top":"2.5rem"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-group" style="margin-top:2.5rem">
+  <!-- wp:group {"style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
+  <div class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
     <!-- wp:heading {"level":2} -->
     <h2>Colaboradores disponibles</h2>
     <!-- /wp:heading -->
+    <!-- wp:paragraph -->
+    <p>Cada perfil público muestra su presskit, los proyectos en los que participa y cómo contactar a cada colega.</p>
+    <!-- /wp:paragraph -->
     <!-- wp:shortcode -->
     [pd_colaboradores]
     <!-- /wp:shortcode -->
