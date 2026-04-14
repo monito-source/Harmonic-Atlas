@@ -25,6 +25,7 @@ add_action(
  */
 function pd_get_custom_page_templates(): array {
     return [
+        'acceso'                 => __( 'Acceso', 'pertenencia-digital' ),
         'inicio'                 => __( 'Inicio / Landing', 'pertenencia-digital' ),
         'presskit'               => __( 'Press Kit', 'pertenencia-digital' ),
         'mi-pertenencia'         => __( 'Mi pertenencia', 'pertenencia-digital' ),
@@ -76,9 +77,11 @@ add_action( 'init', 'pd_register_block_pattern_categories' );
 add_action(
     'wp_enqueue_scripts',
     function () {
-        $theme      = wp_get_theme();
-        $style_path = get_stylesheet_directory() . '/style.css';
-        $version    = file_exists( $style_path ) ? (string) filemtime( $style_path ) : $theme->get( 'Version' );
+        $theme       = wp_get_theme();
+        $style_path  = get_stylesheet_directory() . '/style.css';
+        $script_path = get_template_directory() . '/assets/js/account-access.js';
+        $nav_path    = get_template_directory() . '/assets/js/site-navigation.js';
+        $version     = file_exists( $style_path ) ? (string) filemtime( $style_path ) : $theme->get( 'Version' );
 
         wp_enqueue_style(
             'pertenencia-digital-fonts',
@@ -93,6 +96,1035 @@ add_action(
             [ 'pertenencia-digital-fonts' ],
             $version
         );
+
+        if ( file_exists( $script_path ) ) {
+            wp_enqueue_script(
+                'pertenencia-digital-account-access',
+                get_template_directory_uri() . '/assets/js/account-access.js',
+                [],
+                (string) filemtime( $script_path ),
+                true
+            );
+        }
+
+        if ( file_exists( $nav_path ) ) {
+            wp_enqueue_script(
+                'pertenencia-digital-site-navigation',
+                get_template_directory_uri() . '/assets/js/site-navigation.js',
+                [],
+                (string) filemtime( $nav_path ),
+                true
+            );
+        }
+    }
+);
+
+/**
+ * Registra scripts usados por los bloques dinamicos del tema dentro del editor.
+ */
+function pd_register_theme_block_editor_script(): void {
+    $script_path = get_template_directory() . '/assets/js/theme-blocks-editor.js';
+
+    if ( ! file_exists( $script_path ) ) {
+        return;
+    }
+
+    wp_register_script(
+        'pertenencia-digital-theme-blocks-editor',
+        get_template_directory_uri() . '/assets/js/theme-blocks-editor.js',
+        [ 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-i18n' ],
+        (string) filemtime( $script_path ),
+        true
+    );
+}
+add_action( 'init', 'pd_register_theme_block_editor_script', 5 );
+
+/**
+ * Obtiene la URL preferida para volver al espacio de pertenencia.
+ */
+function pd_get_default_membership_url(): string {
+    $membership_page = get_page_by_path( 'musica/mi-pertenencia' );
+
+    if ( $membership_page instanceof WP_Post ) {
+        $membership_url = get_permalink( $membership_page );
+
+        if ( is_string( $membership_url ) && '' !== $membership_url ) {
+            return $membership_url;
+        }
+    }
+
+    return home_url( '/' );
+}
+
+/**
+ * Devuelve el ID de la pagina frontend de acceso.
+ */
+function pd_get_login_page_id(): int {
+    static $page_id = null;
+
+    if ( null !== $page_id ) {
+        return $page_id;
+    }
+
+    $page    = get_page_by_path( 'acceso' );
+    $page_id = $page instanceof WP_Post ? (int) $page->ID : 0;
+
+    return $page_id;
+}
+
+/**
+ * Devuelve la URL base de la pagina de acceso.
+ */
+function pd_get_login_page_base_url(): string {
+    $page_id = pd_get_login_page_id();
+
+    if ( $page_id <= 0 ) {
+        return '';
+    }
+
+    $url = get_permalink( $page_id );
+
+    return is_string( $url ) ? $url : '';
+}
+
+/**
+ * Construye la URL del acceso frontend.
+ *
+ * @param string $redirect_to Destino posterior al login.
+ * @param string $action      Vista que debe mostrarse.
+ */
+function pd_get_login_page_url( string $redirect_to = '', string $action = 'login' ): string {
+    $base_url = pd_get_login_page_base_url();
+
+    if ( '' === $redirect_to ) {
+        $redirect_to = pd_get_default_membership_url();
+    }
+
+    if ( '' === $base_url ) {
+        $args = [];
+
+        if ( 'login' !== $action ) {
+            $args['action'] = $action;
+        }
+
+        if ( '' !== $redirect_to ) {
+            $args['redirect_to'] = $redirect_to;
+        }
+
+        return add_query_arg( $args, network_site_url( 'wp-login.php', 'login' ) );
+    }
+
+    $args = [];
+
+    if ( 'login' !== $action ) {
+        $args['action'] = $action;
+    }
+
+    if ( '' !== $redirect_to ) {
+        $args['redirect_to'] = $redirect_to;
+    }
+
+    return add_query_arg( $args, $base_url );
+}
+
+/**
+ * Indica si una URL de redireccion apunta al escritorio.
+ */
+function pd_url_targets_wp_admin( string $url ): bool {
+    if ( '' === $url ) {
+        return false;
+    }
+
+    $path = wp_parse_url( $url, PHP_URL_PATH );
+
+    return is_string( $path ) && false !== strpos( $path, '/wp-admin' );
+}
+
+/**
+ * Define si el flujo frontend debe reemplazar el login nativo.
+ */
+function pd_should_use_frontend_login( string $redirect_to = '' ): bool {
+    if ( is_admin() || wp_doing_ajax() ) {
+        return false;
+    }
+
+    if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+        return false;
+    }
+
+    if ( pd_url_targets_wp_admin( $redirect_to ) ) {
+        return false;
+    }
+
+    return '' !== pd_get_login_page_base_url();
+}
+
+/**
+ * Reemplaza el login URL solo para flujos frontend.
+ *
+ * @param string $login_url    URL original.
+ * @param string $redirect     Destino posterior.
+ * @param bool   $force_reauth Bandera de reautenticacion.
+ */
+function pd_filter_login_url( string $login_url, string $redirect, bool $force_reauth ): string {
+    if ( ! pd_should_use_frontend_login( $redirect ) ) {
+        return $login_url;
+    }
+
+    return pd_get_login_page_url( $redirect );
+}
+add_filter( 'login_url', 'pd_filter_login_url', 10, 3 );
+
+/**
+ * Reemplaza la URL de recuperacion para flujos frontend.
+ *
+ * @param string $lostpassword_url URL original.
+ * @param string $redirect         Destino posterior.
+ */
+function pd_filter_lostpassword_url( string $lostpassword_url, string $redirect ): string {
+    if ( ! pd_should_use_frontend_login( $redirect ) ) {
+        return $lostpassword_url;
+    }
+
+    return pd_get_login_page_url( $redirect, 'lostpassword' );
+}
+add_filter( 'lostpassword_url', 'pd_filter_lostpassword_url', 10, 2 );
+
+/**
+ * Obtiene el feedback visual del flujo de acceso.
+ *
+ * @return array<string, string>
+ */
+function pd_get_auth_feedback(): array {
+    $status = isset( $_GET['pd_auth_status'] ) ? sanitize_key( wp_unslash( $_GET['pd_auth_status'] ) ) : '';
+
+    $messages = [
+        'login_failed' => [
+            'type'    => 'error',
+            'message' => __( 'No se pudo iniciar sesion. Revisa tu usuario o correo y tu contrasena.', 'pertenencia-digital' ),
+        ],
+        'invalid_nonce' => [
+            'type'    => 'error',
+            'message' => __( 'La solicitud expiro. Intenta de nuevo.', 'pertenencia-digital' ),
+        ],
+        'logged_out' => [
+            'type'    => 'success',
+            'message' => __( 'Tu sesion se cerro correctamente.', 'pertenencia-digital' ),
+        ],
+        'recovery_sent' => [
+            'type'    => 'success',
+            'message' => __( 'Si la cuenta existe, te enviamos un enlace para restablecer la contrasena.', 'pertenencia-digital' ),
+        ],
+        'recovery_error' => [
+            'type'    => 'error',
+            'message' => __( 'No fue posible iniciar la recuperacion. Verifica el dato capturado e intentalo de nuevo.', 'pertenencia-digital' ),
+        ],
+    ];
+
+    return $messages[ $status ] ?? [];
+}
+
+/**
+ * Procesa el login desde la interfaz frontend.
+ */
+function pd_handle_frontend_login(): void {
+    $fallback_redirect = pd_get_default_membership_url();
+    $redirect_to       = isset( $_POST['redirect_to'] ) ? wp_validate_redirect( wp_unslash( $_POST['redirect_to'] ), $fallback_redirect ) : $fallback_redirect;
+    $return_url        = pd_get_login_page_url( $redirect_to );
+    $nonce             = isset( $_POST['pd_auth_nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['pd_auth_nonce'] ) ) : '';
+
+    if ( ! wp_verify_nonce( $nonce, 'pd_frontend_login' ) ) {
+        wp_safe_redirect( add_query_arg( 'pd_auth_status', 'invalid_nonce', $return_url ) );
+        exit;
+    }
+
+    if ( is_user_logged_in() ) {
+        wp_safe_redirect( $redirect_to );
+        exit;
+    }
+
+    $credentials = [
+        'user_login'    => isset( $_POST['log'] ) ? sanitize_text_field( wp_unslash( $_POST['log'] ) ) : '',
+        'user_password' => isset( $_POST['pwd'] ) ? (string) wp_unslash( $_POST['pwd'] ) : '',
+        'remember'      => ! empty( $_POST['rememberme'] ),
+    ];
+
+    $user = wp_signon( $credentials, is_ssl() );
+
+    if ( is_wp_error( $user ) ) {
+        wp_safe_redirect( add_query_arg( 'pd_auth_status', 'login_failed', $return_url ) );
+        exit;
+    }
+
+    wp_safe_redirect( $redirect_to );
+    exit;
+}
+add_action( 'admin_post_nopriv_pd_frontend_login', 'pd_handle_frontend_login' );
+add_action( 'admin_post_pd_frontend_login', 'pd_handle_frontend_login' );
+
+/**
+ * Procesa la recuperacion de contrasena desde frontend.
+ */
+function pd_handle_frontend_lostpassword(): void {
+    $return_url = pd_get_login_page_url( '', 'lostpassword' );
+    $nonce      = isset( $_POST['pd_lostpassword_nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['pd_lostpassword_nonce'] ) ) : '';
+
+    if ( ! wp_verify_nonce( $nonce, 'pd_frontend_lostpassword' ) ) {
+        wp_safe_redirect( add_query_arg( 'pd_auth_status', 'invalid_nonce', $return_url ) );
+        exit;
+    }
+
+    $user_login = isset( $_POST['user_login'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['user_login'] ) ) ) : '';
+    $result     = retrieve_password( $user_login );
+
+    if ( is_wp_error( $result ) ) {
+        wp_safe_redirect( add_query_arg( 'pd_auth_status', 'recovery_error', $return_url ) );
+        exit;
+    }
+
+    wp_safe_redirect( add_query_arg( 'pd_auth_status', 'recovery_sent', $return_url ) );
+    exit;
+}
+add_action( 'admin_post_nopriv_pd_frontend_lostpassword', 'pd_handle_frontend_lostpassword' );
+add_action( 'admin_post_pd_frontend_lostpassword', 'pd_handle_frontend_lostpassword' );
+
+/**
+ * Renderiza la interfaz de acceso frontend.
+ *
+ * @param array<string, mixed> $args Ajustes visuales.
+ */
+function pd_render_login_panel( array $args = [] ): string {
+    $args = wp_parse_args(
+        $args,
+        [
+            'title'       => __( 'Accede a tu pertenencia digital', 'pertenencia-digital' ),
+            'intro'       => __( 'Inicia sesion para editar tu presskit, revisar tus proyectos y mantener actualizada tu presencia en el sitio.', 'pertenencia-digital' ),
+            'redirect_to' => '',
+        ]
+    );
+
+    $feedback       = pd_get_auth_feedback();
+    $current_action = isset( $_GET['action'] ) ? sanitize_key( wp_unslash( $_GET['action'] ) ) : 'login';
+    $current_action = 'lostpassword' === $current_action ? 'lostpassword' : 'login';
+    $redirect_to    = is_string( $args['redirect_to'] ) && '' !== $args['redirect_to']
+        ? wp_validate_redirect( (string) $args['redirect_to'], pd_get_default_membership_url() )
+        : ( isset( $_GET['redirect_to'] ) ? wp_validate_redirect( wp_unslash( $_GET['redirect_to'] ), pd_get_default_membership_url() ) : pd_get_default_membership_url() );
+    $login_url      = pd_get_login_page_url( $redirect_to );
+    $recover_url    = pd_get_login_page_url( '', 'lostpassword' );
+    $membership_url = pd_get_default_membership_url();
+    $logout_url     = wp_logout_url( $login_url );
+
+    $output  = '<section class="pd-auth-shell">';
+    $output .= '<div class="pd-auth-shell__intro">';
+    $output .= '<p class="pd-auth-shell__eyebrow">' . esc_html__( 'Acceso', 'pertenencia-digital' ) . '</p>';
+    $output .= '<h1 class="pd-auth-shell__title">' . esc_html( (string) $args['title'] ) . '</h1>';
+    $output .= '<p class="pd-auth-shell__lead">' . esc_html( (string) $args['intro'] ) . '</p>';
+    $output .= '<ul class="pd-auth-shell__list">';
+    $output .= '<li>' . esc_html__( 'Formulario con mejor jerarquia visual y lectura mas clara.', 'pertenencia-digital' ) . '</li>';
+    $output .= '<li>' . esc_html__( 'Recuperacion de contrasena disponible sin entrar al escritorio.', 'pertenencia-digital' ) . '</li>';
+    $output .= '<li>' . esc_html__( 'Acceso administrativo nativo preservado para no romper wp-admin.', 'pertenencia-digital' ) . '</li>';
+    $output .= '</ul>';
+    $output .= '</div>';
+    $output .= '<div class="pd-auth-card">';
+
+    if ( ! empty( $feedback['message'] ) ) {
+        $feedback_class = 'success' === ( $feedback['type'] ?? '' ) ? 'is-success' : 'is-error';
+        $feedback_role  = 'success' === ( $feedback['type'] ?? '' ) ? 'status' : 'alert';
+        $output        .= '<p class="pd-auth-feedback ' . esc_attr( $feedback_class ) . '" role="' . esc_attr( $feedback_role ) . '">' . esc_html( $feedback['message'] ) . '</p>';
+    }
+
+    if ( is_user_logged_in() ) {
+        $current_user = wp_get_current_user();
+
+        $output .= '<div class="pd-auth-state">';
+        $output .= '<p class="pd-auth-state__eyebrow">' . esc_html__( 'Sesion activa', 'pertenencia-digital' ) . '</p>';
+        $output .= '<h2 class="pd-auth-state__title">' . esc_html( $current_user->display_name ) . '</h2>';
+        $output .= '<p class="pd-auth-state__meta">' . esc_html( $current_user->user_email ) . '</p>';
+        $output .= '<div class="pd-auth-state__actions">';
+        $output .= '<a class="wp-block-button__link wp-element-button" href="' . esc_url( $membership_url ) . '">' . esc_html__( 'Ir a mi pertenencia', 'pertenencia-digital' ) . '</a>';
+        $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( admin_url() ) . '">' . esc_html__( 'Abrir escritorio', 'pertenencia-digital' ) . '</a>';
+        $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( $logout_url ) . '">' . esc_html__( 'Cerrar sesion', 'pertenencia-digital' ) . '</a>';
+        $output .= '</div>';
+        $output .= '</div>';
+        $output .= '</div>';
+        $output .= '</section>';
+
+        return $output;
+    }
+
+    if ( 'lostpassword' === $current_action ) {
+        $output .= '<h2 class="pd-auth-card__title">' . esc_html__( 'Recuperar contrasena', 'pertenencia-digital' ) . '</h2>';
+        $output .= '<p class="pd-auth-card__description">' . esc_html__( 'Escribe tu usuario o correo y te enviaremos el enlace de recuperacion.', 'pertenencia-digital' ) . '</p>';
+        $output .= '<form class="pd-auth-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+        $output .= '<input type="hidden" name="action" value="pd_frontend_lostpassword" />';
+        $output .= wp_nonce_field( 'pd_frontend_lostpassword', 'pd_lostpassword_nonce', true, false );
+        $output .= '<label><span>' . esc_html__( 'Usuario o correo electronico', 'pertenencia-digital' ) . '</span><input type="text" name="user_login" autocomplete="username" required /></label>';
+        $output .= '<button type="submit" class="wp-block-button__link wp-element-button">' . esc_html__( 'Enviar enlace', 'pertenencia-digital' ) . '</button>';
+        $output .= '</form>';
+        $output .= '<p class="pd-auth-card__alt"><a href="' . esc_url( $login_url ) . '">' . esc_html__( 'Volver al inicio de sesion', 'pertenencia-digital' ) . '</a></p>';
+    } else {
+        $output .= '<h2 class="pd-auth-card__title">' . esc_html__( 'Iniciar sesion', 'pertenencia-digital' ) . '</h2>';
+        $output .= '<form class="pd-auth-form" method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+        $output .= '<input type="hidden" name="action" value="pd_frontend_login" />';
+        $output .= '<input type="hidden" name="redirect_to" value="' . esc_url( $redirect_to ) . '" />';
+        $output .= wp_nonce_field( 'pd_frontend_login', 'pd_auth_nonce', true, false );
+        $output .= '<label><span>' . esc_html__( 'Usuario o correo electronico', 'pertenencia-digital' ) . '</span><input type="text" name="log" autocomplete="username" required /></label>';
+        $output .= '<label><span>' . esc_html__( 'Contrasena', 'pertenencia-digital' ) . '</span><input type="password" name="pwd" autocomplete="current-password" required /></label>';
+        $output .= '<label class="pd-auth-form__checkbox"><input type="checkbox" name="rememberme" value="forever" /><span>' . esc_html__( 'Mantener sesion iniciada', 'pertenencia-digital' ) . '</span></label>';
+        $output .= '<button type="submit" class="wp-block-button__link wp-element-button">' . esc_html__( 'Entrar a mi espacio', 'pertenencia-digital' ) . '</button>';
+        $output .= '</form>';
+        $output .= '<div class="pd-auth-card__links">';
+        $output .= '<a href="' . esc_url( $recover_url ) . '">' . esc_html__( 'Olvide mi contrasena', 'pertenencia-digital' ) . '</a>';
+        $output .= '<a href="' . esc_url( home_url( '/' ) ) . '">' . esc_html__( 'Volver al sitio', 'pertenencia-digital' ) . '</a>';
+        $output .= '</div>';
+    }
+
+    $output .= '</div>';
+    $output .= '</section>';
+
+    return $output;
+}
+
+/**
+ * Renderiza el acceso compacto del header.
+ */
+function pd_render_account_access_menu(): string {
+    $current_url = '';
+
+    if ( ! is_admin() ) {
+        $current_url = home_url( add_query_arg( [] ) );
+    }
+
+    if ( is_user_logged_in() ) {
+        $current_user   = wp_get_current_user();
+        $membership_url = pd_get_default_membership_url();
+        $logout_url     = wp_logout_url( $current_url ? $current_url : home_url( '/' ) );
+        $menu_id        = wp_unique_id( 'pd-account-menu-' );
+        $avatar         = get_avatar(
+            $current_user->ID,
+            40,
+            '',
+            $current_user->display_name,
+            [
+                'class'   => 'pd-account-menu__avatar-image',
+                'loading' => 'lazy',
+            ]
+        );
+
+        $output  = '<div class="pd-account-menu" data-account-menu>';
+        $output .= '<button type="button" class="pd-account-menu__trigger" data-account-menu-trigger aria-expanded="false" aria-haspopup="true" aria-controls="' . esc_attr( $menu_id ) . '" aria-label="' . esc_attr__( 'Abrir opciones de usuario', 'pertenencia-digital' ) . '">';
+        $output .= '<span class="pd-account-menu__avatar">' . $avatar . '</span>';
+        $output .= '<span class="pd-account-menu__caret" aria-hidden="true"></span>';
+        $output .= '</button>';
+        $output .= '<div id="' . esc_attr( $menu_id ) . '" class="pd-account-menu__panel" data-account-menu-panel hidden>';
+        $output .= '<p class="pd-account-menu__identity">';
+        $output .= '<strong>' . esc_html( $current_user->display_name ) . '</strong><span>' . esc_html( $current_user->user_email ) . '</span>';
+        $output .= '</p>';
+        $output .= '<a class="pd-account-menu__link" href="' . esc_url( $membership_url ) . '">' . esc_html__( 'Mi pertenencia', 'pertenencia-digital' ) . '</a>';
+        $output .= '<a class="pd-account-menu__link" href="' . esc_url( $logout_url ) . '">' . esc_html__( 'Cerrar sesion', 'pertenencia-digital' ) . '</a>';
+        $output .= '</div>';
+        $output .= '</div>';
+
+        return $output;
+    }
+
+    $login_url = pd_get_login_page_url( $current_url ? $current_url : pd_get_default_membership_url() );
+
+    return '<a class="pd-account-access__login" href="' . esc_url( $login_url ) . '">' . esc_html__( 'Acceso', 'pertenencia-digital' ) . '</a>';
+}
+
+/**
+ * Render callback del bloque de acceso compacto.
+ */
+function pd_render_block_account_access( array $attributes = [], string $content = '', ?WP_Block $block = null ): string {
+    $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
+        ? get_block_wrapper_attributes(
+            [
+                'class' => 'pd-account-access-block',
+            ]
+        )
+        : 'class="pd-account-access-block"';
+
+    return '<div ' . $wrapper_attributes . '>' . pd_render_account_access_menu() . '</div>';
+}
+
+/**
+ * Determina si una URL del menu corresponde a la pagina actual.
+ *
+ * @param string $url URL del item.
+ */
+function pd_is_current_navigation_url( string $url ): bool {
+    if ( is_admin() || '' === $url ) {
+        return false;
+    }
+
+    $site_host    = (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST );
+    $target_host  = (string) wp_parse_url( $url, PHP_URL_HOST );
+    $target_path  = (string) wp_parse_url( $url, PHP_URL_PATH );
+    $request_uri  = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( (string) $_SERVER['REQUEST_URI'] ) : '/';
+    $current_path = (string) wp_parse_url( home_url( $request_uri ), PHP_URL_PATH );
+
+    if ( '' !== $target_host && $target_host !== $site_host ) {
+        return false;
+    }
+
+    $target_path  = '' !== $target_path ? untrailingslashit( $target_path ) : '/';
+    $current_path = '' !== $current_path ? untrailingslashit( $current_path ) : '/';
+
+    return $target_path === $current_path;
+}
+
+/**
+ * Convierte bloques de navegacion en una estructura ligera de items.
+ *
+ * @param array<int, array<string, mixed>> $blocks Bloques parseados.
+ * @return array<int, array<string, mixed>>
+ */
+function pd_get_navigation_items_from_blocks( array $blocks ): array {
+    $items = [];
+
+    foreach ( $blocks as $block ) {
+        $block_name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+        $attrs      = isset( $block['attrs'] ) && is_array( $block['attrs'] ) ? $block['attrs'] : [];
+
+        if ( 'core/navigation-link' === $block_name || 'core/navigation-submenu' === $block_name ) {
+            $label = isset( $attrs['label'] ) ? wp_strip_all_tags( (string) $attrs['label'] ) : '';
+
+            if ( '' === $label && isset( $block['innerHTML'] ) ) {
+                $label = wp_strip_all_tags( (string) $block['innerHTML'] );
+            }
+
+            $items[] = [
+                'label'            => '' !== $label ? $label : __( 'Enlace', 'pertenencia-digital' ),
+                'url'              => isset( $attrs['url'] ) ? (string) $attrs['url'] : '',
+                'opens_in_new_tab' => ! empty( $attrs['opensInNewTab'] ),
+                'rel'              => isset( $attrs['rel'] ) ? (string) $attrs['rel'] : '',
+                'children'         => pd_get_navigation_items_from_blocks(
+                    isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ? $block['innerBlocks'] : []
+                ),
+            ];
+
+            continue;
+        }
+
+        if ( isset( $block['innerBlocks'] ) && is_array( $block['innerBlocks'] ) ) {
+            $items = array_merge( $items, pd_get_navigation_items_from_blocks( $block['innerBlocks'] ) );
+        }
+    }
+
+    return $items;
+}
+
+/**
+ * Obtiene items a partir de una navegacion FSE por referencia.
+ *
+ * @param int $navigation_ref ID del post wp_navigation.
+ * @return array<int, array<string, mixed>>
+ */
+function pd_get_navigation_items_from_ref( int $navigation_ref ): array {
+    if ( $navigation_ref <= 0 ) {
+        return [];
+    }
+
+    $navigation_post = get_post( $navigation_ref );
+
+    if ( ! $navigation_post instanceof WP_Post || '' === $navigation_post->post_content ) {
+        return [];
+    }
+
+    return pd_get_navigation_items_from_blocks( parse_blocks( $navigation_post->post_content ) );
+}
+
+/**
+ * Obtiene items desde un menu clasico asignado a una ubicacion.
+ *
+ * @param string $location Ubicacion del menu.
+ * @return array<int, array<string, mixed>>
+ */
+function pd_get_navigation_items_from_location( string $location ): array {
+    $locations = get_nav_menu_locations();
+
+    if ( '' === $location || empty( $locations[ $location ] ) ) {
+        return [];
+    }
+
+    $menu_items = wp_get_nav_menu_items(
+        (int) $locations[ $location ],
+        [
+            'update_post_term_cache' => false,
+        ]
+    );
+
+    if ( ! is_array( $menu_items ) ) {
+        return [];
+    }
+
+    $items_by_parent = [];
+
+    foreach ( $menu_items as $menu_item ) {
+        if ( ! $menu_item instanceof WP_Post ) {
+            continue;
+        }
+
+        $parent_id                     = (int) $menu_item->menu_item_parent;
+        $items_by_parent[ $parent_id ] = $items_by_parent[ $parent_id ] ?? [];
+        $items_by_parent[ $parent_id ][] = $menu_item;
+    }
+
+    $build_tree = static function ( int $parent_id ) use ( &$build_tree, $items_by_parent ): array {
+        $branch = [];
+
+        foreach ( $items_by_parent[ $parent_id ] ?? [] as $menu_item ) {
+            $branch[] = [
+                'label'            => $menu_item->title,
+                'url'              => $menu_item->url,
+                'opens_in_new_tab' => '_blank' === $menu_item->target,
+                'rel'              => (string) $menu_item->xfn,
+                'children'         => $build_tree( (int) $menu_item->ID ),
+            ];
+        }
+
+        return $branch;
+    };
+
+    return $build_tree( 0 );
+}
+
+/**
+ * Marca items activos si apuntan a la URL actual o contienen un hijo activo.
+ *
+ * @param array<int, array<string, mixed>> $items Items del menu.
+ * @return bool
+ */
+function pd_mark_current_navigation_items( array &$items ): bool {
+    $has_current = false;
+
+    foreach ( $items as &$item ) {
+        $child_current = false;
+
+        if ( ! empty( $item['children'] ) && is_array( $item['children'] ) ) {
+            $child_current = pd_mark_current_navigation_items( $item['children'] );
+        }
+
+        $item['current'] = pd_is_current_navigation_url( isset( $item['url'] ) ? (string) $item['url'] : '' ) || $child_current;
+        $has_current     = $has_current || ! empty( $item['current'] );
+    }
+
+    return $has_current;
+}
+
+/**
+ * Obtiene los items finales del bloque de navegacion del tema.
+ *
+ * @param array<string, mixed> $attributes Atributos del bloque.
+ * @return array<int, array<string, mixed>>
+ */
+function pd_get_site_navigation_items( array $attributes ): array {
+    $items = [];
+
+    if ( ! empty( $attributes['ref'] ) ) {
+        $items = pd_get_navigation_items_from_ref( (int) $attributes['ref'] );
+    }
+
+    if ( empty( $items ) ) {
+        $location = isset( $attributes['menuLocation'] ) ? (string) $attributes['menuLocation'] : 'menu_principal';
+        $items    = pd_get_navigation_items_from_location( $location );
+    }
+
+    if ( empty( $items ) && 'menu_principal' !== ( $attributes['menuLocation'] ?? 'menu_principal' ) ) {
+        $items = pd_get_navigation_items_from_location( 'menu_principal' );
+    }
+
+    if ( ! empty( $items ) ) {
+        pd_mark_current_navigation_items( $items );
+    }
+
+    return $items;
+}
+
+/**
+ * Renderiza recursivamente una rama del menu.
+ *
+ * @param array<int, array<string, mixed>> $items Items a renderizar.
+ * @param int                              $level Nivel actual.
+ * @param int                              $index Contador global para animacion.
+ */
+function pd_render_site_navigation_list( array $items, int $level = 0, int &$index = 0 ): string {
+    if ( empty( $items ) ) {
+        return '';
+    }
+
+    $output = '<ul class="pd-site-navigation__list pd-site-navigation__list--level-' . $level . '">';
+
+    foreach ( $items as $item ) {
+        $has_children = ! empty( $item['children'] ) && is_array( $item['children'] );
+        $is_current   = ! empty( $item['current'] );
+        $item_classes = 'pd-site-navigation__item';
+        $item_index   = $index;
+
+        if ( $has_children ) {
+            $item_classes .= ' has-children';
+        }
+
+        if ( $is_current ) {
+            $item_classes .= ' is-current';
+        }
+
+        $style = ' style="--pd-nav-index:' . (int) $item_index . ';"';
+
+        $output .= '<li class="' . esc_attr( $item_classes ) . '"' . $style . '>';
+        ++$index;
+
+        $link_classes = 'pd-site-navigation__link';
+        $target       = ! empty( $item['opens_in_new_tab'] ) ? ' target="_blank"' : '';
+        $rel          = isset( $item['rel'] ) ? trim( (string) $item['rel'] ) : '';
+
+        if ( ! empty( $item['opens_in_new_tab'] ) ) {
+            $rel = trim( $rel . ' noopener noreferrer' );
+        }
+
+        $aria_current = $is_current ? ' aria-current="page"' : '';
+        $rel_attr     = '' !== $rel ? ' rel="' . esc_attr( $rel ) . '"' : '';
+
+        if ( ! empty( $item['url'] ) ) {
+            $output .= '<a class="' . esc_attr( $link_classes ) . '" href="' . esc_url( (string) $item['url'] ) . '"' . $target . $rel_attr . $aria_current . '>' . esc_html( (string) $item['label'] ) . '</a>';
+        } else {
+            $output .= '<span class="' . esc_attr( $link_classes . ' pd-site-navigation__link--label' ) . '">' . esc_html( (string) $item['label'] ) . '</span>';
+        }
+
+        if ( $has_children ) {
+            $output .= pd_render_site_navigation_list( $item['children'], $level + 1, $index );
+        }
+
+        $output .= '</li>';
+    }
+
+    $output .= '</ul>';
+
+    return $output;
+}
+
+/**
+ * Render callback del bloque de navegacion del tema.
+ *
+ * @param array<string, mixed> $attributes Atributos del bloque.
+ */
+function pd_render_block_site_navigation( array $attributes = [], string $content = '', ?WP_Block $block = null ): string {
+    $items = pd_get_site_navigation_items( $attributes );
+
+    if ( empty( $items ) ) {
+        if ( current_user_can( 'edit_theme_options' ) ) {
+            $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
+                ? get_block_wrapper_attributes(
+                    [
+                        'class' => 'pd-site-navigation-block pd-site-navigation-block--empty',
+                    ]
+                )
+                : 'class="pd-site-navigation-block pd-site-navigation-block--empty"';
+
+            return '<div ' . $wrapper_attributes . '><div class="pd-site-navigation pd-site-navigation--empty">' . esc_html__( 'Asigna un menu para mostrar la navegacion.', 'pertenencia-digital' ) . '</div></div>';
+        }
+
+        return '';
+    }
+
+    $panel_id      = wp_unique_id( 'pd-site-navigation-' );
+    $toggle_label  = isset( $attributes['toggleLabel'] ) && '' !== (string) $attributes['toggleLabel'] ? (string) $attributes['toggleLabel'] : __( 'Menu', 'pertenencia-digital' );
+    $screen_reader = __( 'Abrir menu principal', 'pertenencia-digital' );
+    $index         = 0;
+    $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
+        ? get_block_wrapper_attributes(
+            [
+                'class' => 'pd-site-navigation-block',
+            ]
+        )
+        : 'class="pd-site-navigation-block"';
+
+    $output  = '<div ' . $wrapper_attributes . '>';
+    $output .= '<nav class="pd-site-navigation" data-site-navigation aria-label="' . esc_attr__( 'Navegacion principal', 'pertenencia-digital' ) . '">';
+    $output .= '<button type="button" class="pd-site-navigation__toggle" data-site-navigation-toggle aria-expanded="false" aria-controls="' . esc_attr( $panel_id ) . '">';
+    $output .= '<span class="screen-reader-text">' . esc_html( $screen_reader ) . '</span>';
+    $output .= '<span class="pd-site-navigation__toggle-label" aria-hidden="true">' . esc_html( $toggle_label ) . '</span>';
+    $output .= '<span class="pd-site-navigation__toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>';
+    $output .= '</button>';
+    $output .= '<div id="' . esc_attr( $panel_id ) . '" class="pd-site-navigation__panel" data-site-navigation-panel hidden>';
+    $output .= pd_render_site_navigation_list( $items, 0, $index );
+    $output .= '</div>';
+    $output .= '</nav>';
+    $output .= '</div>';
+
+    return $output;
+}
+
+/**
+ * Obtiene la pagina raiz de la seccion Musica.
+ */
+function pd_get_music_root_page(): ?WP_Post {
+    $music_page = get_page_by_path( 'musica' );
+
+    return $music_page instanceof WP_Post ? $music_page : null;
+}
+
+/**
+ * Obtiene las paginas hijas publicadas de Musica.
+ *
+ * @param string $parent_path Slug base de la seccion.
+ * @return array<int, WP_Post>
+ */
+function pd_get_music_child_pages( string $parent_path = 'musica' ): array {
+    $music_root = 'musica' === $parent_path ? pd_get_music_root_page() : get_page_by_path( $parent_path );
+
+    if ( ! $music_root instanceof WP_Post ) {
+        return [];
+    }
+
+    $pages = get_pages(
+        [
+            'child_of'    => 0,
+            'parent'      => (int) $music_root->ID,
+            'sort_column' => 'menu_order,post_title',
+            'sort_order'  => 'ASC',
+            'post_status' => 'publish',
+        ]
+    );
+
+    return is_array( $pages ) ? array_values( array_filter( $pages, static fn ( $page ) => $page instanceof WP_Post ) ) : [];
+}
+
+/**
+ * Render callback del submenu horizontal de la seccion Musica.
+ *
+ * @param array<string, mixed> $attributes Atributos del bloque.
+ */
+function pd_render_block_music_subnavigation( array $attributes = [], string $content = '', ?WP_Block $block = null ): string {
+    $parent_path = isset( $attributes['parentPath'] ) && '' !== (string) $attributes['parentPath'] ? (string) $attributes['parentPath'] : 'musica';
+    $pages       = pd_get_music_child_pages( $parent_path );
+
+    if ( empty( $pages ) ) {
+        if ( current_user_can( 'edit_theme_options' ) ) {
+            $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
+                ? get_block_wrapper_attributes(
+                    [
+                        'class' => 'pd-music-subnav-block pd-music-subnav-block--empty',
+                    ]
+                )
+                : 'class="pd-music-subnav-block pd-music-subnav-block--empty"';
+
+            return '<div ' . $wrapper_attributes . '><div class="pd-music-subnav pd-music-subnav--empty">' . esc_html__( 'No hay paginas hijas publicadas en la seccion Musica.', 'pertenencia-digital' ) . '</div></div>';
+        }
+
+        return '';
+    }
+
+    $current_id = get_queried_object_id();
+    $ancestors  = $current_id > 0 ? array_map( 'intval', get_post_ancestors( $current_id ) ) : [];
+    $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
+        ? get_block_wrapper_attributes(
+            [
+                'class' => 'pd-music-subnav-block',
+            ]
+        )
+        : 'class="pd-music-subnav-block"';
+    $output     = '<div ' . $wrapper_attributes . '>';
+    $output    .= '<nav class="pd-music-subnav" aria-label="' . esc_attr__( 'Submenu de Musica', 'pertenencia-digital' ) . '">';
+    $output    .= '<ul class="pd-music-subnav__list">';
+
+    foreach ( $pages as $page ) {
+        $page_url = get_permalink( $page );
+
+        if ( ! is_string( $page_url ) || '' === $page_url ) {
+            continue;
+        }
+
+        $is_current = (int) $page->ID === $current_id || in_array( (int) $page->ID, $ancestors, true );
+        $classes    = 'pd-music-subnav__item' . ( $is_current ? ' is-current' : '' );
+
+        $output .= '<li class="' . esc_attr( $classes ) . '">';
+        $output .= '<a class="pd-music-subnav__link" href="' . esc_url( $page_url ) . '"' . ( $is_current ? ' aria-current="page"' : '' ) . '>' . esc_html( get_the_title( $page ) ) . '</a>';
+        $output .= '</li>';
+    }
+
+    $output .= '</ul>';
+    $output .= '</nav>';
+    $output .= '</div>';
+
+    return $output;
+}
+
+/**
+ * Shortcode del acceso compacto del header.
+ */
+function pd_account_access_shortcode(): string {
+    return pd_render_block_account_access();
+}
+add_shortcode( 'pd_account_access', 'pd_account_access_shortcode' );
+
+/**
+ * Registra bloques dinamicos livianos del tema.
+ */
+function pd_register_dynamic_blocks(): void {
+    $block_directory = get_template_directory() . '/blocks';
+
+    register_block_type(
+        $block_directory . '/account-access',
+        [
+            'render_callback' => 'pd_render_block_account_access',
+        ]
+    );
+
+    register_block_type(
+        $block_directory . '/site-navigation',
+        [
+            'render_callback' => 'pd_render_block_site_navigation',
+        ]
+    );
+
+    register_block_type(
+        $block_directory . '/music-subnavigation',
+        [
+            'render_callback' => 'pd_render_block_music_subnavigation',
+        ]
+    );
+}
+add_action( 'init', 'pd_register_dynamic_blocks' );
+
+/**
+ * Shortcode reutilizable para insertar el panel de acceso.
+ *
+ * @param array<string, string> $atts Atributos del shortcode.
+ */
+function pd_login_form_shortcode( array $atts = [] ): string {
+    $atts = shortcode_atts(
+        [
+            'title'       => '',
+            'intro'       => '',
+            'redirect_to' => '',
+        ],
+        $atts,
+        'pd_login_form'
+    );
+
+    return pd_render_login_panel(
+        [
+            'title'       => '' !== $atts['title'] ? $atts['title'] : __( 'Accede a tu pertenencia digital', 'pertenencia-digital' ),
+            'intro'       => '' !== $atts['intro'] ? $atts['intro'] : __( 'Inicia sesion para editar tu presskit, revisar tus proyectos y mantener actualizada tu presencia en el sitio.', 'pertenencia-digital' ),
+            'redirect_to' => $atts['redirect_to'],
+        ]
+    );
+}
+add_shortcode( 'pd_login_form', 'pd_login_form_shortcode' );
+
+/**
+ * Mejora la presentacion del login nativo como fallback.
+ */
+function pd_customize_wp_login_screen(): void {
+    $theme      = wp_get_theme();
+    $style_path = get_stylesheet_directory() . '/style.css';
+    $version    = file_exists( $style_path ) ? (string) filemtime( $style_path ) : $theme->get( 'Version' );
+
+    wp_enqueue_style(
+        'pertenencia-digital-login-fonts',
+        'https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap',
+        [],
+        null
+    );
+
+    wp_enqueue_style(
+        'pertenencia-digital-login-style',
+        get_stylesheet_uri(),
+        [ 'pertenencia-digital-login-fonts' ],
+        $version
+    );
+
+    wp_add_inline_style(
+        'pertenencia-digital-login-style',
+        '
+body.login {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(30, 58, 138, 0.18), transparent 32%),
+    linear-gradient(160deg, #eef4ff 0%, #f8fafc 52%, #edf2f7 100%);
+  color: #1f2937;
+  font-family: "Libre Baskerville", serif;
+}
+
+body.login #login {
+  width: min(92vw, 430px);
+  padding: 4rem 0 2rem;
+}
+
+body.login h1 a {
+  width: auto;
+  height: auto;
+  margin: 0 0 1.25rem;
+  background: none;
+  text-indent: 0;
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1e3a8a;
+}
+
+body.login form {
+  border: 0;
+  border-radius: 24px;
+  padding: 1.6rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 45px rgba(30, 58, 138, 0.12);
+}
+
+body.login label,
+body.login .forgetmenot,
+body.login #nav,
+body.login #backtoblog {
+  color: #334155;
+}
+
+body.login input[type="text"],
+body.login input[type="password"] {
+  min-height: 48px;
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  border-radius: 12px;
+  padding-inline: 0.95rem;
+}
+
+body.login .button.button-primary {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: #1e3a8a;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+body.login .button.button-primary:hover,
+body.login .button.button-primary:focus {
+  background: #1e40af;
+}
+
+body.login .message,
+body.login #login_error,
+body.login .success {
+  border-left: 0;
+  border-radius: 16px;
+  box-shadow: 0 18px 45px rgba(30, 58, 138, 0.08);
+}
+'
+    );
+}
+add_action( 'login_enqueue_scripts', 'pd_customize_wp_login_screen' );
+
+add_filter(
+    'login_headerurl',
+    function (): string {
+        return home_url( '/' );
+    }
+);
+
+add_filter(
+    'login_headertext',
+    function (): string {
+        return get_bloginfo( 'name' );
     }
 );
 
@@ -1310,6 +2342,12 @@ function pd_ensure_theme_pages(): void {
     }
 
     $legal_pages = [
+        [
+            'title'    => 'Acceso',
+            'slug'     => 'acceso',
+            'content'  => '<!-- wp:paragraph --><p>Pantalla personalizada para iniciar sesion y recuperar contrasena.</p><!-- /wp:paragraph -->',
+            'template' => 'acceso',
+        ],
         [
             'title'   => 'Política de privacidad',
             'slug'    => 'politica-de-privacidad',

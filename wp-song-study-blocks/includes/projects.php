@@ -2002,6 +2002,16 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
     );
 
     if ( ! is_user_logged_in() ) {
+        if ( function_exists( 'pd_render_login_panel' ) ) {
+            return pd_render_login_panel(
+                [
+                    'title'       => __( 'Accede a tu pertenencia digital', 'wp-song-study-blocks' ),
+                    'intro'       => $settings['login_message'],
+                    'redirect_to' => get_permalink() ? get_permalink() : home_url( '/' ),
+                ]
+            );
+        }
+
         $login_url = wp_login_url( get_permalink() ? get_permalink() : home_url( '/' ) );
 
         return '<div class="pd-membership-shell"><p>' . esc_html( $settings['login_message'] ) . '</p><p><a class="wp-block-button__link wp-element-button" href="' . esc_url( $login_url ) . '">' . esc_html__( 'Iniciar sesión', 'wp-song-study-blocks' ) . '</a></p></div>';

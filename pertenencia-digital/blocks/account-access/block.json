@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "pertenencia-digital/account-access",
+  "title": "Acceso de usuario",
+  "category": "widgets",
+  "icon": "admin-users",
+  "description": "Muestra acceso o avatar con menu del usuario actual.",
+  "textdomain": "pertenencia-digital",
+  "editorScript": "pertenencia-digital-theme-blocks-editor",
+  "supports": {
+    "auto_register": true,
+    "anchor": true,
+    "className": true,
+    "html": false,
+    "spacing": {
+      "margin": true,
+      "padding": true
+    }
+  }
+}

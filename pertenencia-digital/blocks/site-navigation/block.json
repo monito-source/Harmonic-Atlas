@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "pertenencia-digital/site-navigation",
+  "title": "Navegacion del tema",
+  "category": "widgets",
+  "icon": "menu",
+  "description": "Muestra la navegacion principal del tema con panel desplegable propio.",
+  "textdomain": "pertenencia-digital",
+  "editorScript": "pertenencia-digital-theme-blocks-editor",
+  "attributes": {
+    "ref": {
+      "type": "number",
+      "default": 0
+    },
+    "menuLocation": {
+      "type": "string",
+      "default": "menu_principal"
+    },
+    "toggleLabel": {
+      "type": "string",
+      "default": "Menu"
+    }
+  },
+  "supports": {
+    "auto_register": true,
+    "anchor": true,
+    "className": true,
+    "html": false,
+    "spacing": {
+      "margin": true,
+      "padding": true
+    }
+  }
+}

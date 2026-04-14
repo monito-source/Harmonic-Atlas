@@ -25,6 +25,49 @@ Tags: full-site-editing, block-patterns, block-styles, editor-style
   --pd-color-border: var(--wp--preset--color--borde-suave, #cbd5e1);
   --pd-color-success: var(--wp--preset--color--exito, #166534);
   --pd-color-error: var(--wp--preset--color--error, #991b1b);
+  --pd-color-text-on-light: var(--wp--preset--color--texto, #2c3e50);
+  --pd-color-text-on-dark: var(--wp--preset--color--blanco, #ffffff);
+  --pd-auth-intro-text: var(--wp--custom--auth--intro-text, var(--pd-color-text-on-dark));
+  --pd-auth-intro-background: var(--wp--custom--auth--intro-background, linear-gradient(140deg, var(--pd-color-heading), var(--pd-color-primary)));
+  --pd-auth-intro-glow: var(--wp--custom--auth--intro-glow, color-mix(in srgb, var(--pd-color-header-link-hover) 24%, transparent));
+  --pd-auth-card-background: var(--wp--custom--auth--card-background, var(--pd-color-surface));
+  --pd-auth-card-text: var(--wp--custom--auth--card-text, var(--pd-color-text-on-light));
+  --pd-auth-card-border: var(--wp--custom--auth--card-border, color-mix(in srgb, var(--pd-color-heading) 12%, transparent));
+  --pd-auth-field-background: var(--wp--custom--auth--field-background, var(--pd-color-surface));
+  --pd-auth-field-text: var(--wp--custom--auth--field-text, var(--pd-color-text-on-light));
+  --pd-auth-field-border: var(--wp--custom--auth--field-border, color-mix(in srgb, var(--pd-color-heading) 15%, transparent));
+  --pd-auth-link: var(--wp--custom--auth--link, var(--pd-color-primary));
+  --pd-auth-link-hover: var(--wp--custom--auth--link-hover, var(--pd-color-primary-hover));
+  --pd-account-trigger-background: var(--wp--custom--header--account--trigger-background, color-mix(in srgb, var(--pd-color-white) 12%, transparent));
+  --pd-account-trigger-text: var(--wp--custom--header--account--trigger-text, var(--pd-color-white));
+  --pd-account-trigger-border: var(--wp--custom--header--account--trigger-border, color-mix(in srgb, var(--pd-color-white) 26%, transparent));
+  --pd-account-trigger-hover-background: var(--wp--custom--header--account--trigger-hover-background, color-mix(in srgb, var(--pd-color-white) 18%, transparent));
+  --pd-account-trigger-hover-border: var(--wp--custom--header--account--trigger-hover-border, color-mix(in srgb, var(--pd-color-white) 40%, transparent));
+  --pd-account-panel-background: var(--wp--custom--header--account--panel-background, color-mix(in srgb, var(--pd-color-surface) 96%, transparent));
+  --pd-account-panel-text: var(--wp--custom--header--account--panel-text, var(--pd-color-text));
+  --pd-account-panel-border: var(--wp--custom--header--account--panel-border, color-mix(in srgb, var(--pd-color-heading) 10%, transparent));
+  --pd-account-panel-hover-background: var(--wp--custom--header--account--panel-hover-background, color-mix(in srgb, var(--pd-color-primary) 10%, transparent));
+  --pd-nav-trigger-background: var(--wp--custom--header--navigation--trigger-background, color-mix(in srgb, var(--pd-color-white) 12%, transparent));
+  --pd-nav-trigger-text: var(--wp--custom--header--navigation--trigger-text, var(--pd-color-white));
+  --pd-nav-trigger-border: var(--wp--custom--header--navigation--trigger-border, color-mix(in srgb, var(--pd-color-white) 26%, transparent));
+  --pd-nav-trigger-hover-background: var(--wp--custom--header--navigation--trigger-hover-background, color-mix(in srgb, var(--pd-color-white) 18%, transparent));
+  --pd-nav-trigger-hover-border: var(--wp--custom--header--navigation--trigger-hover-border, color-mix(in srgb, var(--pd-color-white) 40%, transparent));
+  --pd-nav-panel-background: var(--wp--custom--header--navigation--panel-background, color-mix(in srgb, var(--wp--preset--color--oscuro) 88%, rgba(255, 255, 255, 0.08)));
+  --pd-nav-panel-text: var(--wp--custom--header--navigation--panel-text, var(--pd-color-white));
+  --pd-nav-panel-border: var(--wp--custom--header--navigation--panel-border, color-mix(in srgb, var(--pd-color-white) 22%, transparent));
+  --pd-nav-item-background: var(--wp--custom--header--navigation--item-background, color-mix(in srgb, var(--pd-color-white) 5%, transparent));
+  --pd-nav-item-border: var(--wp--custom--header--navigation--item-border, color-mix(in srgb, var(--pd-color-white) 14%, transparent));
+  --pd-nav-item-hover-background: var(--wp--custom--header--navigation--item-hover-background, color-mix(in srgb, var(--pd-color-white) 10%, transparent));
+  --pd-nav-item-hover-border: var(--wp--custom--header--navigation--item-hover-border, color-mix(in srgb, var(--pd-color-header-link-hover) 30%, transparent));
+  --pd-nav-item-hover-text: var(--wp--custom--header--navigation--item-hover-text, var(--pd-color-header-link-hover));
+  --pd-subnav-text: var(--wp--custom--header--subnavigation--text, var(--pd-color-white));
+  --pd-subnav-item-background: var(--wp--custom--header--subnavigation--item-background, color-mix(in srgb, var(--pd-color-white) 4%, transparent));
+  --pd-subnav-item-border: var(--wp--custom--header--subnavigation--item-border, color-mix(in srgb, var(--pd-color-white) 16%, transparent));
+  --pd-subnav-item-hover-background: var(--wp--custom--header--subnavigation--item-hover-background, color-mix(in srgb, var(--pd-color-white) 8%, transparent));
+  --pd-subnav-item-hover-border: var(--wp--custom--header--subnavigation--item-hover-border, color-mix(in srgb, var(--pd-color-header-link-hover) 20%, transparent));
+  --pd-subnav-item-current-background: var(--wp--custom--header--subnavigation--item-current-background, color-mix(in srgb, var(--pd-color-header-link-hover) 16%, transparent));
+  --pd-subnav-item-current-border: var(--wp--custom--header--subnavigation--item-current-border, color-mix(in srgb, var(--pd-color-header-link-hover) 44%, transparent));
+  --pd-subnav-item-current-text: var(--wp--custom--header--subnavigation--item-current-text, var(--pd-color-white));
   --pd-color-header-overlay: color-mix(in srgb, var(--pd-color-heading) 72%, transparent);
   --pd-color-surface: var(--wp--preset--color--blanco, #ffffff);
   --pd-color-header-link-hover: var(--wp--preset--color--resalte-header, #8fd3ff);
@@ -54,6 +97,9 @@ body {
 body {
   margin: 0;
   min-height: 100vh;
+  color: var(--pd-color-text-on-light);
+  background-color: var(--pd-color-bg);
+  cursor: default;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -106,75 +152,174 @@ input[type='reset'] {
   border-width: 1px;
 }
 
-.wp-block-navigation__responsive-container.is-menu-open {
-  padding: 2rem;
-  background: var(--pd-color-text);
-  color: var(--pd-color-bg);
+:where(.has-background):not(.has-text-color) {
+  color: var(--pd-auto-contrast-text, var(--pd-color-text-on-light));
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content,
-.pd-header-musica-tecnologia__nav .wp-block-pages-list__item__link,
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content,
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-dialog {
+:where(.has-background):not(.has-text-color) :where(h1, h2, h3, h4, h5, h6, p, li, dt, dd, figcaption, blockquote, cite) {
   color: inherit;
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content {
-  text-decoration: none;
+:where(.has-background):not(.has-text-color) a:not(.wp-block-button__link) {
+  color: inherit;
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content:hover,
-.pd-header-musica-tecnologia__nav .wp-block-navigation-item__content:focus-visible {
-  color: var(--pd-color-header-link-hover);
+.pd-site-navigation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: inherit;
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content {
-  align-items: stretch;
+.pd-site-navigation__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--pd-nav-trigger-border);
+  border-radius: 999px;
+  background: var(--pd-nav-trigger-background);
+  color: var(--pd-nav-trigger-text);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content .wp-block-navigation__container {
+.pd-site-navigation__toggle:hover,
+.pd-site-navigation__toggle:focus-visible {
+  background: var(--pd-nav-trigger-hover-background);
+  border-color: var(--pd-nav-trigger-hover-border);
+  transform: translateY(-1px);
+}
+
+.pd-site-navigation__toggle-label {
+  font-size: 0.92rem;
+  line-height: 1;
+}
+
+.pd-site-navigation__toggle-icon {
+  display: inline-grid;
+  gap: 0.22rem;
+}
+
+.pd-site-navigation__toggle-icon span {
+  display: block;
+  inline-size: 1rem;
+  block-size: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: center;
+  transition: transform 0.24s ease, opacity 0.2s ease;
+}
+
+.pd-site-navigation__panel {
+  position: absolute;
+  top: calc(100% + 0.7rem);
+  left: 0;
+  z-index: 25;
+  width: min(24rem, calc(100vw - 1.5rem));
+  padding: 0.65rem;
+  border: 1px solid var(--pd-nav-panel-border);
+  border-radius: 18px;
+  background: var(--pd-nav-panel-background);
+  box-shadow: var(--pd-shadow-card);
+  backdrop-filter: blur(18px);
+  color: var(--pd-nav-panel-text);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-0.45rem);
+  transition:
+    opacity 0.22s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.28s;
+}
+
+.pd-site-navigation.is-open .pd-site-navigation__panel,
+.pd-site-navigation.is-closing .pd-site-navigation__panel {
+  visibility: visible;
+}
+
+.pd-site-navigation.is-open .pd-site-navigation__panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+.pd-site-navigation__panel[hidden] {
+  display: none;
+}
+
+.pd-site-navigation__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pd-site-navigation__list--level-0,
+.pd-site-navigation__list--level-1 {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.pd-site-navigation__item {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.24s ease,
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: calc(50ms + (var(--pd-nav-index, 0) * 45ms));
+}
+
+.pd-site-navigation:not(.is-open):not(.is-closing) .pd-site-navigation__item,
+.pd-site-navigation.is-closing .pd-site-navigation__item {
+  opacity: 0;
+  transform: translateY(-0.45rem);
+  transition-delay: 0s;
+}
+
+.pd-site-navigation__link {
+  display: flex;
   width: 100%;
-}
-
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-close,
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open {
+  min-height: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--pd-nav-item-border);
+  border-radius: 14px;
+  background: var(--pd-nav-item-background);
   color: inherit;
+  text-decoration: none;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-close svg,
-.pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-open svg {
-  fill: currentColor;
+.pd-site-navigation__link:hover,
+.pd-site-navigation__link:focus-visible,
+.pd-site-navigation__item.is-current > .pd-site-navigation__link {
+  color: var(--pd-nav-item-hover-text);
+  border-color: var(--pd-nav-item-hover-border);
+  background: var(--pd-nav-item-hover-background);
+  transform: translateX(2px);
 }
 
-@media (max-width: 781px) {
-  .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content {
-    align-items: flex-start;
-    text-align: left;
-  }
+.pd-site-navigation__item.has-children > .pd-site-navigation__link {
+  margin-bottom: 0.1rem;
+}
 
-  .pd-header-musica-tecnologia__nav .wp-block-navigation__responsive-container-content .wp-block-navigation__container {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-    padding-top: 1rem;
-  }
+.pd-site-navigation__list--level-1 {
+  padding-left: 0.6rem;
+}
 
-  .pd-header-musica-tecnologia__nav .wp-block-navigation-item,
-  .pd-header-musica-tecnologia__nav .wp-block-page-list-item {
-    width: 100%;
-    list-style: none;
-  }
+.pd-site-navigation.is-open .pd-site-navigation__toggle-icon span:nth-child(1) {
+  transform: translateY(3.7px) rotate(45deg);
+}
 
-  .pd-header-musica-tecnologia__nav .wp-block-navigation-item__content,
-  .pd-header-musica-tecnologia__nav .wp-block-pages-list__item__link {
-    display: block;
-    width: 100%;
-    padding: 0.75rem 1rem;
-    border: 1px solid color-mix(in srgb, var(--pd-color-bg) 24%, transparent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--pd-color-white) 8%, transparent);
-  }
+.pd-site-navigation.is-open .pd-site-navigation__toggle-icon span:nth-child(2) {
+  opacity: 0;
+}
+
+.pd-site-navigation.is-open .pd-site-navigation__toggle-icon span:nth-child(3) {
+  transform: translateY(-3.7px) rotate(-45deg);
 }
 
 .wp-block-post-title a,
@@ -470,6 +615,162 @@ body .wpss-public-reader {
   gap: 1.75rem;
 }
 
+.pd-auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.pd-auth-shell__intro,
+.pd-auth-card {
+  padding: clamp(1.4rem, 3vw, 2rem);
+  border-radius: var(--pd-radius-lg);
+  box-shadow: var(--pd-shadow-card);
+}
+
+.pd-auth-shell__intro {
+  --pd-auto-contrast-text: var(--pd-color-text-on-dark);
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  background:
+    radial-gradient(circle at top left, var(--pd-auth-intro-glow), transparent 42%),
+    var(--pd-auth-intro-background);
+  color: var(--pd-auth-intro-text);
+}
+
+.pd-auth-shell__eyebrow,
+.pd-auth-state__eyebrow {
+  margin: 0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+.pd-auth-shell__title,
+.pd-auth-state__title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.1;
+}
+
+.pd-auth-shell__lead,
+.pd-auth-state__meta,
+.pd-auth-card__description,
+.pd-auth-card__alt {
+  margin: 0;
+  color: inherit;
+}
+
+.pd-auth-shell__list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pd-auth-card {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  background: var(--pd-auth-card-background);
+  color: var(--pd-auth-card-text);
+  border: 1px solid var(--pd-auth-card-border);
+}
+
+.pd-auth-card__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.4vw, 1.9rem);
+}
+
+.pd-auth-feedback {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  box-shadow: var(--pd-shadow-card);
+}
+
+.pd-auth-feedback.is-success {
+  background: color-mix(in srgb, var(--pd-color-success) 12%, transparent);
+  color: var(--pd-color-success);
+}
+
+.pd-auth-feedback.is-error {
+  background: color-mix(in srgb, var(--pd-color-error) 12%, transparent);
+  color: var(--pd-color-error);
+}
+
+.pd-auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.pd-auth-form label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.pd-auth-form input[type='text'],
+.pd-auth-form input[type='password'] {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--pd-auth-field-border);
+  border-radius: 12px;
+  padding: 0.8rem 0.95rem;
+  background: var(--pd-auth-field-background);
+  color: var(--pd-auth-field-text);
+  font: inherit;
+}
+
+.pd-auth-form input[type='text']::placeholder,
+.pd-auth-form input[type='password']::placeholder {
+  color: color-mix(in srgb, var(--pd-auth-field-text) 62%, transparent);
+}
+
+.pd-auth-form__checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pd-auth-form__checkbox input {
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0;
+}
+
+.pd-auth-form .wp-block-button__link,
+.pd-auth-state__actions .wp-block-button__link {
+  width: fit-content;
+  cursor: pointer;
+  border-radius: var(--pd-radius-pill);
+}
+
+.pd-auth-card__links,
+.pd-auth-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.pd-auth-card__links a,
+.pd-auth-card__alt a {
+  color: var(--pd-auth-link);
+}
+
+.pd-auth-card__links a:hover,
+.pd-auth-card__links a:focus-visible,
+.pd-auth-card__alt a:hover,
+.pd-auth-card__alt a:focus-visible {
+  color: var(--pd-auth-link-hover);
+}
+
+.pd-auth-state {
+  display: grid;
+  gap: 1rem;
+}
+
 .pd-membership-shell__header {
   display: flex;
   justify-content: space-between;
@@ -627,6 +928,20 @@ body .wpss-public-reader {
   cursor: pointer;
 }
 
+a,
+[role='button'],
+summary,
+label[for] {
+  cursor: pointer;
+}
+
+input:not([type='submit']):not([type='button']):not([type='reset']):not([type='checkbox']):not([type='radio']),
+textarea,
+select,
+[contenteditable='true'] {
+  cursor: text;
+}
+
 .pd-membership-gallery-preview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -727,9 +1042,273 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 .pd-header-musica-tecnologia {
+  --pd-auto-contrast-text: var(--pd-color-text-on-dark);
   --pd-header-padding-inline: var(--wp--custom--layout--content-padding, clamp(0.95rem, 4vw, 2.5rem));
-  --pd-header-padding-block: var(--wp--preset--spacing--50, 1.5rem);
+  --pd-header-padding-block: clamp(0.85rem, 2.2vw, 1.2rem);
+  padding: var(--pd-header-padding-block) var(--pd-header-padding-inline);
+  background: linear-gradient(180deg, var(--wp--preset--color--oscuro) 41%, rgba(255, 255, 255, 0.17) 67%, rgba(40, 118, 252, 0) 87%);
   box-shadow: var(--pd-shadow-header);
+}
+
+.pd-header-musica-tecnologia__topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pd-header-musica-tecnologia__inner {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.pd-header-musica-tecnologia__branding {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.pd-header-musica-tecnologia__branding > * {
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title,
+.pd-header-musica-tecnologia .wp-block-site-tagline,
+.pd-header-musica-tecnologia .wp-block-buttons {
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.pd-header-musica-tecnologia__topbar .wp-block-shortcode {
+  margin: 0;
+}
+
+.pd-account-access__login,
+.pd-account-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--pd-account-trigger-border);
+  border-radius: 999px;
+  background: var(--pd-account-trigger-background);
+  color: var(--pd-account-trigger-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.pd-account-access__login:hover,
+.pd-account-access__login:focus-visible,
+.pd-account-menu__trigger:hover,
+.pd-account-menu__trigger:focus-visible {
+  background: var(--pd-account-trigger-hover-background);
+  border-color: var(--pd-account-trigger-hover-border);
+  transform: translateY(-1px);
+}
+
+.pd-account-menu {
+  position: relative;
+}
+
+.pd-account-menu__avatar,
+.pd-account-menu__avatar-image {
+  display: block;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+}
+
+.pd-account-menu__avatar {
+  overflow: hidden;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pd-color-white) 24%, transparent);
+}
+
+.pd-account-menu__caret {
+  inline-size: 0.65rem;
+  block-size: 0.65rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.2s ease;
+}
+
+.pd-account-menu.is-open .pd-account-menu__caret {
+  transform: rotate(-135deg) translateY(-1px);
+}
+
+.pd-account-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.65rem);
+  right: 0;
+  z-index: 20;
+  min-width: min(18rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem;
+  border: 1px solid var(--pd-account-panel-border);
+  border-radius: 18px;
+  background: var(--pd-account-panel-background);
+  box-shadow: var(--pd-shadow-card);
+  color: var(--pd-account-panel-text);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-0.35rem) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity 0.2s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.24s;
+}
+
+.pd-account-menu.is-open .pd-account-menu__panel,
+.pd-account-menu.is-closing .pd-account-menu__panel {
+  visibility: visible;
+}
+
+.pd-account-menu.is-open .pd-account-menu__panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition-delay: 0s;
+}
+
+.pd-account-menu__panel[hidden] {
+  display: none;
+}
+
+.pd-account-menu__identity {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--pd-color-border) 60%, transparent);
+}
+
+.pd-account-menu__identity span {
+  color: var(--pd-color-muted);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.pd-account-menu__link {
+  display: block;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.pd-account-menu__link:hover,
+.pd-account-menu__link:focus-visible {
+  background: var(--pd-account-panel-hover-background);
+}
+
+.pd-music-subnav {
+  width: 100%;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--pd-subnav-item-border) 82%, transparent);
+}
+
+.pd-music-subnav__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pd-music-subnav__item {
+  min-width: 0;
+}
+
+.pd-music-subnav__link {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 2.1rem;
+  padding: 0.35rem 0.7rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.8rem 0.8rem 0 0;
+  background: transparent;
+  color: var(--pd-subnav-text);
+  text-align: center;
+  text-decoration: none;
+  opacity: 0.82;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+}
+
+.pd-music-subnav__link::after {
+  content: "";
+  position: absolute;
+  left: 0.7rem;
+  right: 0.7rem;
+  bottom: 0.08rem;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  transform: scaleX(0.45);
+  transform-origin: center;
+  transition: background-color 0.2s ease, transform 0.24s ease;
+}
+
+.pd-music-subnav__link:hover,
+.pd-music-subnav__link:focus-visible {
+  border-color: color-mix(in srgb, var(--pd-subnav-item-hover-border) 22%, transparent);
+  background: var(--pd-subnav-item-hover-background);
+  opacity: 1;
+}
+
+.pd-music-subnav__item.is-current .pd-music-subnav__link {
+  border-color: color-mix(in srgb, var(--pd-subnav-item-current-border) 28%, transparent);
+  background: var(--pd-subnav-item-current-background);
+  color: var(--pd-subnav-item-current-text);
+  opacity: 1;
+}
+
+.pd-music-subnav__link:hover::after,
+.pd-music-subnav__link:focus-visible::after,
+.pd-music-subnav__item.is-current .pd-music-subnav__link::after {
+  background: var(--pd-subnav-item-current-border);
+  transform: scaleX(1);
+}
+
+.pd-header-musica-hijas {
+  --pd-header-padding-inline: clamp(0.75rem, 2.4vw, 1rem);
+  --pd-header-padding-block: clamp(0.65rem, 2vw, 0.9rem);
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__inner {
+  gap: 0.55rem;
+}
+
+.pd-header-musica-hijas .pd-music-subnav {
+  margin-top: 0;
+}
+
+@media (max-width: 781px) {
+  .pd-music-subnav__list {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 0.15rem;
+    scrollbar-width: thin;
+  }
+
+  .pd-music-subnav__item {
+    flex: 0 0 auto;
+  }
 }
 
 .pd-eyebrow {
@@ -947,8 +1526,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 @media (max-width: 781px) {
-  .wp-block-navigation__responsive-container.is-menu-open {
-    padding: 1.25rem;
+  .pd-site-navigation__panel {
+    width: min(24rem, calc(100vw - 1.5rem));
   }
 
   .pd-header-musica-tecnologia {
@@ -981,6 +1560,11 @@ body .wpss-public-reader .wpss-reading__stack-shell {
     --pd-header-padding-block: clamp(1rem, 3vw, 1.25rem);
   }
 
+  .pd-header-musica-tecnologia__topbar {
+    align-items: flex-start;
+  }
+
+  .pd-auth-shell,
   .pd-membership-shell__grid {
     grid-template-columns: 1fr;
   }

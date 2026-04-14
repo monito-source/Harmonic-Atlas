@@ -200,6 +200,57 @@
         "header": "0 18px 40px rgba(15, 23, 42, 0.16)",
         "card": "0 18px 45px rgba(30, 58, 138, 0.12)",
         "hero": "0 18px 45px rgba(15, 23, 42, 0.18)"
+      },
+      "auth": {
+        "introText": "var(--wp--preset--color--blanco)",
+        "introBackground": "linear-gradient(140deg, var(--wp--preset--color--oscuro), var(--wp--preset--color--azul-principal))",
+        "introGlow": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 30%, transparent)",
+        "cardBackground": "var(--wp--preset--color--blanco)",
+        "cardText": "var(--wp--preset--color--texto)",
+        "cardBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 12%, transparent)",
+        "fieldBackground": "var(--wp--preset--color--blanco)",
+        "fieldText": "var(--wp--preset--color--texto)",
+        "fieldBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 15%, transparent)",
+        "link": "var(--wp--preset--color--azul-principal)",
+        "linkHover": "var(--wp--preset--color--azul-hover)"
+      },
+      "header": {
+        "account": {
+          "triggerBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
+          "triggerText": "var(--wp--preset--color--blanco)",
+          "triggerBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 26%, transparent)",
+          "triggerHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 18%, transparent)",
+          "triggerHoverBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 40%, transparent)",
+          "panelBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 96%, transparent)",
+          "panelText": "var(--wp--preset--color--texto)",
+          "panelBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 10%, transparent)",
+          "panelHoverBackground": "color-mix(in srgb, var(--wp--preset--color--azul-principal) 10%, transparent)"
+        },
+        "navigation": {
+          "triggerBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
+          "triggerText": "var(--wp--preset--color--blanco)",
+          "triggerBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 26%, transparent)",
+          "triggerHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 18%, transparent)",
+          "triggerHoverBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 40%, transparent)",
+          "panelBackground": "color-mix(in srgb, var(--wp--preset--color--oscuro) 88%, rgba(255,255,255,0.08))",
+          "panelText": "var(--wp--preset--color--blanco)",
+          "panelBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 22%, transparent)",
+          "itemBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 5%, transparent)",
+          "itemBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 14%, transparent)",
+          "itemHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 10%, transparent)",
+          "itemHoverBorder": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 30%, transparent)",
+          "itemHoverText": "var(--wp--preset--color--resalte-header)"
+        },
+        "subnavigation": {
+          "text": "var(--wp--preset--color--blanco)",
+          "itemBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 4%, transparent)",
+          "itemBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 16%, transparent)",
+          "itemHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 8%, transparent)",
+          "itemHoverBorder": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 20%, transparent)",
+          "itemCurrentBackground": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 16%, transparent)",
+          "itemCurrentBorder": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 44%, transparent)",
+          "itemCurrentText": "var(--wp--preset--color--blanco)"
+        }
       }
     }
   },
@@ -299,6 +350,13 @@
     }
   ],
   "customTemplates": [
+    {
+      "name": "acceso",
+      "title": "Acceso",
+      "postTypes": [
+        "page"
+      ]
+    },
     {
       "name": "inicio",
       "title": "Inicio / Landing",
