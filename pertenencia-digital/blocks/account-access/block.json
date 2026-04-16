@@ -8,14 +8,95 @@
   "description": "Muestra acceso o avatar con menu del usuario actual.",
   "textdomain": "pertenencia-digital",
   "editorScript": "pertenencia-digital-theme-blocks-editor",
+  "attributes": {
+    "loginLabel": {
+      "type": "string",
+      "default": "Acceso"
+    },
+    "showIdentity": {
+      "type": "boolean",
+      "default": true
+    },
+    "showEmail": {
+      "type": "boolean",
+      "default": true
+    },
+    "showMembershipLink": {
+      "type": "boolean",
+      "default": true
+    },
+    "showLogoutLink": {
+      "type": "boolean",
+      "default": true
+    },
+    "panelAlign": {
+      "type": "string",
+      "default": "end"
+    },
+    "triggerSize": {
+      "type": "string",
+      "default": "medium"
+    },
+    "triggerScale": {
+      "type": "number",
+      "default": 100
+    },
+    "panelWidth": {
+      "type": "string",
+      "default": "18rem"
+    },
+    "panelTextSize": {
+      "type": "number",
+      "default": 16
+    },
+    "avatarSize": {
+      "type": "number",
+      "default": 40
+    },
+    "triggerBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "triggerText": {
+      "type": "string",
+      "default": ""
+    },
+    "triggerBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "panelText": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBorder": {
+      "type": "string",
+      "default": ""
+    }
+  },
   "supports": {
     "auto_register": true,
     "anchor": true,
     "className": true,
     "html": false,
+    "color": {
+      "background": true,
+      "text": true
+    },
+    "border": {
+      "radius": true
+    },
     "spacing": {
       "margin": true,
       "padding": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
     }
   }
 }

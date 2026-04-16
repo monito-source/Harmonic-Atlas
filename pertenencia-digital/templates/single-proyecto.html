@@ -1,67 +1,25 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
-  <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1.4rem"}},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-group alignwide">
-    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em"}}} -->
-    <p class="has-azul-principal-color has-text-color has-x-small-font-size" style="letter-spacing:0.08em;text-transform:uppercase">Proyecto</p>
+<!-- wp:group {"tagName":"main","className":"pd-presskit pd-presskit--open pd-presskit--project","layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-presskit pd-presskit--open pd-presskit--project">
+  <!-- wp:group {"align":"wide","className":"pd-presskit__surface pd-presskit__surface--hero","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-presskit__surface pd-presskit__surface--hero">
+    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","className":"pd-eyebrow"} -->
+    <p class="pd-eyebrow has-azul-principal-color has-text-color has-x-small-font-size">Proyecto</p>
     <!-- /wp:paragraph -->
+
+    <!-- wp:post-terms {"term":"area_proyecto","separator":" · ","fontSize":"x-small","textColor":"texto-suave"} /-->
+
     <!-- wp:post-title {"level":1,"fontSize":"x-large"} /-->
+
+    <!-- wp:post-excerpt {"moreText":"","excerptLength":32} /-->
+
     <!-- wp:post-featured-image {"sizeSlug":"large","style":{"border":{"radius":"18px"}}} /-->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:group {"align":"wide","className":"pd-presskit__surface","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-presskit__surface">
     <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
-
-    <!-- wp:buttons {"style":{"spacing":{"blockGap":{"left":"0.75rem","top":"0.75rem"}}}} -->
-    <div class="wp-block-buttons">
-      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#presskit" style="border-radius:var(--wp--custom--radius--pill)">Presskit</a></div>
-      <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#integrantes" style="border-radius:var(--wp--custom--radius--pill)">Integrantes</a></div>
-      <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#galeria" style="border-radius:var(--wp--custom--radius--pill)">Galería</a></div>
-      <!-- /wp:button -->
-      <!-- wp:button {"backgroundColor":"blanco","textColor":"oscuro","style":{"border":{"radius":"var(--wp--custom--radius--pill)"}},"className":"is-style-outline"} -->
-      <div class="wp-block-button is-style-outline"><a class="wp-block-button__link has-oscuro-color has-blanco-background-color has-text-color has-background wp-element-button" href="#contacto" style="border-radius:var(--wp--custom--radius--pill)">Contacto</a></div>
-      <!-- /wp:button -->
-    </div>
-    <!-- /wp:buttons -->
-  </div>
-  <!-- /wp:group -->
-
-  <!-- wp:group {"anchor":"presskit","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="presskit" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
-    <!-- wp:heading {"level":2} -->
-    <h2>Presskit del proyecto</h2>
-    <!-- /wp:heading -->
-    <!-- wp:wp-song-study/project-presskit /-->
-  </div>
-  <!-- /wp:group -->
-
-  <!-- wp:group {"anchor":"integrantes","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="integrantes" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
-    <!-- wp:heading {"level":2} -->
-    <h2>Integrantes y colaboradores</h2>
-    <!-- /wp:heading -->
-    <!-- wp:wp-song-study/project-collaborators /-->
-  </div>
-  <!-- /wp:group -->
-
-  <!-- wp:group {"anchor":"galeria","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="galeria" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
-    <!-- wp:heading {"level":2} -->
-    <h2>Galería del proyecto</h2>
-    <!-- /wp:heading -->
-    <!-- wp:wp-song-study/project-gallery /-->
-  </div>
-  <!-- /wp:group -->
-
-  <!-- wp:group {"anchor":"contacto","style":{"spacing":{"margin":{"top":"var:preset|spacing|65"},"blockGap":"1rem"}},"layout":{"type":"constrained"}} -->
-  <div id="contacto" class="wp-block-group" style="margin-top:var(--wp--preset--spacing--65)">
-    <!-- wp:heading {"level":2} -->
-    <h2>Contacto</h2>
-    <!-- /wp:heading -->
-    <!-- wp:wp-song-study/project-contact /-->
   </div>
   <!-- /wp:group -->
 </main>

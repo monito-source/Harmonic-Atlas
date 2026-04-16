@@ -38,15 +38,27 @@ Tags: full-site-editing, block-patterns, block-styles, editor-style
   --pd-auth-field-border: var(--wp--custom--auth--field-border, color-mix(in srgb, var(--pd-color-heading) 15%, transparent));
   --pd-auth-link: var(--wp--custom--auth--link, var(--pd-color-primary));
   --pd-auth-link-hover: var(--wp--custom--auth--link-hover, var(--pd-color-primary-hover));
-  --pd-account-trigger-background: var(--wp--custom--header--account--trigger-background, color-mix(in srgb, var(--pd-color-white) 12%, transparent));
-  --pd-account-trigger-text: var(--wp--custom--header--account--trigger-text, var(--pd-color-white));
-  --pd-account-trigger-border: var(--wp--custom--header--account--trigger-border, color-mix(in srgb, var(--pd-color-white) 26%, transparent));
-  --pd-account-trigger-hover-background: var(--wp--custom--header--account--trigger-hover-background, color-mix(in srgb, var(--pd-color-white) 18%, transparent));
-  --pd-account-trigger-hover-border: var(--wp--custom--header--account--trigger-hover-border, color-mix(in srgb, var(--pd-color-white) 40%, transparent));
-  --pd-account-panel-background: var(--wp--custom--header--account--panel-background, color-mix(in srgb, var(--pd-color-surface) 96%, transparent));
-  --pd-account-panel-text: var(--wp--custom--header--account--panel-text, var(--pd-color-text));
-  --pd-account-panel-border: var(--wp--custom--header--account--panel-border, color-mix(in srgb, var(--pd-color-heading) 10%, transparent));
-  --pd-account-panel-hover-background: var(--wp--custom--header--account--panel-hover-background, color-mix(in srgb, var(--pd-color-primary) 10%, transparent));
+  --pd-membership-text: var(--wp--custom--membership--text, var(--pd-color-text-on-light));
+  --pd-membership-muted: var(--wp--custom--membership--muted, var(--pd-color-muted));
+  --pd-membership-link: var(--wp--custom--membership--link, var(--pd-color-primary));
+  --pd-membership-link-hover: var(--wp--custom--membership--link-hover, var(--pd-color-primary-hover));
+  --pd-membership-header-background: var(--wp--custom--membership--header-background, linear-gradient(135deg, color-mix(in srgb, var(--pd-color-primary) 10%, transparent), color-mix(in srgb, var(--pd-color-surface) 96%, transparent)));
+  --pd-membership-header-text: var(--wp--custom--membership--header-text, var(--pd-color-text-on-light));
+  --pd-membership-panel-background: var(--wp--custom--membership--panel-background, var(--pd-color-surface));
+  --pd-membership-panel-text: var(--wp--custom--membership--panel-text, var(--pd-color-text-on-light));
+  --pd-membership-panel-border: var(--wp--custom--membership--panel-border, color-mix(in srgb, var(--pd-color-heading) 10%, transparent));
+  --pd-membership-field-background: var(--wp--custom--membership--field-background, var(--pd-color-surface));
+  --pd-membership-field-text: var(--wp--custom--membership--field-text, var(--pd-color-text-on-light));
+  --pd-membership-field-border: var(--wp--custom--membership--field-border, color-mix(in srgb, var(--pd-color-heading) 14%, transparent));
+  --pd-account-trigger-background: var(--wp--custom--header--account--trigger-background, var(--pd-nav-trigger-background));
+  --pd-account-trigger-text: var(--wp--custom--header--account--trigger-text, var(--pd-nav-trigger-text));
+  --pd-account-trigger-border: var(--wp--custom--header--account--trigger-border, var(--pd-nav-trigger-border));
+  --pd-account-trigger-hover-background: var(--wp--custom--header--account--trigger-hover-background, var(--pd-nav-trigger-hover-background));
+  --pd-account-trigger-hover-border: var(--wp--custom--header--account--trigger-hover-border, var(--pd-nav-trigger-hover-border));
+  --pd-account-panel-background: var(--wp--custom--header--account--panel-background, var(--pd-nav-panel-background));
+  --pd-account-panel-text: var(--wp--custom--header--account--panel-text, var(--pd-nav-panel-text));
+  --pd-account-panel-border: var(--wp--custom--header--account--panel-border, var(--pd-nav-panel-border));
+  --pd-account-panel-hover-background: var(--wp--custom--header--account--panel-hover-background, var(--pd-nav-item-hover-background));
   --pd-nav-trigger-background: var(--wp--custom--header--navigation--trigger-background, color-mix(in srgb, var(--pd-color-white) 12%, transparent));
   --pd-nav-trigger-text: var(--wp--custom--header--navigation--trigger-text, var(--pd-color-white));
   --pd-nav-trigger-border: var(--wp--custom--header--navigation--trigger-border, color-mix(in srgb, var(--pd-color-white) 26%, transparent));
@@ -175,9 +187,9 @@ input[type='reset'] {
 .pd-site-navigation__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.7rem;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.85rem;
+  gap: calc(var(--pd-nav-trigger-gap, 0.7rem) * var(--pd-nav-trigger-scale, 1));
+  min-height: calc(var(--pd-nav-trigger-min-height, 2.75rem) * var(--pd-nav-trigger-scale, 1));
+  padding: calc(var(--pd-nav-trigger-padding-y, 0.5rem) * var(--pd-nav-trigger-scale, 1)) calc(var(--pd-nav-trigger-padding-x, 0.85rem) * var(--pd-nav-trigger-scale, 1));
   border: 1px solid var(--pd-nav-trigger-border);
   border-radius: 999px;
   background: var(--pd-nav-trigger-background);
@@ -194,7 +206,7 @@ input[type='reset'] {
 }
 
 .pd-site-navigation__toggle-label {
-  font-size: 0.92rem;
+  font-size: calc(var(--pd-nav-trigger-font-size, 0.92rem) * var(--pd-nav-trigger-scale, 1));
   line-height: 1;
 }
 
@@ -205,7 +217,7 @@ input[type='reset'] {
 
 .pd-site-navigation__toggle-icon span {
   display: block;
-  inline-size: 1rem;
+  inline-size: calc(var(--pd-nav-icon-width, 1rem) * var(--pd-nav-trigger-scale, 1));
   block-size: 1.5px;
   border-radius: 999px;
   background: currentColor;
@@ -218,7 +230,7 @@ input[type='reset'] {
   top: calc(100% + 0.7rem);
   left: 0;
   z-index: 25;
-  width: min(24rem, calc(100vw - 1.5rem));
+  width: min(var(--pd-nav-panel-width, 24rem), calc(100vw - 1.5rem));
   padding: 0.65rem;
   border: 1px solid var(--pd-nav-panel-border);
   border-radius: 18px;
@@ -234,6 +246,11 @@ input[type='reset'] {
     opacity 0.22s ease,
     transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     visibility 0s linear 0.28s;
+}
+
+.pd-site-navigation[data-panel-align='end'] .pd-site-navigation__panel {
+  left: auto;
+  right: 0;
 }
 
 .pd-site-navigation.is-open .pd-site-navigation__panel,
@@ -270,7 +287,7 @@ input[type='reset'] {
   transition:
     opacity 0.24s ease,
     transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-  transition-delay: calc(50ms + (var(--pd-nav-index, 0) * 45ms));
+  transition-delay: calc(50ms + (var(--pd-nav-index, 0) * var(--pd-nav-stagger-step, 45ms)));
 }
 
 .pd-site-navigation:not(.is-open):not(.is-closing) .pd-site-navigation__item,
@@ -289,6 +306,7 @@ input[type='reset'] {
   border-radius: 14px;
   background: var(--pd-nav-item-background);
   color: inherit;
+  font-size: var(--pd-nav-item-font-size, 1rem);
   text-decoration: none;
   transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
@@ -610,9 +628,122 @@ body .wpss-public-reader {
   text-decoration: underline;
 }
 
+.wp-block-group.is-style-pd-overlay-dark,
+.wp-block-group.is-style-pd-overlay-night,
+.wp-block-group.is-style-pd-overlay-soft,
+.wp-block-group.is-style-pd-overlay-vignette,
+.wp-block-group.has-pd-custom-overlay {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.wp-block-group.is-style-pd-overlay-dark::before,
+.wp-block-group.is-style-pd-overlay-night::before,
+.wp-block-group.is-style-pd-overlay-soft::before,
+.wp-block-group.is-style-pd-overlay-vignette::before,
+.wp-block-group.has-pd-custom-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.wp-block-group.is-style-pd-overlay-dark > *,
+.wp-block-group.is-style-pd-overlay-night > *,
+.wp-block-group.is-style-pd-overlay-soft > *,
+.wp-block-group.is-style-pd-overlay-vignette > *,
+.wp-block-group.has-pd-custom-overlay > * {
+  position: relative;
+  z-index: 1;
+}
+
+.wp-block-group.is-style-pd-overlay-dark::before {
+  background: linear-gradient(135deg, rgba(31, 41, 55, 0.82) 0%, rgba(31, 41, 55, 0.46) 100%);
+}
+
+.wp-block-group.is-style-pd-overlay-night::before {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.86) 0%, rgba(30, 58, 138, 0.58) 100%);
+}
+
+.wp-block-group.is-style-pd-overlay-soft::before {
+  background: linear-gradient(160deg, rgba(236, 240, 241, 0.08) 0%, rgba(31, 41, 55, 0.52) 100%);
+}
+
+.wp-block-group.is-style-pd-overlay-vignette::before {
+  background: radial-gradient(circle at center, rgba(31, 41, 55, 0.08) 0%, rgba(31, 41, 55, 0.78) 100%);
+}
+
+.wp-block-group.has-pd-custom-overlay::before {
+  background-image:
+    var(--pd-group-overlay-gradient, none),
+    linear-gradient(var(--pd-group-overlay-color, transparent), var(--pd-group-overlay-color, transparent));
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: var(--pd-group-overlay-opacity, 0.55);
+}
+
+.pd-membership-block {
+  --pd-membership-shell-max-width: min(100%, 78rem);
+  --pd-membership-shell-gap: 1.75rem;
+  --pd-membership-local-shell-text: var(--pd-membership-custom-shell-text, var(--pd-membership-text));
+  --pd-membership-local-header-background: var(--pd-membership-custom-header-background, var(--pd-membership-header-background));
+  --pd-membership-local-header-text: var(--pd-membership-custom-header-text, var(--pd-membership-header-text));
+  --pd-membership-local-panel-background: var(--pd-membership-custom-panel-background, var(--pd-membership-panel-background));
+  --pd-membership-local-panel-text: var(--pd-membership-custom-panel-text, var(--pd-membership-panel-text));
+  --pd-membership-local-panel-border: var(--pd-membership-custom-panel-border, var(--pd-membership-panel-border));
+  --pd-membership-local-field-background: var(--pd-membership-custom-field-background, var(--pd-membership-field-background));
+  --pd-membership-local-field-text: var(--pd-membership-custom-field-text, var(--pd-membership-field-text));
+  --pd-membership-local-link: var(--pd-membership-custom-link, var(--pd-membership-link));
+  --pd-membership-local-link-hover: color-mix(in srgb, var(--pd-membership-local-link) 78%, var(--pd-membership-local-panel-text));
+  display: block;
+  width: 100%;
+  color: var(--pd-membership-local-shell-text);
+}
+
+.pd-membership-block.is-layout-wide {
+  --pd-membership-shell-max-width: min(100%, 92rem);
+}
+
+.pd-membership-block.is-layout-immersive {
+  --pd-membership-shell-max-width: min(100%, 108rem);
+  --pd-membership-shell-gap: 2rem;
+}
+
+.pd-membership-block.alignwide {
+  --pd-membership-shell-max-width: min(100%, 96rem);
+}
+
+.pd-membership-block.alignfull {
+  --pd-membership-shell-max-width: 100%;
+}
+
 .pd-membership-shell {
   display: grid;
-  gap: 1.75rem;
+  width: min(100%, var(--pd-membership-shell-max-width));
+  margin-inline: auto;
+  gap: var(--pd-membership-shell-gap);
+  color: var(--pd-membership-local-shell-text);
+}
+
+.pd-membership-shell :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-shell :where(p, li, dt, dd, figcaption, blockquote, cite, label, legend) {
+  color: inherit;
+}
+
+.pd-membership-shell a:not(.wp-block-button__link) {
+  color: var(--pd-membership-local-link);
+}
+
+.pd-membership-shell a:not(.wp-block-button__link):hover,
+.pd-membership-shell a:not(.wp-block-button__link):focus-visible {
+  color: var(--pd-membership-local-link-hover);
 }
 
 .pd-auth-shell {
@@ -772,18 +903,17 @@ body .wpss-public-reader {
 }
 
 .pd-membership-shell__header {
+  --pd-auto-contrast-text: var(--pd-membership-local-header-text);
   display: flex;
   justify-content: space-between;
   gap: 1.5rem;
   align-items: flex-start;
   flex-wrap: wrap;
-  padding: 1.5rem;
+  padding: clamp(1.35rem, 2.5vw, 1.8rem);
   border-radius: var(--pd-radius-lg);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--pd-color-primary) 8%, transparent),
-    color-mix(in srgb, var(--pd-color-surface) 95%, transparent)
-  );
+  background: var(--pd-membership-local-header-background);
+  color: var(--pd-membership-local-header-text);
+  border: 1px solid var(--pd-membership-local-panel-border);
   box-shadow: var(--pd-shadow-card);
 }
 
@@ -806,6 +936,7 @@ body .wpss-public-reader {
 .pd-membership-shell__eyebrow,
 .pd-membership-shell__meta {
   margin: 0.25rem 0 0;
+  color: color-mix(in srgb, currentColor 68%, transparent);
 }
 
 .pd-membership-shell__actions {
@@ -838,17 +969,30 @@ body .wpss-public-reader {
 
 .pd-membership-shell__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr);
+  gap: clamp(1.2rem, 2vw, 1.75rem);
   align-items: start;
 }
 
 .pd-membership-editor,
 .pd-membership-panel {
-  background: var(--pd-color-surface);
+  --pd-auto-contrast-text: var(--pd-membership-local-panel-text);
+  background: var(--pd-membership-local-panel-background);
+  color: var(--pd-membership-local-panel-text);
+  border: 1px solid var(--pd-membership-local-panel-border);
   border-radius: var(--pd-radius-lg);
-  padding: 1.5rem;
+  padding: clamp(1.25rem, 2vw, 1.7rem);
   box-shadow: var(--pd-shadow-card);
+}
+
+.pd-membership-editor > :first-child,
+.pd-membership-panel > :first-child {
+  margin-top: 0;
+}
+
+.pd-membership-editor > :last-child,
+.pd-membership-panel > :last-child {
+  margin-bottom: 0;
 }
 
 .pd-membership-switcher {
@@ -866,10 +1010,11 @@ body .wpss-public-reader {
 
 .pd-membership-switcher select {
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--pd-color-heading) 15%, transparent);
+  border: 1px solid var(--pd-membership-local-panel-border);
   border-radius: 12px;
   padding: 0.8rem 0.95rem;
-  background: var(--pd-color-surface);
+  background: var(--pd-membership-local-field-background);
+  color: var(--pd-membership-local-field-text);
   font: inherit;
 }
 
@@ -910,11 +1055,17 @@ body .wpss-public-reader {
 .pd-membership-form input,
 .pd-membership-form textarea {
   width: 100%;
-  border: 1px solid color-mix(in srgb, var(--pd-color-heading) 15%, transparent);
+  border: 1px solid var(--pd-membership-local-panel-border);
   border-radius: 12px;
   padding: 0.8rem 0.95rem;
-  background: var(--pd-color-surface);
+  background: var(--pd-membership-local-field-background);
+  color: var(--pd-membership-local-field-text);
   font: inherit;
+}
+
+.pd-membership-form input::placeholder,
+.pd-membership-form textarea::placeholder {
+  color: color-mix(in srgb, var(--pd-membership-local-field-text) 56%, transparent);
 }
 
 .pd-membership-form textarea {
@@ -965,7 +1116,7 @@ select,
 
 .pd-membership-gallery-preview__empty {
   margin: 0;
-  color: var(--pd-color-muted);
+  color: var(--pd-membership-muted);
 }
 
 .pd-membership-panel__gallery {
@@ -974,6 +1125,318 @@ select,
 
 .pd-membership-panel__gallery h3 {
   margin-bottom: 0.9rem;
+}
+
+.pd-membership-panel--builder {
+  margin-bottom: var(--wp--preset--spacing--50, 1.5rem);
+}
+
+.pd-membership-panel--builder p {
+  margin-top: 0;
+}
+
+.pd-membership-panel--presskit-workbench {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 0.25rem;
+  padding: clamp(1.3rem, 2vw, 1.85rem);
+}
+
+.pd-membership-presskit-workbench__header {
+  display: grid;
+  gap: 0.55rem;
+  max-width: 72rem;
+}
+
+.pd-membership-presskit-workbench__header h2,
+.pd-membership-presskit-workbench__header p {
+  margin: 0;
+}
+
+.pd-membership-presskit-editor {
+  display: grid;
+  gap: 1rem;
+}
+
+.pd-membership-presskit-editor__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 3.15fr) minmax(320px, 0.85fr);
+  gap: 1.1rem;
+  align-items: start;
+  min-height: var(--pd-membership-editor-min-height, 720px);
+}
+
+.pd-membership-block.is-layout-wide .pd-membership-shell__grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+}
+
+.pd-membership-block.is-layout-immersive .pd-membership-shell__grid {
+  grid-template-columns: minmax(0, 1.24fr) minmax(340px, 0.78fr);
+}
+
+.pd-membership-block.is-layout-wide .pd-membership-presskit-editor__workspace {
+  grid-template-columns: minmax(0, 3.4fr) minmax(320px, 0.82fr);
+}
+
+.pd-membership-block.is-layout-immersive .pd-membership-presskit-editor__workspace {
+  grid-template-columns: minmax(0, 3.85fr) minmax(340px, 0.8fr);
+  gap: 1.25rem;
+}
+
+.pd-membership-presskit-editor__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.pd-membership-presskit-editor__tabs,
+.pd-membership-presskit-editor__actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pd-membership-presskit-editor__live-label {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-presskit-editor__toolbar-status {
+  margin: 0;
+  color: var(--pd-membership-local-link);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.pd-membership-presskit-editor__overlay-control {
+  margin-top: 1rem;
+}
+
+.pd-membership-presskit-editor__overlay-label {
+  margin: 0 0 0.55rem;
+  color: var(--pd-membership-local-panel-text);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.pd-membership-presskit-editor__composition-hint {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--pd-membership-muted);
+  font-size: 0.9rem;
+}
+
+.pd-membership-presskit-editor__canvas-shell {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  min-height: var(--pd-membership-editor-min-height, 720px);
+  align-content: stretch;
+}
+
+.pd-membership-presskit-editor__canvas,
+.pd-membership-presskit-editor__preview {
+  min-height: var(--pd-membership-editor-min-height, 720px);
+  border: 1px solid var(--pd-membership-local-panel-border);
+  border-radius: 18px;
+  background: var(--pd-membership-local-panel-background);
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-presskit-editor__canvas {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-membership-local-panel-border) 45%, transparent);
+}
+
+.pd-membership-presskit-editor__canvas iframe {
+  width: 100%;
+  min-height: var(--pd-membership-editor-min-height, 720px);
+  flex: 1 1 auto;
+  border: 0;
+  background: var(--pd-membership-local-panel-background);
+}
+
+.pd-membership-presskit-editor__canvas-shell {
+  min-width: 0;
+}
+
+.pd-membership-presskit-editor__canvas-shell > div {
+  display: flex !important;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-iframe__container {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: var(--pd-membership-editor-min-height, 720px);
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-iframe__container iframe {
+  flex: 1 1 auto;
+}
+
+.pd-membership-presskit-editor__preview {
+  padding: 1.25rem;
+}
+
+.pd-membership-presskit-editor__sidebar {
+  border: 1px solid var(--pd-membership-local-panel-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--pd-membership-local-panel-background) 98%, transparent);
+}
+
+.pd-membership-presskit-editor__structure,
+.pd-membership-presskit-editor__structure-list,
+.pd-membership-presskit-editor__structure-item,
+.pd-membership-presskit-editor__structure-button,
+.pd-membership-presskit-editor__structure-label,
+.pd-membership-presskit-editor__structure-hint {
+  display: none !important;
+}
+
+.pd-membership-presskit-editor__sidebar-label {
+  margin: 0 0 0.7rem;
+  color: var(--pd-membership-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pd-membership-presskit-editor__selection-warning {
+  margin: 0;
+  color: #b45309;
+  font-size: 0.8rem;
+}
+
+.pd-membership-presskit-editor__sidebar {
+  padding: 1rem;
+  position: sticky;
+  top: 1rem;
+  min-width: 0;
+}
+
+.pd-membership-presskit-editor__sidebar-empty {
+  margin: 0;
+  color: var(--pd-membership-muted);
+}
+
+.pd-membership-presskit-editor__overlay-panel {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--pd-membership-local-panel-border) 85%, transparent);
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-block-list__layout {
+  display: grid;
+  gap: var(--wp--preset--spacing--40, 1.25rem);
+}
+
+.pd-membership-presskit-editor__canvas .wp-block {
+  max-width: 100%;
+}
+
+.pd-membership-presskit-editor__canvas .block-list-appender {
+  margin-top: 0.5rem;
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-rich-text__editable,
+.pd-membership-presskit-editor__canvas [contenteditable='true'] {
+  color: inherit;
+}
+
+.pd-membership-presskit-editor__canvas .editor-styles-wrapper,
+.pd-membership-presskit-editor__preview .wp-block-post-content,
+.pd-membership-presskit-editor__preview {
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-presskit-editor__canvas .editor-styles-wrapper {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pd-membership-local-panel-background) 96%, transparent), var(--pd-membership-local-panel-background));
+}
+
+.pd-membership-presskit-editor__canvas .editor-styles-wrapper :where(p, li, figcaption, blockquote, cite, label, legend),
+.pd-membership-presskit-editor__preview :where(p, li, figcaption, blockquote, cite, label, legend) {
+  color: inherit;
+}
+
+.pd-membership-presskit-editor__canvas .editor-styles-wrapper :where(h1, h2, h3, h4, h5, h6),
+.pd-membership-presskit-editor__preview :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-presskit-editor__canvas .components-button,
+.pd-membership-presskit-editor__canvas .block-editor-default-block-appender__content {
+  color: var(--pd-membership-local-link);
+}
+
+.pd-membership-presskit-editor__canvas .components-button:hover,
+.pd-membership-presskit-editor__canvas .components-button:focus-visible,
+.pd-membership-presskit-editor__canvas .block-editor-default-block-appender__content:hover,
+.pd-membership-presskit-editor__canvas .block-editor-default-block-appender__content:focus-visible {
+  color: var(--pd-membership-local-link-hover);
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-block-list__layout > *:first-child,
+.pd-membership-presskit-editor__preview > *:first-child {
+  margin-top: 0;
+}
+
+.pd-membership-presskit-editor__canvas .block-editor-block-list__layout > *:last-child,
+.pd-membership-presskit-editor__preview > *:last-child {
+  margin-bottom: 0;
+}
+
+.pd-membership-presskit-editor__preview .wp-block-post-content {
+  display: grid;
+  gap: var(--wp--preset--spacing--50, 1.5rem);
+}
+
+.pd-membership-presskit-editor__notice {
+  margin: 0;
+}
+
+.pd-membership-presskit-editor__fallback {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--pd-membership-local-panel-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--pd-membership-local-panel-background) 94%, transparent);
+  color: var(--pd-membership-local-panel-text);
+}
+
+.pd-membership-presskit-editor__fallback p {
+  margin: 0;
+}
+
+.pd-membership-presskit-editor__sidebar .components-panel__body,
+.pd-membership-presskit-editor__sidebar .components-panel {
+  border: 0;
+  background: transparent;
+}
+
+.pd-membership-presskit-editor__sidebar .components-base-control__field label,
+.pd-membership-presskit-editor__sidebar .components-input-control__label,
+.pd-membership-presskit-editor__sidebar .components-range-control__label {
+  color: var(--pd-membership-panel-text);
+}
+
+.editor-styles-wrapper .pd-theme-block-preview a,
+.editor-styles-wrapper .pd-theme-block-preview button,
+.editor-styles-wrapper .pd-theme-block-preview input,
+.editor-styles-wrapper .pd-theme-block-preview select,
+.editor-styles-wrapper .pd-theme-block-preview textarea,
+.editor-styles-wrapper .pd-theme-block-preview summary {
+  pointer-events: none;
 }
 
 body .wpss-public-reader__layout {
@@ -1004,6 +1467,14 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  .pd-membership-presskit-editor__workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .pd-membership-presskit-editor__sidebar {
+    position: static;
+  }
+
   body .is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)),
   body .wp-block-post-content.is-layout-constrained > :where(:not(.alignleft):not(.alignright):not(.alignfull)) {
     width: 100%;
@@ -1044,7 +1515,7 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 .pd-header-musica-tecnologia {
   --pd-auto-contrast-text: var(--pd-color-text-on-dark);
   --pd-header-padding-inline: var(--wp--custom--layout--content-padding, clamp(0.95rem, 4vw, 2.5rem));
-  --pd-header-padding-block: clamp(0.85rem, 2.2vw, 1.2rem);
+  --pd-header-padding-block: clamp(0.68rem, 1.8vw, 0.98rem);
   padding: var(--pd-header-padding-block) var(--pd-header-padding-inline);
   background: linear-gradient(180deg, var(--wp--preset--color--oscuro) 41%, rgba(255, 255, 255, 0.17) 67%, rgba(40, 118, 252, 0) 87%);
   box-shadow: var(--pd-shadow-header);
@@ -1054,23 +1525,64 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: 0.72rem;
   flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-musica-tecnologia__topbar > * {
+  min-width: 0;
+}
+
+.pd-site-navigation-block,
+.pd-account-access-block {
+  min-width: 0;
 }
 
 .pd-header-musica-tecnologia__inner {
-  display: grid;
-  gap: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .pd-header-musica-tecnologia__branding {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.1rem;
+  justify-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .pd-header-musica-tecnologia__branding > * {
   margin-block-start: 0;
   margin-block-end: 0;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title {
+  font-size: clamp(2.35rem, 6vw, 4.6rem);
+  line-height: 0.98;
+  text-wrap: balance;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title a {
+  display: inline-block;
+  max-inline-size: min(100%, 18ch);
+  overflow-wrap: anywhere;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-tagline {
+  max-inline-size: min(100%, 36rem);
+  text-wrap: balance;
+  opacity: 0.94;
+  width: 100%;
 }
 
 .pd-header-musica-tecnologia .wp-block-site-title,
@@ -1084,19 +1596,36 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   margin: 0;
 }
 
+.pd-header-musica-tecnologia__actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.52rem;
+  width: 100%;
+}
+
+.pd-header-musica-tecnologia__button {
+  min-width: 0;
+}
+
+.pd-header-musica-tecnologia__button .wp-block-button__link {
+  min-width: min(100%, 13rem);
+  text-align: center;
+}
+
 .pd-account-access__login,
 .pd-account-menu__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.85rem;
+  gap: calc(var(--pd-account-trigger-gap, 0.65rem) * var(--pd-account-trigger-scale, 1));
+  min-height: calc(var(--pd-account-trigger-min-height, 2.75rem) * var(--pd-account-trigger-scale, 1));
+  padding: calc(var(--pd-account-trigger-padding-y, 0.5rem) * var(--pd-account-trigger-scale, 1)) calc(var(--pd-account-trigger-padding-x, 0.85rem) * var(--pd-account-trigger-scale, 1));
   border: 1px solid var(--pd-account-trigger-border);
   border-radius: 999px;
   background: var(--pd-account-trigger-background);
   color: var(--pd-account-trigger-text);
   text-decoration: none;
   cursor: pointer;
+  font-size: calc(var(--pd-account-trigger-font-size, 0.92rem) * var(--pd-account-trigger-scale, 1));
   transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
@@ -1116,8 +1645,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 .pd-account-menu__avatar,
 .pd-account-menu__avatar-image {
   display: block;
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
+  inline-size: calc(var(--pd-account-avatar-size, 2.25rem) * var(--pd-account-trigger-scale, 1));
+  block-size: calc(var(--pd-account-avatar-size, 2.25rem) * var(--pd-account-trigger-scale, 1));
   border-radius: 50%;
 }
 
@@ -1127,8 +1656,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 }
 
 .pd-account-menu__caret {
-  inline-size: 0.65rem;
-  block-size: 0.65rem;
+  inline-size: calc(var(--pd-account-caret-size, 0.65rem) * var(--pd-account-trigger-scale, 1));
+  block-size: calc(var(--pd-account-caret-size, 0.65rem) * var(--pd-account-trigger-scale, 1));
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(45deg) translateY(-1px);
@@ -1144,7 +1673,8 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   top: calc(100% + 0.65rem);
   right: 0;
   z-index: 20;
-  min-width: min(18rem, calc(100vw - 2rem));
+  width: min(var(--pd-account-panel-width, 18rem), calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
   display: grid;
   gap: 0.35rem;
   padding: 0.9rem;
@@ -1153,6 +1683,7 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   background: var(--pd-account-panel-background);
   box-shadow: var(--pd-shadow-card);
   color: var(--pd-account-panel-text);
+  font-size: var(--pd-account-panel-font-size, 1rem);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1162,6 +1693,12 @@ body .wpss-public-reader .wpss-reading__stack-shell {
     opacity 0.2s ease,
     transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
     visibility 0s linear 0.24s;
+}
+
+.pd-account-menu[data-panel-align='start'] .pd-account-menu__panel {
+  left: 0;
+  right: auto;
+  transform-origin: top left;
 }
 
 .pd-account-menu.is-open .pd-account-menu__panel,
@@ -1190,7 +1727,7 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
 .pd-account-menu__identity span {
   color: var(--pd-color-muted);
-  font-size: 0.92rem;
+  font-size: calc(var(--pd-account-panel-font-size, 1rem) * 0.92);
   overflow-wrap: anywhere;
 }
 
@@ -1223,6 +1760,14 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   list-style: none;
 }
 
+.pd-music-subnav[data-align='start'] .pd-music-subnav__list {
+  justify-content: flex-start;
+}
+
+.pd-music-subnav[data-align='end'] .pd-music-subnav__list {
+  justify-content: flex-end;
+}
+
 .pd-music-subnav__item {
   min-width: 0;
 }
@@ -1232,12 +1777,16 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  min-height: 2.1rem;
-  padding: 0.35rem 0.7rem 0.55rem;
+  min-height: calc(var(--pd-subnav-link-min-height, 2.1rem) * var(--pd-subnav-link-scale, 1));
+  padding:
+    calc(var(--pd-subnav-link-padding-top, 0.35rem) * var(--pd-subnav-link-scale, 1))
+    calc(var(--pd-subnav-link-padding-x, 0.7rem) * var(--pd-subnav-link-scale, 1))
+    calc(var(--pd-subnav-link-padding-bottom, 0.55rem) * var(--pd-subnav-link-scale, 1));
   border: 1px solid transparent;
-  border-radius: 0.8rem 0.8rem 0 0;
+  border-radius: var(--pd-subnav-link-radius, 0.8rem) var(--pd-subnav-link-radius, 0.8rem) 0 0;
   background: transparent;
   color: var(--pd-subnav-text);
+  font-size: calc(var(--pd-subnav-link-font-size, 1rem) * var(--pd-subnav-link-scale, 1));
   text-align: center;
   text-decoration: none;
   opacity: 0.82;
@@ -1247,10 +1796,10 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 .pd-music-subnav__link::after {
   content: "";
   position: absolute;
-  left: 0.7rem;
-  right: 0.7rem;
+  left: calc(var(--pd-subnav-indicator-inset, 0.7rem) * var(--pd-subnav-link-scale, 1));
+  right: calc(var(--pd-subnav-indicator-inset, 0.7rem) * var(--pd-subnav-link-scale, 1));
   bottom: 0.08rem;
-  height: 2px;
+  height: var(--pd-subnav-indicator-thickness, 2px);
   border-radius: 999px;
   background: transparent;
   transform: scaleX(0.45);
@@ -1281,20 +1830,39 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
 .pd-header-musica-hijas {
   --pd-header-padding-inline: clamp(0.75rem, 2.4vw, 1rem);
-  --pd-header-padding-block: clamp(0.65rem, 2vw, 0.9rem);
+  --pd-header-padding-block: clamp(0.58rem, 1.7vw, 0.82rem);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .pd-header-musica-hijas .pd-header-musica-tecnologia__inner {
-  gap: 0.55rem;
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-musica-hijas .pd-header-musica-tecnologia__inner.alignwide {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
 }
 
 .pd-header-musica-hijas .pd-music-subnav {
   margin-top: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.pd-header-musica-hijas .pd-music-subnav__list {
+  width: 100%;
+  max-width: 100%;
 }
 
 @media (max-width: 781px) {
@@ -1308,6 +1876,122 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
   .pd-music-subnav__item {
     flex: 0 0 auto;
+  }
+
+  .pd-music-subnav[data-mobile-mode='wrap'] .pd-music-subnav__list {
+    overflow-x: visible;
+    flex-wrap: wrap;
+  }
+
+  .pd-music-subnav[data-mobile-mode='wrap'] .pd-music-subnav__item {
+    flex: 0 1 auto;
+  }
+
+  .pd-header-musica-tecnologia {
+    --pd-header-padding-inline: 0.75rem;
+    --pd-header-padding-block: 0.9rem;
+  }
+
+  .pd-header-musica-tecnologia__inner {
+    gap: 0.7rem;
+  }
+
+  .pd-header-musica-tecnologia__topbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .pd-header-musica-tecnologia__branding {
+    gap: 0.35rem;
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-title {
+    font-size: clamp(2rem, 10vw, 3rem);
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-tagline {
+    font-size: 0.92rem !important;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    gap: 0.55rem;
+  }
+
+  .pd-header-musica-tecnologia__button {
+    flex: 1 1 12rem;
+  }
+
+  .pd-header-musica-tecnologia__button .wp-block-button__link {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pd-site-navigation__toggle,
+  .pd-account-access__login,
+  .pd-account-menu__trigger {
+    min-height: 2.5rem;
+    padding: 0.45rem 0.72rem;
+  }
+
+  .pd-site-navigation__toggle-label {
+    font-size: 0.88rem;
+  }
+
+  .pd-site-navigation__panel {
+    width: min(var(--pd-nav-panel-width, 22rem), calc(100vw - 1.25rem));
+  }
+
+  .pd-header-musica-hijas .pd-music-subnav {
+    margin-inline: calc(var(--pd-header-padding-inline) * -1);
+    padding-inline: var(--pd-header-padding-inline);
+  }
+
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-content: initial;
+    gap: 0.45rem;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation-block,
+  .pd-header-musica-hijas .pd-site-navigation,
+  .pd-header-musica-hijas .pd-account-access-block,
+  .pd-header-musica-hijas .pd-account-menu,
+  .pd-header-musica-hijas .pd-account-access {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation {
+    justify-self: start;
+  }
+
+  .pd-header-musica-hijas .pd-account-access-block {
+    justify-self: end;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation__toggle,
+  .pd-header-musica-hijas .pd-account-access__login,
+  .pd-header-musica-hijas .pd-account-menu__trigger {
+    min-height: 2.35rem;
+    padding: 0.42rem 0.6rem;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation__toggle-label {
+    display: none;
+  }
+
+  .pd-site-navigation[data-hide-label-mobile='true'] .pd-site-navigation__toggle-label {
+    display: none;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation__toggle-icon {
+    gap: 0.18rem;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation__panel {
+    width: min(20rem, calc(100vw - 1rem));
   }
 }
 
@@ -1506,6 +2190,41 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   gap: 0.85rem;
 }
 
+.pd-presskit--open {
+  padding: var(--wp--custom--layout--section-padding, var(--pd-space-section))
+    var(--wp--custom--layout--content-padding, var(--pd-space-content-inline));
+}
+
+.pd-presskit--open .wp-block-post-content {
+  display: grid;
+  gap: var(--wp--preset--spacing--50, 1.5rem);
+}
+
+.pd-presskit--open .wp-block-post-content > :first-child {
+  margin-top: 0;
+}
+
+.pd-presskit--open .wp-block-post-content > :last-child {
+  margin-bottom: 0;
+}
+
+.pd-presskit--project .wp-block-post-terms {
+  margin: 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pd-presskit--project .wp-block-post-excerpt {
+  max-width: 60ch;
+  margin: 0;
+}
+
+.pd-presskit--project .wp-block-post-excerpt__excerpt {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--pd-color-text-soft);
+}
+
 .pd-presskit__editorial {
   gap: var(--wp--preset--spacing--60, 2.25rem);
 }
@@ -1527,12 +2246,12 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
 @media (max-width: 781px) {
   .pd-site-navigation__panel {
-    width: min(24rem, calc(100vw - 1.5rem));
+    width: min(22rem, calc(100vw - 1.25rem));
   }
 
   .pd-header-musica-tecnologia {
     --pd-header-padding-inline: 0.75rem;
-    --pd-header-padding-block: 1rem;
+    --pd-header-padding-block: 0.9rem;
   }
 
   .pd-home__hero {
@@ -1561,7 +2280,19 @@ body .wpss-public-reader .wpss-reading__stack-shell {
   }
 
   .pd-header-musica-tecnologia__topbar {
-    align-items: flex-start;
+    align-items: center;
+  }
+
+  .pd-header-musica-tecnologia__inner {
+    gap: 0.75rem;
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-title a {
+    max-inline-size: 14ch;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    gap: 0.6rem;
   }
 
   .pd-auth-shell,
@@ -1571,5 +2302,48 @@ body .wpss-public-reader .wpss-reading__stack-shell {
 
   .pd-presskit__split {
     gap: var(--wp--preset--spacing--50, 1.5rem);
+  }
+
+  .pd-membership-presskit-editor__toolbar {
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 560px) {
+  .pd-header-musica-tecnologia__topbar {
+    gap: 0.5rem;
+  }
+
+  .pd-site-navigation__toggle,
+  .pd-account-access__login,
+  .pd-account-menu__trigger {
+    padding-inline: 0.62rem;
+  }
+
+  .pd-site-navigation__toggle-label {
+    font-size: 0.84rem;
+  }
+
+  .pd-site-navigation__toggle-icon span {
+    inline-size: 0.92rem;
+  }
+
+  .pd-site-navigation[data-hide-label-mobile='true'] .pd-site-navigation__toggle-label {
+    display: none;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+    gap: 0.4rem;
+  }
+
+  .pd-header-musica-hijas .pd-site-navigation__toggle,
+  .pd-header-musica-hijas .pd-account-access__login,
+  .pd-header-musica-hijas .pd-account-menu__trigger {
+    padding-inline: 0.55rem;
   }
 }

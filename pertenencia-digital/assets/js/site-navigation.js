@@ -93,6 +93,18 @@
     });
   };
 
+  const maybeCloseOnItemClick = (navigation, target) => {
+    if (navigation.dataset.closeOnItemClick !== "true") {
+      return;
+    }
+
+    const link = target.closest(".pd-site-navigation__link");
+
+    if (link) {
+      closeNavigation(navigation);
+    }
+  };
+
   navigations.forEach((navigation) => {
     const { toggle } = getParts(navigation);
 
@@ -107,6 +119,10 @@
       }
 
       openNavigation(navigation);
+    });
+
+    navigation.addEventListener("click", (event) => {
+      maybeCloseOnItemClick(navigation, event.target);
     });
   });
 

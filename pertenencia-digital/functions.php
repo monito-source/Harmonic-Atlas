@@ -74,6 +74,46 @@ function pd_register_block_pattern_categories(): void {
 }
 add_action( 'init', 'pd_register_block_pattern_categories' );
 
+/**
+ * Añade atributos de overlay al bloque core/group.
+ *
+ * WordPress permite extender metadata de bloques core con `block_type_metadata`.
+ * Eso evita escribir claves arbitrarias dentro de `style`, que en este caso
+ * estaba rompiendo el editor del bloque.
+ *
+ * @param array $metadata Metadata original del bloque.
+ * @return array
+ */
+function pd_extend_group_block_metadata( array $metadata ): array {
+    if ( empty( $metadata['name'] ) || 'core/group' !== $metadata['name'] ) {
+        return $metadata;
+    }
+
+    if ( empty( $metadata['attributes'] ) || ! is_array( $metadata['attributes'] ) ) {
+        $metadata['attributes'] = [];
+    }
+
+    $metadata['attributes']['pdOverlayEnabled'] = [
+        'type'    => 'boolean',
+        'default' => false,
+    ];
+    $metadata['attributes']['pdOverlayColor'] = [
+        'type'    => 'string',
+        'default' => '',
+    ];
+    $metadata['attributes']['pdOverlayGradient'] = [
+        'type'    => 'string',
+        'default' => '',
+    ];
+    $metadata['attributes']['pdOverlayOpacity'] = [
+        'type'    => 'number',
+        'default' => 55,
+    ];
+
+    return $metadata;
+}
+add_filter( 'block_type_metadata', 'pd_extend_group_block_metadata' );
+
 add_action(
     'wp_enqueue_scripts',
     function () {
@@ -132,7 +172,7 @@ function pd_register_theme_block_editor_script(): void {
     wp_register_script(
         'pertenencia-digital-theme-blocks-editor',
         get_template_directory_uri() . '/assets/js/theme-blocks-editor.js',
-        [ 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-i18n' ],
+        [ 'wp-blocks', 'wp-element', 'wp-server-side-render', 'wp-i18n', 'wp-components', 'wp-block-editor', 'wp-data' ],
         (string) filemtime( $script_path ),
         true
     );
@@ -488,12 +528,19 @@ function pd_render_login_panel( array $args = [] ): string {
 /**
  * Renderiza el acceso compacto del header.
  */
-function pd_render_account_access_menu(): string {
+function pd_render_account_access_menu( array $attributes = [] ): string {
     $current_url = '';
 
     if ( ! is_admin() ) {
         $current_url = home_url( add_query_arg( [] ) );
     }
+
+    $panel_align          = isset( $attributes['panelAlign'] ) && in_array( $attributes['panelAlign'], [ 'start', 'end' ], true ) ? $attributes['panelAlign'] : 'end';
+    $show_identity        = ! isset( $attributes['showIdentity'] ) || (bool) $attributes['showIdentity'];
+    $show_email           = ! empty( $attributes['showEmail'] );
+    $show_membership_link = ! isset( $attributes['showMembershipLink'] ) || (bool) $attributes['showMembershipLink'];
+    $show_logout_link     = ! isset( $attributes['showLogoutLink'] ) || (bool) $attributes['showLogoutLink'];
+    $avatar_size          = isset( $attributes['avatarSize'] ) ? max( 28, min( 96, absint( $attributes['avatarSize'] ) ) ) : 40;
 
     if ( is_user_logged_in() ) {
         $current_user   = wp_get_current_user();
@@ -502,7 +549,7 @@ function pd_render_account_access_menu(): string {
         $menu_id        = wp_unique_id( 'pd-account-menu-' );
         $avatar         = get_avatar(
             $current_user->ID,
-            40,
+            $avatar_size,
             '',
             $current_user->display_name,
             [
@@ -511,17 +558,26 @@ function pd_render_account_access_menu(): string {
             ]
         );
 
-        $output  = '<div class="pd-account-menu" data-account-menu>';
+        $output  = '<div class="pd-account-menu" data-account-menu data-panel-align="' . esc_attr( $panel_align ) . '">';
         $output .= '<button type="button" class="pd-account-menu__trigger" data-account-menu-trigger aria-expanded="false" aria-haspopup="true" aria-controls="' . esc_attr( $menu_id ) . '" aria-label="' . esc_attr__( 'Abrir opciones de usuario', 'pertenencia-digital' ) . '">';
         $output .= '<span class="pd-account-menu__avatar">' . $avatar . '</span>';
         $output .= '<span class="pd-account-menu__caret" aria-hidden="true"></span>';
         $output .= '</button>';
         $output .= '<div id="' . esc_attr( $menu_id ) . '" class="pd-account-menu__panel" data-account-menu-panel hidden>';
-        $output .= '<p class="pd-account-menu__identity">';
-        $output .= '<strong>' . esc_html( $current_user->display_name ) . '</strong><span>' . esc_html( $current_user->user_email ) . '</span>';
-        $output .= '</p>';
-        $output .= '<a class="pd-account-menu__link" href="' . esc_url( $membership_url ) . '">' . esc_html__( 'Mi pertenencia', 'pertenencia-digital' ) . '</a>';
-        $output .= '<a class="pd-account-menu__link" href="' . esc_url( $logout_url ) . '">' . esc_html__( 'Cerrar sesion', 'pertenencia-digital' ) . '</a>';
+        if ( $show_identity ) {
+            $output .= '<p class="pd-account-menu__identity">';
+            $output .= '<strong>' . esc_html( $current_user->display_name ) . '</strong>';
+            if ( $show_email ) {
+                $output .= '<span>' . esc_html( $current_user->user_email ) . '</span>';
+            }
+            $output .= '</p>';
+        }
+        if ( $show_membership_link ) {
+            $output .= '<a class="pd-account-menu__link" href="' . esc_url( $membership_url ) . '">' . esc_html__( 'Mi pertenencia', 'pertenencia-digital' ) . '</a>';
+        }
+        if ( $show_logout_link ) {
+            $output .= '<a class="pd-account-menu__link" href="' . esc_url( $logout_url ) . '">' . esc_html__( 'Cerrar sesion', 'pertenencia-digital' ) . '</a>';
+        }
         $output .= '</div>';
         $output .= '</div>';
 
@@ -529,23 +585,114 @@ function pd_render_account_access_menu(): string {
     }
 
     $login_url = pd_get_login_page_url( $current_url ? $current_url : pd_get_default_membership_url() );
+    $login_label = isset( $attributes['loginLabel'] ) && '' !== trim( (string) $attributes['loginLabel'] ) ? (string) $attributes['loginLabel'] : __( 'Acceso', 'pertenencia-digital' );
 
-    return '<a class="pd-account-access__login" href="' . esc_url( $login_url ) . '">' . esc_html__( 'Acceso', 'pertenencia-digital' ) . '</a>';
+    return '<a class="pd-account-access__login" href="' . esc_url( $login_url ) . '">' . esc_html( $login_label ) . '</a>';
+}
+
+/**
+ * Construye un atributo style seguro para variables CSS del tema.
+ *
+ * @param array<int, string> $rules Reglas en formato `--propiedad:valor`.
+ * @return string
+ */
+function pd_build_theme_custom_property_style( array $rules ): string {
+    $declarations = [];
+
+    foreach ( $rules as $rule ) {
+        if ( ! is_string( $rule ) || '' === trim( $rule ) || false === strpos( $rule, ':' ) ) {
+            continue;
+        }
+
+        [ $property, $value ] = array_map( 'trim', explode( ':', $rule, 2 ) );
+
+        if ( '' === $property || '' === $value || 0 !== strpos( $property, '--pd-' ) ) {
+            continue;
+        }
+
+        $property = preg_replace( '/[^a-z0-9\-_]/i', '', $property );
+        $value    = preg_replace( '/[{};<>]/', '', $value );
+
+        if ( '' === $property || '' === $value ) {
+            continue;
+        }
+
+        $declarations[] = $property . ':' . $value;
+    }
+
+    return implode( ';', $declarations );
 }
 
 /**
  * Render callback del bloque de acceso compacto.
  */
 function pd_render_block_account_access( array $attributes = [], string $content = '', ?WP_Block $block = null ): string {
+    $style_rules = [];
+    $trigger_size = isset( $attributes['triggerSize'] ) && in_array( $attributes['triggerSize'], [ 'small', 'medium', 'large' ], true ) ? $attributes['triggerSize'] : 'medium';
+    $trigger_scale = isset( $attributes['triggerScale'] ) ? max( 70, min( 150, (int) $attributes['triggerScale'] ) ) : 100;
+
+    foreach (
+        [
+            '--pd-account-trigger-background' => $attributes['triggerBackground'] ?? '',
+            '--pd-account-trigger-text'       => $attributes['triggerText'] ?? '',
+            '--pd-account-trigger-border'     => $attributes['triggerBorder'] ?? '',
+            '--pd-account-panel-background'   => $attributes['panelBackground'] ?? '',
+            '--pd-account-panel-text'         => $attributes['panelText'] ?? '',
+            '--pd-account-panel-border'       => $attributes['panelBorder'] ?? '',
+            '--pd-account-panel-width'        => $attributes['panelWidth'] ?? '',
+            '--pd-account-panel-font-size'    => isset( $attributes['panelTextSize'] ) ? max( 12, min( 28, (int) $attributes['panelTextSize'] ) ) . 'px' : '',
+        ] as $property => $value
+    ) {
+        if ( is_string( $value ) && '' !== trim( $value ) ) {
+            $style_rules[] = $property . ':' . trim( $value );
+        }
+    }
+
+    $size_presets = [
+        'small'  => [
+            '--pd-account-trigger-min-height:2.35rem',
+            '--pd-account-trigger-padding-y:0.38rem',
+            '--pd-account-trigger-padding-x:0.68rem',
+            '--pd-account-trigger-gap:0.5rem',
+            '--pd-account-trigger-font-size:0.84rem',
+            '--pd-account-avatar-size:2rem',
+            '--pd-account-caret-size:0.58rem',
+        ],
+        'medium' => [
+            '--pd-account-trigger-min-height:2.75rem',
+            '--pd-account-trigger-padding-y:0.5rem',
+            '--pd-account-trigger-padding-x:0.85rem',
+            '--pd-account-trigger-gap:0.65rem',
+            '--pd-account-trigger-font-size:0.92rem',
+            '--pd-account-avatar-size:2.25rem',
+            '--pd-account-caret-size:0.65rem',
+        ],
+        'large'  => [
+            '--pd-account-trigger-min-height:3.1rem',
+            '--pd-account-trigger-padding-y:0.62rem',
+            '--pd-account-trigger-padding-x:1rem',
+            '--pd-account-trigger-gap:0.72rem',
+            '--pd-account-trigger-font-size:0.98rem',
+            '--pd-account-avatar-size:2.55rem',
+            '--pd-account-caret-size:0.72rem',
+        ],
+    ];
+
+    $style_rules = array_merge( $size_presets[ $trigger_size ], $style_rules );
+    $style_rules[] = '--pd-account-trigger-scale:' . ( $trigger_scale / 100 );
+
+    $wrapper_style = ! empty( $style_rules ) ? pd_build_theme_custom_property_style( $style_rules ) : '';
+
     $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
         ? get_block_wrapper_attributes(
             [
                 'class' => 'pd-account-access-block',
+                'style' => '' !== $wrapper_style ? $wrapper_style : null,
             ]
         )
-        : 'class="pd-account-access-block"';
+        : 'class="pd-account-access-block"' . ( '' !== $wrapper_style ? ' style="' . esc_attr( $wrapper_style ) . '"' : '' );
 
-    return '<div ' . $wrapper_attributes . '>' . pd_render_account_access_menu() . '</div>';
+    return '<div ' . $wrapper_attributes . '>' . pd_render_account_access_menu( $attributes ) . '</div>';
 }
 
 /**
@@ -832,16 +979,80 @@ function pd_render_block_site_navigation( array $attributes = [], string $conten
     $toggle_label  = isset( $attributes['toggleLabel'] ) && '' !== (string) $attributes['toggleLabel'] ? (string) $attributes['toggleLabel'] : __( 'Menu', 'pertenencia-digital' );
     $screen_reader = __( 'Abrir menu principal', 'pertenencia-digital' );
     $index         = 0;
+    $panel_align   = isset( $attributes['panelAlign'] ) && in_array( $attributes['panelAlign'], [ 'start', 'end' ], true ) ? $attributes['panelAlign'] : 'start';
+    $trigger_size = isset( $attributes['triggerSize'] ) && in_array( $attributes['triggerSize'], [ 'small', 'medium', 'large' ], true ) ? $attributes['triggerSize'] : 'medium';
+    $trigger_scale = isset( $attributes['triggerScale'] ) ? max( 70, min( 150, (int) $attributes['triggerScale'] ) ) : 100;
+    $hide_label_mobile = ! empty( $attributes['hideLabelOnMobile'] );
+    $close_on_item_click = ! isset( $attributes['closeOnItemClick'] ) || (bool) $attributes['closeOnItemClick'];
+    $stagger_step = isset( $attributes['staggerStep'] ) ? max( 0, absint( $attributes['staggerStep'] ) ) : 45;
+    $style_rules = [];
+
+    foreach (
+        [
+            '--pd-nav-trigger-background'   => $attributes['triggerBackground'] ?? '',
+            '--pd-nav-trigger-text'         => $attributes['triggerText'] ?? '',
+            '--pd-nav-trigger-border'       => $attributes['triggerBorder'] ?? '',
+            '--pd-nav-panel-background'     => $attributes['panelBackground'] ?? '',
+            '--pd-nav-panel-text'           => $attributes['panelText'] ?? '',
+            '--pd-nav-panel-border'         => $attributes['panelBorder'] ?? '',
+            '--pd-nav-item-background'      => $attributes['itemBackground'] ?? '',
+            '--pd-nav-item-border'          => $attributes['itemBorder'] ?? '',
+            '--pd-nav-item-hover-background'=> $attributes['itemHoverBackground'] ?? '',
+            '--pd-nav-item-hover-border'    => $attributes['itemHoverBorder'] ?? '',
+            '--pd-nav-item-hover-text'      => $attributes['itemHoverText'] ?? '',
+            '--pd-nav-panel-width'          => $attributes['panelWidth'] ?? '',
+            '--pd-nav-item-font-size'       => isset( $attributes['menuTextSize'] ) ? max( 12, min( 28, (int) $attributes['menuTextSize'] ) ) . 'px' : '',
+            '--pd-nav-stagger-step'         => $stagger_step ? $stagger_step . 'ms' : '0ms',
+        ] as $property => $value
+    ) {
+        if ( is_string( $value ) && '' !== trim( $value ) ) {
+            $style_rules[] = $property . ':' . trim( $value );
+        }
+    }
+
+    $size_presets = [
+        'small'  => [
+            '--pd-nav-trigger-min-height:2.35rem',
+            '--pd-nav-trigger-padding-y:0.38rem',
+            '--pd-nav-trigger-padding-x:0.7rem',
+            '--pd-nav-trigger-gap:0.52rem',
+            '--pd-nav-trigger-font-size:0.84rem',
+            '--pd-nav-icon-width:0.92rem',
+        ],
+        'medium' => [
+            '--pd-nav-trigger-min-height:2.75rem',
+            '--pd-nav-trigger-padding-y:0.5rem',
+            '--pd-nav-trigger-padding-x:0.85rem',
+            '--pd-nav-trigger-gap:0.7rem',
+            '--pd-nav-trigger-font-size:0.92rem',
+            '--pd-nav-icon-width:1rem',
+        ],
+        'large'  => [
+            '--pd-nav-trigger-min-height:3.1rem',
+            '--pd-nav-trigger-padding-y:0.62rem',
+            '--pd-nav-trigger-padding-x:1rem',
+            '--pd-nav-trigger-gap:0.76rem',
+            '--pd-nav-trigger-font-size:0.98rem',
+            '--pd-nav-icon-width:1.08rem',
+        ],
+    ];
+
+    $style_rules = array_merge( $size_presets[ $trigger_size ], $style_rules );
+    $style_rules[] = '--pd-nav-trigger-scale:' . ( $trigger_scale / 100 );
+
+    $wrapper_style = ! empty( $style_rules ) ? pd_build_theme_custom_property_style( $style_rules ) : '';
+
     $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
         ? get_block_wrapper_attributes(
             [
                 'class' => 'pd-site-navigation-block',
+                'style' => '' !== $wrapper_style ? $wrapper_style : null,
             ]
         )
-        : 'class="pd-site-navigation-block"';
+        : 'class="pd-site-navigation-block"' . ( '' !== $wrapper_style ? ' style="' . esc_attr( $wrapper_style ) . '"' : '' );
 
     $output  = '<div ' . $wrapper_attributes . '>';
-    $output .= '<nav class="pd-site-navigation" data-site-navigation aria-label="' . esc_attr__( 'Navegacion principal', 'pertenencia-digital' ) . '">';
+    $output .= '<nav class="pd-site-navigation" data-site-navigation data-panel-align="' . esc_attr( $panel_align ) . '" data-close-on-item-click="' . ( $close_on_item_click ? 'true' : 'false' ) . '" data-hide-label-mobile="' . ( $hide_label_mobile ? 'true' : 'false' ) . '" aria-label="' . esc_attr__( 'Navegacion principal', 'pertenencia-digital' ) . '">';
     $output .= '<button type="button" class="pd-site-navigation__toggle" data-site-navigation-toggle aria-expanded="false" aria-controls="' . esc_attr( $panel_id ) . '">';
     $output .= '<span class="screen-reader-text">' . esc_html( $screen_reader ) . '</span>';
     $output .= '<span class="pd-site-navigation__toggle-label" aria-hidden="true">' . esc_html( $toggle_label ) . '</span>';
@@ -918,15 +1129,73 @@ function pd_render_block_music_subnavigation( array $attributes = [], string $co
 
     $current_id = get_queried_object_id();
     $ancestors  = $current_id > 0 ? array_map( 'intval', get_post_ancestors( $current_id ) ) : [];
+    $align_items = isset( $attributes['alignItems'] ) && in_array( $attributes['alignItems'], [ 'start', 'center', 'end' ], true ) ? $attributes['alignItems'] : 'center';
+    $mobile_mode = isset( $attributes['mobileMode'] ) && in_array( $attributes['mobileMode'], [ 'scroll', 'wrap' ], true ) ? $attributes['mobileMode'] : 'scroll';
+    $item_size   = isset( $attributes['itemSize'] ) && in_array( $attributes['itemSize'], [ 'small', 'medium', 'large' ], true ) ? $attributes['itemSize'] : 'medium';
+    $item_scale  = isset( $attributes['itemScale'] ) ? max( 70, min( 150, (int) $attributes['itemScale'] ) ) : 100;
+    $style_rules = [];
+
+    foreach (
+        [
+            '--pd-subnav-text'                     => $attributes['textColor'] ?? '',
+            '--pd-subnav-item-hover-background'   => $attributes['itemHoverBackground'] ?? '',
+            '--pd-subnav-item-hover-border'       => $attributes['itemHoverBorder'] ?? '',
+            '--pd-subnav-item-current-background' => $attributes['itemCurrentBackground'] ?? '',
+            '--pd-subnav-item-current-border'     => $attributes['itemCurrentBorder'] ?? '',
+            '--pd-subnav-item-current-text'       => $attributes['itemCurrentText'] ?? '',
+        ] as $property => $value
+    ) {
+        if ( is_string( $value ) && '' !== trim( $value ) ) {
+            $style_rules[] = $property . ':' . trim( $value );
+        }
+    }
+
+    $size_presets = [
+        'small'  => [
+            '--pd-subnav-link-min-height:1.9rem',
+            '--pd-subnav-link-padding-top:0.28rem',
+            '--pd-subnav-link-padding-x:0.55rem',
+            '--pd-subnav-link-padding-bottom:0.42rem',
+            '--pd-subnav-link-font-size:0.9rem',
+            '--pd-subnav-link-radius:0.72rem',
+            '--pd-subnav-indicator-inset:0.55rem',
+            '--pd-subnav-indicator-thickness:2px',
+        ],
+        'medium' => [
+            '--pd-subnav-link-min-height:2.1rem',
+            '--pd-subnav-link-padding-top:0.35rem',
+            '--pd-subnav-link-padding-x:0.7rem',
+            '--pd-subnav-link-padding-bottom:0.55rem',
+            '--pd-subnav-link-font-size:1rem',
+            '--pd-subnav-link-radius:0.8rem',
+            '--pd-subnav-indicator-inset:0.7rem',
+            '--pd-subnav-indicator-thickness:2px',
+        ],
+        'large'  => [
+            '--pd-subnav-link-min-height:2.35rem',
+            '--pd-subnav-link-padding-top:0.45rem',
+            '--pd-subnav-link-padding-x:0.88rem',
+            '--pd-subnav-link-padding-bottom:0.68rem',
+            '--pd-subnav-link-font-size:1.08rem',
+            '--pd-subnav-link-radius:0.92rem',
+            '--pd-subnav-indicator-inset:0.88rem',
+            '--pd-subnav-indicator-thickness:2.5px',
+        ],
+    ];
+
+    $style_rules   = array_merge( $size_presets[ $item_size ], $style_rules );
+    $style_rules[] = '--pd-subnav-link-scale:' . ( $item_scale / 100 );
+    $wrapper_style = ! empty( $style_rules ) ? pd_build_theme_custom_property_style( $style_rules ) : '';
     $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
         ? get_block_wrapper_attributes(
             [
                 'class' => 'pd-music-subnav-block',
+                'style' => '' !== $wrapper_style ? $wrapper_style : null,
             ]
         )
-        : 'class="pd-music-subnav-block"';
+        : 'class="pd-music-subnav-block"' . ( '' !== $wrapper_style ? ' style="' . esc_attr( $wrapper_style ) . '"' : '' );
     $output     = '<div ' . $wrapper_attributes . '>';
-    $output    .= '<nav class="pd-music-subnav" aria-label="' . esc_attr__( 'Submenu de Musica', 'pertenencia-digital' ) . '">';
+    $output    .= '<nav class="pd-music-subnav" data-align="' . esc_attr( $align_items ) . '" data-mobile-mode="' . esc_attr( $mobile_mode ) . '" aria-label="' . esc_attr__( 'Submenu de Musica', 'pertenencia-digital' ) . '">';
     $output    .= '<ul class="pd-music-subnav__list">';
 
     foreach ( $pages as $page ) {
@@ -1670,7 +1939,9 @@ function pd_render_colaborador_card( WP_User $user ): string {
     $bio    = get_user_meta( $user->ID, 'description', true );
     $tagline = get_user_meta( $user->ID, 'pd_colaborador_tagline', true );
     $url    = $user->user_url ? esc_url( $user->user_url ) : '';
-    $author = get_author_posts_url( $user->ID );
+    $author = function_exists( 'wpssb_get_collaborator_public_url' )
+        ? wpssb_get_collaborator_public_url( $user->ID )
+        : get_author_posts_url( $user->ID );
 
     $output  = '<article class="pd-colaborador-card">';
     $output .= '<div class="pd-colaborador-card__header">';

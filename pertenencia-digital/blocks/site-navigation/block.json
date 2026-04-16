@@ -20,6 +20,82 @@
     "toggleLabel": {
       "type": "string",
       "default": "Menu"
+    },
+    "panelAlign": {
+      "type": "string",
+      "default": "start"
+    },
+    "triggerSize": {
+      "type": "string",
+      "default": "medium"
+    },
+    "triggerScale": {
+      "type": "number",
+      "default": 100
+    },
+    "panelWidth": {
+      "type": "string",
+      "default": "24rem"
+    },
+    "menuTextSize": {
+      "type": "number",
+      "default": 16
+    },
+    "hideLabelOnMobile": {
+      "type": "boolean",
+      "default": false
+    },
+    "closeOnItemClick": {
+      "type": "boolean",
+      "default": true
+    },
+    "staggerStep": {
+      "type": "number",
+      "default": 45
+    },
+    "triggerBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "triggerText": {
+      "type": "string",
+      "default": ""
+    },
+    "triggerBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "panelText": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "itemBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "itemBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "itemHoverBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "itemHoverBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "itemHoverText": {
+      "type": "string",
+      "default": ""
     }
   },
   "supports": {
@@ -27,9 +103,20 @@
     "anchor": true,
     "className": true,
     "html": false,
+    "color": {
+      "background": true,
+      "text": true
+    },
+    "border": {
+      "radius": true
+    },
     "spacing": {
       "margin": true,
       "padding": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
     }
   }
 }

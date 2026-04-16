@@ -109,6 +109,7 @@ add_action( 'init', 'wpssb_register_content_types', 5 );
 function wpssb_activate_plugin() {
     wpssb_register_content_types();
     wpssb_register_collaborator_role();
+    wpssb_register_collaborator_presskit_post_type();
     wpssb_register_project_post_type();
     wpssb_register_project_area_taxonomy();
     wpss_register_songbook_access();

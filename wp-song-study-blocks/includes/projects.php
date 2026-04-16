@@ -21,12 +21,20 @@ if ( ! defined( 'WPSSB_PROJECT_POST_TYPE' ) ) {
     define( 'WPSSB_PROJECT_POST_TYPE', 'proyecto' );
 }
 
+if ( ! defined( 'WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE' ) ) {
+    define( 'WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE', 'presskit' );
+}
+
 if ( ! defined( 'WPSSB_PROJECT_AREA_TAX' ) ) {
     define( 'WPSSB_PROJECT_AREA_TAX', 'area_proyecto' );
 }
 
 if ( ! defined( 'WPSSB_COLLABORATOR_TARGET_META' ) ) {
     define( 'WPSSB_COLLABORATOR_TARGET_META', '_wpssb_collaborator_user_id' );
+}
+
+if ( ! defined( 'WPSSB_COLLABORATOR_PRESSKIT_USER_META' ) ) {
+    define( 'WPSSB_COLLABORATOR_PRESSKIT_USER_META', '_wpssb_collaborator_presskit_post_id' );
 }
 
 /**
@@ -79,18 +87,124 @@ function wpssb_register_collaborator_role() {
         $role->add_cap( 'upload_files' );
     }
 
+    $collaborator_presskit_caps = [
+        'read_presskit',
+        'edit_presskit',
+        'delete_presskit',
+        'edit_presskits',
+        'publish_presskits',
+        'delete_presskits',
+        'delete_published_presskits',
+        'edit_published_presskits',
+    ];
+
+    $admin_presskit_caps = array_merge(
+        $collaborator_presskit_caps,
+        [
+            'edit_others_presskits',
+            'read_private_presskits',
+            'delete_private_presskits',
+            'delete_others_presskits',
+            'edit_private_presskits',
+        ]
+    );
+
+    if ( $role ) {
+        foreach ( $collaborator_presskit_caps as $cap ) {
+            if ( ! $role->has_cap( $cap ) ) {
+                $role->add_cap( $cap );
+            }
+        }
+
+        foreach ( array_diff( $admin_presskit_caps, $collaborator_presskit_caps ) as $cap ) {
+            if ( $role->has_cap( $cap ) ) {
+                $role->remove_cap( $cap );
+            }
+        }
+    }
+
     if ( function_exists( 'wpss_add_cap_to_role' ) ) {
         wpss_add_cap_to_role( 'pd_colaborador', WPSSB_COLLABORATOR_CAP );
 
         if ( defined( 'WPSS_ROLE_COLEGA' ) ) {
             wpss_add_cap_to_role( WPSS_ROLE_COLEGA, WPSSB_COLLABORATOR_CAP );
             wpss_add_cap_to_role( WPSS_ROLE_COLEGA, 'upload_files' );
+            foreach ( $collaborator_presskit_caps as $cap ) {
+                wpss_add_cap_to_role( WPSS_ROLE_COLEGA, $cap );
+            }
+
+            $colega_role = get_role( WPSS_ROLE_COLEGA );
+
+            if ( $colega_role ) {
+                foreach ( array_diff( $admin_presskit_caps, $collaborator_presskit_caps ) as $cap ) {
+                    if ( $colega_role->has_cap( $cap ) ) {
+                        $colega_role->remove_cap( $cap );
+                    }
+                }
+            }
         }
 
         wpss_add_cap_to_role( 'administrator', WPSSB_COLLABORATOR_CAP );
+        foreach ( $admin_presskit_caps as $cap ) {
+            wpss_add_cap_to_role( 'administrator', $cap );
+        }
+    }
+
+    $admin_role = get_role( 'administrator' );
+
+    if ( $admin_role ) {
+        foreach ( $admin_presskit_caps as $cap ) {
+            if ( ! $admin_role->has_cap( $cap ) ) {
+                $admin_role->add_cap( $cap );
+            }
+        }
     }
 }
 add_action( 'init', 'wpssb_register_collaborator_role' );
+
+/**
+ * Registra el CPT editable de presskits personales.
+ *
+ * @return void
+ */
+function wpssb_register_collaborator_presskit_post_type() {
+    if ( post_type_exists( WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE ) ) {
+        return;
+    }
+
+    $labels = [
+        'name'               => __( 'Presskits personales', 'wp-song-study-blocks' ),
+        'singular_name'      => __( 'Presskit personal', 'wp-song-study-blocks' ),
+        'add_new'            => __( 'Añadir nuevo', 'wp-song-study-blocks' ),
+        'add_new_item'       => __( 'Añadir nuevo presskit personal', 'wp-song-study-blocks' ),
+        'edit_item'          => __( 'Editar presskit personal', 'wp-song-study-blocks' ),
+        'new_item'           => __( 'Nuevo presskit personal', 'wp-song-study-blocks' ),
+        'view_item'          => __( 'Ver presskit personal', 'wp-song-study-blocks' ),
+        'search_items'       => __( 'Buscar presskits personales', 'wp-song-study-blocks' ),
+        'not_found'          => __( 'No se encontraron presskits personales', 'wp-song-study-blocks' ),
+        'not_found_in_trash' => __( 'No hay presskits personales en la papelera', 'wp-song-study-blocks' ),
+        'all_items'          => __( 'Todos los presskits personales', 'wp-song-study-blocks' ),
+    ];
+
+    register_post_type(
+        WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE,
+        [
+            'labels'          => $labels,
+            'public'          => true,
+            'show_in_rest'    => true,
+            'show_in_menu'    => true,
+            'menu_icon'       => 'dashicons-id-alt',
+            'supports'        => [ 'title', 'editor', 'excerpt', 'thumbnail', 'author', 'revisions' ],
+            'has_archive'     => false,
+            'rewrite'         => [
+                'slug' => 'presskit',
+            ],
+            'map_meta_cap'    => true,
+            'capability_type' => [ 'presskit', 'presskits' ],
+        ]
+    );
+}
+add_action( 'init', 'wpssb_register_collaborator_presskit_post_type' );
 
 /**
  * Registra el CPT de proyectos.
@@ -390,33 +504,6 @@ function wpssb_add_project_meta_boxes() {
         'side',
         'default'
     );
-
-    add_meta_box(
-        'wpssb-project-contact',
-        __( 'Contacto del proyecto', 'wp-song-study-blocks' ),
-        'wpssb_render_project_contact_meta_box',
-        WPSSB_PROJECT_POST_TYPE,
-        'normal',
-        'default'
-    );
-
-    add_meta_box(
-        'wpssb-project-gallery',
-        __( 'Galería del proyecto', 'wp-song-study-blocks' ),
-        'wpssb_render_project_gallery_meta_box',
-        WPSSB_PROJECT_POST_TYPE,
-        'normal',
-        'default'
-    );
-
-    add_meta_box(
-        'wpssb-project-presskit',
-        __( 'Presskit del proyecto', 'wp-song-study-blocks' ),
-        'wpssb_render_project_presskit_meta_box',
-        WPSSB_PROJECT_POST_TYPE,
-        'normal',
-        'default'
-    );
 }
 add_action( 'add_meta_boxes', 'wpssb_add_project_meta_boxes' );
 
@@ -426,16 +513,18 @@ add_action( 'add_meta_boxes', 'wpssb_add_project_meta_boxes' );
  * @return void
  */
 function wpssb_add_collaborator_target_meta_box() {
-    add_meta_box(
-        'wpssb-collaborator-target',
-        __( 'Usuario objetivo del presskit', 'wp-song-study-blocks' ),
-        'wpssb_render_collaborator_target_meta_box',
-        'page',
-        'side',
-        'default'
-    );
+    foreach ( [ 'page', WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE ] as $screen ) {
+        add_meta_box(
+            'wpssb-collaborator-target',
+            __( 'Usuario objetivo del presskit', 'wp-song-study-blocks' ),
+            'wpssb_render_collaborator_target_meta_box',
+            $screen,
+            'side',
+            'default'
+        );
+    }
 }
-add_action( 'add_meta_boxes_page', 'wpssb_add_collaborator_target_meta_box' );
+add_action( 'add_meta_boxes', 'wpssb_add_collaborator_target_meta_box' );
 
 /**
  * Renderiza el selector de usuario objetivo en páginas.
@@ -479,6 +568,482 @@ function wpssb_render_collaborator_target_meta_box( WP_Post $post ) {
     }
 
     echo '</select>';
+}
+
+/**
+ * Obtiene el ID del presskit personal vinculado a un usuario.
+ *
+ * @param int $user_id Usuario objetivo.
+ * @return int
+ */
+function wpssb_get_collaborator_presskit_post_id( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( $user_id <= 0 ) {
+        return 0;
+    }
+
+    $stored_post_id = absint( get_user_meta( $user_id, WPSSB_COLLABORATOR_PRESSKIT_USER_META, true ) );
+
+    if ( $stored_post_id > 0 && WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE === get_post_type( $stored_post_id ) ) {
+        wpssb_sync_collaborator_presskit_post_slug( $stored_post_id, $user_id );
+        return $stored_post_id;
+    }
+
+    $posts = get_posts(
+        [
+            'post_type'      => WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE,
+            'post_status'    => [ 'publish', 'draft', 'pending', 'private' ],
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                [
+                    'key'   => WPSSB_COLLABORATOR_TARGET_META,
+                    'value' => $user_id,
+                ],
+            ],
+        ]
+    );
+
+    $post_id = ! empty( $posts[0] ) ? (int) $posts[0] : 0;
+
+    if ( $post_id > 0 ) {
+        update_user_meta( $user_id, WPSSB_COLLABORATOR_PRESSKIT_USER_META, $post_id );
+        wpssb_sync_collaborator_presskit_post_slug( $post_id, $user_id );
+    }
+
+    return $post_id;
+}
+
+/**
+ * Devuelve el URL público preferido para un colaborador.
+ *
+ * @param int $user_id Usuario objetivo.
+ * @return string
+ */
+function wpssb_get_collaborator_public_url( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( $user_id <= 0 ) {
+        return home_url( '/' );
+    }
+
+    $presskit_post_id = wpssb_get_collaborator_presskit_post_id( $user_id );
+
+    if ( $presskit_post_id > 0 ) {
+        $permalink = get_permalink( $presskit_post_id );
+
+        if ( is_string( $permalink ) && '' !== $permalink ) {
+            return $permalink;
+        }
+    }
+
+    return get_author_posts_url( $user_id );
+}
+
+/**
+ * Redirige el archivo de autor al presskit personal cuando exista.
+ *
+ * @return void
+ */
+function wpssb_redirect_author_archive_to_presskit() {
+    if ( is_admin() || ! is_author() || is_feed() || is_preview() ) {
+        return;
+    }
+
+    if ( wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+        return;
+    }
+
+    $user_id = (int) get_queried_object_id();
+
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    $presskit_post_id = wpssb_get_collaborator_presskit_post_id( $user_id );
+
+    if ( $presskit_post_id <= 0 ) {
+        return;
+    }
+
+    $target_url = get_permalink( $presskit_post_id );
+
+    if ( ! is_string( $target_url ) || '' === $target_url ) {
+        return;
+    }
+
+    wp_safe_redirect( $target_url, 302, 'WP Song Study Blocks' );
+    exit;
+}
+add_action( 'template_redirect', 'wpssb_redirect_author_archive_to_presskit' );
+
+/**
+ * Redirige slugs legacy o adivinados de presskit al permalink real del usuario.
+ *
+ * Ejemplo: `/presskit/sergiomendoza/` aunque el post se haya creado con otro slug.
+ *
+ * @return void
+ */
+function wpssb_redirect_guessed_presskit_slug() {
+    if ( is_admin() || ! is_404() || is_feed() || is_preview() ) {
+        return;
+    }
+
+    $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+    $request_path = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+    $request_path = trim( $request_path, '/' );
+
+    if ( '' === $request_path ) {
+        return;
+    }
+
+    $home_path = trim( (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH ), '/' );
+
+    if ( '' !== $home_path && str_starts_with( $request_path, $home_path . '/' ) ) {
+        $request_path = substr( $request_path, strlen( $home_path ) + 1 );
+    }
+
+    if ( ! preg_match( '#^presskit/([^/]+)$#', $request_path, $matches ) ) {
+        return;
+    }
+
+    $candidate = sanitize_title( $matches[1] );
+
+    if ( '' === $candidate ) {
+        return;
+    }
+
+    $user = get_user_by( 'slug', $candidate );
+
+    if ( ! $user instanceof WP_User ) {
+        $user = get_user_by( 'login', $candidate );
+    }
+
+    if ( ! $user instanceof WP_User ) {
+        return;
+    }
+
+    $presskit_post_id = wpssb_get_collaborator_presskit_post_id( (int) $user->ID );
+
+    if ( $presskit_post_id <= 0 ) {
+        return;
+    }
+
+    $target_url = get_permalink( $presskit_post_id );
+
+    if ( ! $target_url ) {
+        return;
+    }
+
+    wp_safe_redirect( $target_url, 301, 'WP Song Study Blocks' );
+    exit;
+}
+add_action( 'template_redirect', 'wpssb_redirect_guessed_presskit_slug', 1 );
+
+/**
+ * Construye el contenido inicial editable del presskit personal.
+ *
+ * @param int $user_id Usuario objetivo.
+ * @return string
+ */
+function wpssb_get_default_collaborator_presskit_content( $user_id = 0 ) {
+    return <<<'HTML'
+<!-- wp:group {"align":"wide","className":"pd-presskit__surface pd-presskit__surface--hero","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__surface pd-presskit__surface--hero">
+  <!-- wp:wp-song-study/collaborator-presskit /-->
+</div>
+<!-- /wp:group -->
+
+<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+  <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+  <p class="pd-eyebrow has-x-small-font-size">Historia, enfoque y materiales</p>
+  <!-- /wp:paragraph -->
+
+  <!-- wp:heading {"level":2} -->
+  <h2 class="wp-block-heading">Contenido editorial</h2>
+  <!-- /wp:heading -->
+
+  <!-- wp:paragraph -->
+  <p>Usa este espacio como un lienzo abierto: biografía extensa, statement artístico, embebidos, prensa, citas, agenda, dossier o cualquier composición hecha con bloques.</p>
+  <!-- /wp:paragraph -->
+  <!-- wp:paragraph -->
+  <p>Los bloques del plugin siguen disponibles para reutilizar datos base, pero ya no limitan la forma final de tu presskit.</p>
+  <!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->
+
+<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+  <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+  <p class="pd-eyebrow has-x-small-font-size">Trayectoria</p>
+  <!-- /wp:paragraph -->
+
+  <!-- wp:heading {"level":2} -->
+  <h2 class="wp-block-heading">Proyectos</h2>
+  <!-- /wp:heading -->
+
+  <!-- wp:wp-song-study/collaborator-projects /-->
+</div>
+<!-- /wp:group -->
+HTML;
+}
+
+/**
+ * Construye contenido migrado para un presskit personal legacy.
+ *
+ * Si el nuevo CPT existe pero llega vacío, intenta sembrarlo con la información
+ * mínima que antes vivía en user meta para no dejar el documento en blanco.
+ *
+ * @param int $user_id Usuario objetivo.
+ * @return string
+ */
+function wpssb_get_migrated_collaborator_presskit_content( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( $user_id <= 0 ) {
+        return '';
+    }
+
+    $user = get_user_by( 'id', $user_id );
+
+    if ( ! $user instanceof WP_User ) {
+        return '';
+    }
+
+    $tagline       = trim( (string) get_user_meta( $user_id, 'pd_colaborador_tagline', true ) );
+    $legacy_text   = trim( (string) get_user_meta( $user_id, 'pd_colaborador_presskit', true ) );
+    $description   = trim( (string) $user->description );
+    $fallback_text = '' !== $legacy_text ? $legacy_text : $description;
+
+    if ( '' === $tagline && '' === $fallback_text ) {
+        return '';
+    }
+
+    $content = [];
+
+    $content[] = '<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->';
+    $content[] = '<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">';
+    $content[] = '<!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->';
+    $content[] = '<p class="pd-eyebrow has-x-small-font-size">' . esc_html__( 'Presentación', 'wp-song-study-blocks' ) . '</p>';
+    $content[] = '<!-- /wp:paragraph -->';
+    $content[] = '<!-- wp:heading {"level":2} -->';
+    $content[] = '<h2 class="wp-block-heading">' . esc_html( $user->display_name ) . '</h2>';
+    $content[] = '<!-- /wp:heading -->';
+
+    if ( '' !== $tagline ) {
+        $content[] = '<!-- wp:paragraph {"fontSize":"large"} -->';
+        $content[] = '<p class="has-large-font-size">' . esc_html( $tagline ) . '</p>';
+        $content[] = '<!-- /wp:paragraph -->';
+    }
+
+    if ( '' !== $fallback_text ) {
+        foreach ( preg_split( "/\n\s*\n/", $fallback_text ) as $paragraph ) {
+            $paragraph = trim( wp_strip_all_tags( $paragraph ) );
+
+            if ( '' === $paragraph ) {
+                continue;
+            }
+
+            $content[] = '<!-- wp:paragraph -->';
+            $content[] = '<p>' . esc_html( $paragraph ) . '</p>';
+            $content[] = '<!-- /wp:paragraph -->';
+        }
+    }
+
+    $content[] = '</div>';
+    $content[] = '<!-- /wp:group -->';
+    $content[] = '<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->';
+    $content[] = '<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">';
+    $content[] = '<!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->';
+    $content[] = '<p class="pd-eyebrow has-x-small-font-size">' . esc_html__( 'Trayectoria', 'wp-song-study-blocks' ) . '</p>';
+    $content[] = '<!-- /wp:paragraph -->';
+    $content[] = '<!-- wp:heading {"level":2} -->';
+    $content[] = '<h2 class="wp-block-heading">' . esc_html__( 'Proyectos', 'wp-song-study-blocks' ) . '</h2>';
+    $content[] = '<!-- /wp:heading -->';
+    $content[] = '<!-- wp:wp-song-study/collaborator-projects /-->';
+    $content[] = '</div>';
+    $content[] = '<!-- /wp:group -->';
+
+    return implode( "\n", $content );
+}
+
+/**
+ * Devuelve contenido efectivo para un documento editable de presskit/proyecto.
+ *
+ * @param WP_Post $post Post objetivo.
+ * @return string
+ */
+function wpssb_get_effective_presskit_document_content( WP_Post $post ) {
+    $content = trim( (string) $post->post_content );
+
+    if ( '' !== $content ) {
+        return (string) $post->post_content;
+    }
+
+    if ( WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE === $post->post_type ) {
+        $user_id = wpssb_get_explicit_collaborator_target_user_id( $post->ID );
+
+        if ( ! $user_id ) {
+            $user_id = (int) ( $post->post_author ?: get_current_user_id() );
+        }
+
+        $migrated = wpssb_get_migrated_collaborator_presskit_content( $user_id );
+
+        return '' !== $migrated ? $migrated : wpssb_get_default_collaborator_presskit_content( $user_id );
+    }
+
+    if ( WPSSB_PROJECT_POST_TYPE === $post->post_type ) {
+        return wpssb_get_default_project_presskit_content( (int) $post->ID );
+    }
+
+    return '';
+}
+
+/**
+ * Construye el contenido inicial editable del proyecto.
+ *
+ * @param int $post_id Proyecto objetivo.
+ * @return string
+ */
+function wpssb_get_default_project_presskit_content( $post_id = 0 ) {
+    return <<<'HTML'
+<!-- wp:group {"align":"wide","className":"pd-presskit__surface pd-presskit__surface--hero","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__surface pd-presskit__surface--hero">
+  <!-- wp:wp-song-study/project-presskit /-->
+</div>
+<!-- /wp:group -->
+
+<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+  <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+  <p class="pd-eyebrow has-x-small-font-size">Narrativa del proyecto</p>
+  <!-- /wp:paragraph -->
+
+  <!-- wp:heading {"level":2} -->
+  <h2 class="wp-block-heading">Contenido editorial</h2>
+  <!-- /wp:heading -->
+
+  <!-- wp:paragraph -->
+  <p>Este documento ya es libre para componer el presskit del proyecto con bloques: contexto, manifiesto, hitos, embeds, dossier, agenda, prensa o cualquier estructura editorial.</p>
+  <!-- /wp:paragraph -->
+  <!-- wp:paragraph -->
+  <p>Si quieres empezar con una base visual, inserta un patrón del tema y ajústalo libremente en el editor.</p>
+  <!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->
+
+<!-- wp:group {"align":"wide","className":"pd-presskit__section pd-presskit__surface","layout":{"type":"constrained"}} -->
+<div class="wp-block-group alignwide pd-presskit__section pd-presskit__surface">
+  <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow"} -->
+  <p class="pd-eyebrow has-x-small-font-size">Equipo</p>
+  <!-- /wp:paragraph -->
+
+  <!-- wp:heading {"level":2} -->
+  <h2 class="wp-block-heading">Integrantes y colaboradores</h2>
+  <!-- /wp:heading -->
+
+  <!-- wp:wp-song-study/project-collaborators /-->
+</div>
+<!-- /wp:group -->
+HTML;
+}
+
+/**
+ * Aplica contenido inicial al editor para presskits personales y proyectos.
+ *
+ * @param string  $content Contenido actual.
+ * @param WP_Post $post    Post actual.
+ * @return string
+ */
+function wpssb_filter_default_presskit_content( $content, $post ) {
+    if ( ! $post instanceof WP_Post || '' !== trim( (string) $content ) ) {
+        return $content;
+    }
+
+    if ( WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE === $post->post_type ) {
+        $user_id = wpssb_get_explicit_collaborator_target_user_id( $post->ID );
+
+        if ( ! $user_id ) {
+            $user_id = (int) ( $post->post_author ?: get_current_user_id() );
+        }
+
+        return wpssb_get_default_collaborator_presskit_content( $user_id );
+    }
+
+    if ( WPSSB_PROJECT_POST_TYPE === $post->post_type ) {
+        return wpssb_get_default_project_presskit_content( (int) $post->ID );
+    }
+
+    return $content;
+}
+add_filter( 'default_content', 'wpssb_filter_default_presskit_content', 10, 2 );
+
+/**
+ * Garantiza que un colaborador tenga un presskit editable vinculado.
+ *
+ * @param int $user_id Usuario objetivo.
+ * @return int
+ */
+function wpssb_ensure_collaborator_presskit_post( $user_id ) {
+    $user_id = absint( $user_id );
+
+    if ( $user_id <= 0 ) {
+        return 0;
+    }
+
+    $existing_post_id = wpssb_get_collaborator_presskit_post_id( $user_id );
+
+    if ( $existing_post_id > 0 ) {
+        $existing_post = get_post( $existing_post_id );
+
+        if ( $existing_post instanceof WP_Post && '' === trim( (string) $existing_post->post_content ) ) {
+            $effective_content = wpssb_get_effective_presskit_document_content( $existing_post );
+
+            if ( '' !== trim( $effective_content ) ) {
+                wp_update_post(
+                    [
+                        'ID'           => $existing_post_id,
+                        'post_content' => $effective_content,
+                    ]
+                );
+            }
+        }
+
+        return $existing_post_id;
+    }
+
+    $user = get_user_by( 'id', $user_id );
+
+    if ( ! $user instanceof WP_User ) {
+        return 0;
+    }
+
+    $post_id = wp_insert_post(
+        [
+            'post_type'    => WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE,
+            'post_status'  => 'publish',
+            'post_title'   => $user->display_name,
+            'post_author'  => $user_id,
+            'post_name'    => wpssb_get_preferred_collaborator_presskit_slug( $user ),
+            'post_content' => wpssb_get_default_collaborator_presskit_content( $user_id ),
+            'meta_input'   => [
+                WPSSB_COLLABORATOR_TARGET_META => $user_id,
+            ],
+        ],
+        true
+    );
+
+    if ( is_wp_error( $post_id ) ) {
+        return 0;
+    }
+
+    update_user_meta( $user_id, WPSSB_COLLABORATOR_PRESSKIT_USER_META, (int) $post_id );
+    wpssb_sync_collaborator_presskit_post_slug( (int) $post_id, $user_id );
+
+    return (int) $post_id;
 }
 
 /**
@@ -603,18 +1168,27 @@ function wpssb_save_project_meta( $post_id, $post ) {
     }
 
     $collaborators = isset( $_POST['pd_proyecto_colaboradores'] ) ? wpssb_sanitize_id_list( wp_unslash( $_POST['pd_proyecto_colaboradores'] ) ) : [];
-    $gallery       = isset( $_POST['pd_proyecto_galeria'] ) ? wpssb_sanitize_id_list( wp_unslash( $_POST['pd_proyecto_galeria'] ) ) : [];
-    $contact       = isset( $_POST['pd_proyecto_contacto'] ) ? wp_kses_post( wp_unslash( $_POST['pd_proyecto_contacto'] ) ) : '';
-    $tagline       = isset( $_POST['pd_proyecto_tagline'] ) ? sanitize_text_field( wp_unslash( $_POST['pd_proyecto_tagline'] ) ) : '';
-    $presskit      = isset( $_POST['pd_proyecto_presskit'] ) ? wp_kses_post( wp_unslash( $_POST['pd_proyecto_presskit'] ) ) : '';
-    $links         = isset( $_POST['pd_proyecto_links'] ) ? sanitize_textarea_field( wp_unslash( $_POST['pd_proyecto_links'] ) ) : '';
-
     update_post_meta( $post_id, 'pd_proyecto_colaboradores', $collaborators );
-    update_post_meta( $post_id, 'pd_proyecto_galeria', $gallery );
-    update_post_meta( $post_id, 'pd_proyecto_contacto', $contact );
-    update_post_meta( $post_id, 'pd_proyecto_tagline', $tagline );
-    update_post_meta( $post_id, 'pd_proyecto_presskit', $presskit );
-    update_post_meta( $post_id, 'pd_proyecto_links', $links );
+
+    if ( isset( $_POST['pd_proyecto_galeria'] ) ) {
+        update_post_meta( $post_id, 'pd_proyecto_galeria', wpssb_sanitize_id_list( wp_unslash( $_POST['pd_proyecto_galeria'] ) ) );
+    }
+
+    if ( isset( $_POST['pd_proyecto_contacto'] ) ) {
+        update_post_meta( $post_id, 'pd_proyecto_contacto', wp_kses_post( wp_unslash( $_POST['pd_proyecto_contacto'] ) ) );
+    }
+
+    if ( isset( $_POST['pd_proyecto_tagline'] ) ) {
+        update_post_meta( $post_id, 'pd_proyecto_tagline', sanitize_text_field( wp_unslash( $_POST['pd_proyecto_tagline'] ) ) );
+    }
+
+    if ( isset( $_POST['pd_proyecto_presskit'] ) ) {
+        update_post_meta( $post_id, 'pd_proyecto_presskit', wp_kses_post( wp_unslash( $_POST['pd_proyecto_presskit'] ) ) );
+    }
+
+    if ( isset( $_POST['pd_proyecto_links'] ) ) {
+        update_post_meta( $post_id, 'pd_proyecto_links', sanitize_textarea_field( wp_unslash( $_POST['pd_proyecto_links'] ) ) );
+    }
 }
 add_action( 'save_post_' . WPSSB_PROJECT_POST_TYPE, 'wpssb_save_project_meta', 10, 2 );
 
@@ -630,7 +1204,7 @@ function wpssb_save_collaborator_target_meta( $post_id, $post ) {
         return;
     }
 
-    if ( ! $post instanceof WP_Post || 'page' !== $post->post_type ) {
+    if ( ! $post instanceof WP_Post || ! in_array( $post->post_type, [ 'page', WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE ], true ) ) {
         return;
     }
 
@@ -646,12 +1220,15 @@ function wpssb_save_collaborator_target_meta( $post_id, $post ) {
 
     if ( $user_id > 0 ) {
         update_post_meta( $post_id, WPSSB_COLLABORATOR_TARGET_META, $user_id );
+        if ( WPSSB_COLLABORATOR_PRESSKIT_POST_TYPE === $post->post_type ) {
+            update_user_meta( $user_id, WPSSB_COLLABORATOR_PRESSKIT_USER_META, $post_id );
+        }
         return;
     }
 
     delete_post_meta( $post_id, WPSSB_COLLABORATOR_TARGET_META );
 }
-add_action( 'save_post_page', 'wpssb_save_collaborator_target_meta', 10, 2 );
+add_action( 'save_post', 'wpssb_save_collaborator_target_meta', 10, 2 );
 
 /**
  * Obtiene el usuario objetivo explícito configurado para una página o post.
@@ -670,43 +1247,624 @@ function wpssb_get_explicit_collaborator_target_user_id( $post_id ) {
 }
 
 /**
+ * Devuelve el usuario owner principal del sitio.
+ *
+ * Prioriza el usuario cuyo correo coincide con `admin_email` y, si no existe,
+ * usa el primer administrador disponible.
+ *
+ * @return int
+ */
+function wpssb_get_primary_site_owner_user_id() {
+    $admin_email = sanitize_email( (string) get_option( 'admin_email' ) );
+
+    if ( '' !== $admin_email ) {
+        $user = get_user_by( 'email', $admin_email );
+
+        if ( $user instanceof WP_User ) {
+            return (int) $user->ID;
+        }
+    }
+
+    $admins = get_users(
+        [
+            'role'    => 'administrator',
+            'orderby' => 'ID',
+            'order'   => 'ASC',
+            'number'  => 1,
+            'fields'  => 'ID',
+        ]
+    );
+
+    return ! empty( $admins[0] ) ? (int) $admins[0] : 0;
+}
+
+/**
+ * Devuelve el slug preferido del presskit público de un usuario.
+ *
+ * @param WP_User $user Usuario objetivo.
+ * @return string
+ */
+function wpssb_get_preferred_collaborator_presskit_slug( WP_User $user ) {
+    $candidate = sanitize_title( (string) $user->user_nicename );
+
+    if ( '' === $candidate ) {
+        $candidate = sanitize_title( (string) $user->user_login );
+    }
+
+    if ( '' === $candidate ) {
+        $candidate = 'presskit-' . (int) $user->ID;
+    }
+
+    return $candidate;
+}
+
+/**
+ * Sincroniza el slug del presskit con el identificador público del usuario.
+ *
+ * @param int $post_id ID del presskit.
+ * @param int $user_id ID del usuario.
+ * @return void
+ */
+function wpssb_sync_collaborator_presskit_post_slug( $post_id, $user_id ) {
+    $post_id = absint( $post_id );
+    $user_id = absint( $user_id );
+
+    if ( $post_id <= 0 || $user_id <= 0 ) {
+        return;
+    }
+
+    $post = get_post( $post_id );
+    $user = get_user_by( 'id', $user_id );
+
+    if ( ! $post instanceof WP_Post || ! $user instanceof WP_User ) {
+        return;
+    }
+
+    $preferred_slug = wp_unique_post_slug(
+        wpssb_get_preferred_collaborator_presskit_slug( $user ),
+        $post_id,
+        $post->post_status,
+        $post->post_type,
+        (int) $post->post_parent
+    );
+
+    if ( $preferred_slug === $post->post_name ) {
+        return;
+    }
+
+    wp_update_post(
+        [
+            'ID'        => $post_id,
+            'post_name' => $preferred_slug,
+        ]
+    );
+}
+
+/**
+ * Resuelve el usuario objetivo de una página pública de presskit.
+ *
+ * @param int $post_id ID de la página.
+ * @return int
+ */
+function wpssb_resolve_presskit_page_target_user_id( $post_id ) {
+    $post_id = absint( $post_id );
+
+    if ( $post_id <= 0 ) {
+        return 0;
+    }
+
+    $user_id = wpssb_get_explicit_collaborator_target_user_id( $post_id );
+
+    if ( $user_id > 0 ) {
+        return $user_id;
+    }
+
+    $owner_user_id = wpssb_get_primary_site_owner_user_id();
+
+    if ( $owner_user_id > 0 ) {
+        return $owner_user_id;
+    }
+
+    return (int) get_post_field( 'post_author', $post_id );
+}
+
+/**
+ * Redirige páginas con template `presskit` al documento personal real del usuario objetivo.
+ *
+ * @return void
+ */
+function wpssb_redirect_presskit_page_to_personal_presskit() {
+    if ( is_admin() || ! is_page() || is_feed() || is_preview() ) {
+        return;
+    }
+
+    if ( wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+        return;
+    }
+
+    $page_id = (int) get_queried_object_id();
+
+    if ( $page_id <= 0 || 'presskit' !== get_page_template_slug( $page_id ) ) {
+        return;
+    }
+
+    $user_id = wpssb_resolve_presskit_page_target_user_id( $page_id );
+
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    $target_url = wpssb_get_collaborator_public_url( $user_id );
+    $current_url = get_permalink( $page_id );
+
+    if ( ! $target_url || ! $current_url || untrailingslashit( $target_url ) === untrailingslashit( $current_url ) ) {
+        return;
+    }
+
+    wp_safe_redirect( $target_url, 302, 'WP Song Study Blocks' );
+    exit;
+}
+add_action( 'template_redirect', 'wpssb_redirect_presskit_page_to_personal_presskit', 11 );
+
+/**
  * Carga assets admin para proyectos y perfiles.
  *
  * @param string $hook Hook actual.
  * @return void
  */
 function wpssb_enqueue_project_admin_assets( $hook ) {
-    if ( ! in_array( $hook, [ 'post.php', 'post-new.php', 'profile.php', 'user-edit.php' ], true ) ) {
-        return;
-    }
+    unset( $hook );
 
-    if ( in_array( $hook, [ 'profile.php', 'user-edit.php' ], true ) ) {
-        wp_enqueue_media();
-        wp_enqueue_script(
-            'wpssb-collaborator-meta',
-            WPSSB_URL . 'assets/project-admin/collaborator-meta.js',
-            [ 'jquery' ],
-            WPSSB_VERSION,
-            true
-        );
-        return;
-    }
-
-    $screen = get_current_screen();
-    if ( ! $screen || WPSSB_PROJECT_POST_TYPE !== $screen->post_type ) {
-        return;
-    }
-
-    wp_enqueue_media();
-    wp_enqueue_script(
-        'wpssb-project-meta',
-        WPSSB_URL . 'assets/project-admin/project-meta.js',
-        [ 'jquery' ],
-        WPSSB_VERSION,
-        true
-    );
+    return;
 }
 add_action( 'admin_enqueue_scripts', 'wpssb_enqueue_project_admin_assets' );
+
+/**
+ * Renderiza contenido de un presskit con contexto correcto de post.
+ *
+ * @param int         $post_id           ID del presskit.
+ * @param string|null $content_override  Contenido alterno.
+ * @return string
+ */
+function wpssb_render_saved_presskit_post_content( $post_id, $content_override = null ) {
+    $post_id = absint( $post_id );
+
+    if ( $post_id <= 0 ) {
+        return '';
+    }
+
+    $post = get_post( $post_id );
+
+    if ( ! $post instanceof WP_Post ) {
+        return '';
+    }
+
+    $content       = is_string( $content_override ) ? $content_override : wpssb_get_effective_presskit_document_content( $post );
+    $previous_post = isset( $GLOBALS['post'] ) && $GLOBALS['post'] instanceof WP_Post ? $GLOBALS['post'] : null;
+    $GLOBALS['post'] = $post;
+    setup_postdata( $post );
+
+    $context_filter = static function ( $context ) use ( $post_id, $post ) {
+        if ( empty( $context['postId'] ) ) {
+            $context['postId'] = $post_id;
+        }
+
+        if ( empty( $context['postType'] ) ) {
+            $context['postType'] = $post->post_type;
+        }
+
+        return $context;
+    };
+
+    add_filter( 'render_block_context', $context_filter, 10, 1 );
+    $rendered = apply_filters( 'the_content', $content );
+    remove_filter( 'render_block_context', $context_filter, 10 );
+
+    if ( $previous_post instanceof WP_Post ) {
+        $GLOBALS['post'] = $previous_post;
+        setup_postdata( $previous_post );
+    } else {
+        wp_reset_postdata();
+    }
+
+    return (string) $rendered;
+}
+
+/**
+ * REST: renderiza preview del presskit personal para edición frontal.
+ *
+ * @return void
+ */
+function wpssb_register_presskit_preview_rest_route() {
+    register_rest_route(
+        'wpssb/v1',
+        '/presskit-preview/(?P<id>\d+)',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => static function ( WP_REST_Request $request ) {
+                return current_user_can( 'edit_post', (int) $request['id'] );
+            },
+            'callback'            => static function ( WP_REST_Request $request ) {
+                $post_id = (int) $request['id'];
+                $content = $request->get_param( 'content' );
+
+                return rest_ensure_response(
+                    [
+                        'html' => wpssb_render_saved_presskit_post_content(
+                            $post_id,
+                            is_string( $content ) ? $content : null
+                        ),
+                    ]
+                );
+            },
+        ]
+    );
+}
+add_action( 'rest_api_init', 'wpssb_register_presskit_preview_rest_route' );
+
+/**
+ * Encola scripts y estilos de editor para todos los bloques registrados.
+ *
+ * Esto permite usar bloques nativos y de terceros dentro del editor frontal
+ * sin depender del admin de WordPress.
+ *
+ * @return void
+ */
+function wpssb_enqueue_frontend_block_editor_block_assets() {
+    static $enqueued = false;
+
+    if ( $enqueued || ! class_exists( 'WP_Block_Type_Registry' ) ) {
+        return;
+    }
+
+    $enqueued = true;
+    $registry = WP_Block_Type_Registry::get_instance()->get_all_registered();
+
+    foreach ( $registry as $block_type ) {
+        if ( ! $block_type instanceof WP_Block_Type ) {
+            continue;
+        }
+
+        foreach ( [ 'editor_script_handles', 'script_handles', 'view_script_handles', 'editor_script', 'script', 'view_script' ] as $property ) {
+            if ( empty( $block_type->{$property} ) || ! is_array( $block_type->{$property} ) ) {
+                if ( empty( $block_type->{$property} ) || ! is_string( $block_type->{$property} ) ) {
+                    continue;
+                }
+
+                $handles = [ $block_type->{$property} ];
+            } else {
+                $handles = $block_type->{$property};
+            }
+
+            foreach ( $handles as $handle ) {
+                if ( is_string( $handle ) && wp_script_is( $handle, 'registered' ) ) {
+                    wp_enqueue_script( $handle );
+                }
+            }
+        }
+
+        foreach ( [ 'editor_style_handles', 'style_handles', 'view_style_handles', 'editor_style', 'style', 'view_style' ] as $property ) {
+            if ( empty( $block_type->{$property} ) || ! is_array( $block_type->{$property} ) ) {
+                if ( empty( $block_type->{$property} ) || ! is_string( $block_type->{$property} ) ) {
+                    continue;
+                }
+
+                $handles = [ $block_type->{$property} ];
+            } else {
+                $handles = $block_type->{$property};
+            }
+
+            foreach ( $handles as $handle ) {
+                if ( is_string( $handle ) && wp_style_is( $handle, 'registered' ) ) {
+                    wp_enqueue_style( $handle );
+                }
+            }
+        }
+    }
+
+    $core_editor_script_handles = [
+        'wp-block-library',
+        'wp-format-library',
+        'wp-block-paragraph',
+        'wp-block-heading',
+        'wp-block-list',
+        'wp-block-quote',
+        'wp-block-image',
+        'wp-block-gallery',
+        'wp-block-group',
+        'wp-block-columns',
+        'wp-block-column',
+        'wp-block-buttons',
+        'wp-block-button',
+        'wp-block-cover',
+        'wp-block-media-text',
+        'wp-block-file',
+        'wp-block-audio',
+        'wp-block-video',
+        'wp-block-separator',
+        'wp-block-spacer',
+        'wp-block-pullquote',
+        'wp-block-table',
+        'wp-block-details',
+        'wp-block-code',
+        'wp-block-preformatted',
+        'wp-block-verse',
+        'wp-block-social-links',
+        'wp-block-social-link',
+        'wp-block-site-logo',
+    ];
+
+    foreach ( $core_editor_script_handles as $handle ) {
+        if ( wp_script_is( $handle, 'registered' ) ) {
+            wp_enqueue_script( $handle );
+        }
+    }
+}
+
+/**
+ * Resuelve una URL de asset local a ruta del sistema.
+ *
+ * @param string $src URL o ruta relativa.
+ * @return string
+ */
+function wpssb_resolve_local_asset_path_from_src( $src ) {
+    $src = (string) $src;
+
+    if ( '' === $src ) {
+        return '';
+    }
+
+    $src = strtok( $src, '?' );
+
+    if ( 0 === strpos( $src, '/' ) && file_exists( ABSPATH . ltrim( $src, '/' ) ) ) {
+        return ABSPATH . ltrim( $src, '/' );
+    }
+
+    $parsed_path = wp_parse_url( $src, PHP_URL_PATH );
+
+    if ( ! is_string( $parsed_path ) || '' === $parsed_path ) {
+        return '';
+    }
+
+    $site_path = (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH );
+
+    if ( '' !== $site_path && 0 === strpos( $parsed_path, $site_path ) ) {
+        $parsed_path = substr( $parsed_path, strlen( $site_path ) );
+    }
+
+    $parsed_path = ltrim( $parsed_path, '/' );
+
+    if ( '' === $parsed_path ) {
+        return '';
+    }
+
+    $candidate = ABSPATH . $parsed_path;
+
+    return file_exists( $candidate ) ? $candidate : '';
+}
+
+/**
+ * Devuelve CSS inline util a inyectar dentro del canvas del editor frontal.
+ *
+ * @return array<int, array<string, string>>
+ */
+function wpssb_get_frontend_presskit_editor_iframe_styles() {
+    global $wp_styles;
+
+    $styles = [];
+    $handles = [
+        'wp-block-library',
+        'wp-block-library-theme',
+        'global-styles',
+        'classic-theme-styles',
+        'pertenencia-digital-style',
+    ];
+
+    if ( isset( $wp_styles->queue ) && is_array( $wp_styles->queue ) ) {
+        foreach ( $wp_styles->queue as $queued_handle ) {
+            if ( ! is_string( $queued_handle ) ) {
+                continue;
+            }
+
+            if ( 0 === strpos( $queued_handle, 'wp-block-' ) || 0 === strpos( $queued_handle, 'core-block-supports' ) ) {
+                $handles[] = $queued_handle;
+            }
+        }
+    }
+
+    $handles = array_values( array_unique( $handles ) );
+
+    foreach ( $handles as $handle ) {
+        if ( ! isset( $wp_styles->registered[ $handle ] ) ) {
+            continue;
+        }
+
+        $registered = $wp_styles->registered[ $handle ];
+        $src        = isset( $registered->src ) ? (string) $registered->src : '';
+        $path       = wpssb_resolve_local_asset_path_from_src( $src );
+
+        if ( '' === $path || ! file_exists( $path ) || ! is_readable( $path ) ) {
+            continue;
+        }
+
+        $css = file_get_contents( $path );
+
+        if ( ! is_string( $css ) || '' === trim( $css ) ) {
+            continue;
+        }
+
+        $styles[] = [
+            'css' => $css,
+        ];
+
+        if ( ! empty( $registered->extra['after'] ) && is_array( $registered->extra['after'] ) ) {
+            foreach ( $registered->extra['after'] as $after_css ) {
+                if ( is_string( $after_css ) && '' !== trim( $after_css ) ) {
+                    $styles[] = [
+                        'css' => $after_css,
+                    ];
+                }
+            }
+        }
+    }
+
+    return $styles;
+}
+
+/**
+ * Encola el editor de bloques frontal para el presskit personal.
+ *
+ * @param int $post_id ID del presskit.
+ * @return void
+ */
+function wpssb_enqueue_frontend_presskit_editor_assets( $post_id ) {
+    static $enqueued = [];
+
+    $post_id = absint( $post_id );
+
+    if ( $post_id <= 0 || isset( $enqueued[ $post_id ] ) ) {
+        return;
+    }
+
+    $post = get_post( $post_id );
+
+    if ( ! $post instanceof WP_Post || ! current_user_can( 'edit_post', $post_id ) ) {
+        return;
+    }
+
+    $editor_settings = [];
+
+    if ( class_exists( 'WP_Block_Editor_Context' ) && function_exists( 'get_block_editor_settings' ) ) {
+        $editor_settings = get_block_editor_settings(
+            [],
+            new WP_Block_Editor_Context(
+                [
+                    'post' => $post,
+                ]
+            )
+        );
+    }
+
+    $editor_settings['allowedBlockTypes'] = true;
+    $editor_settings['templateLock']      = false;
+
+    wp_enqueue_media();
+    wp_enqueue_style( 'wp-block-library' );
+    wp_enqueue_style( 'wp-block-library-theme' );
+    wp_enqueue_style( 'wp-components' );
+    wp_enqueue_editor_format_library_assets();
+
+    if ( wp_style_is( 'wp-block-editor', 'registered' ) ) {
+        wp_enqueue_style( 'wp-block-editor' );
+    }
+
+    if ( wp_style_is( 'wp-edit-blocks', 'registered' ) ) {
+        wp_enqueue_style( 'wp-edit-blocks' );
+    }
+
+    if ( wp_script_is( 'wp-block-library', 'registered' ) ) {
+        wp_enqueue_script( 'wp-block-library' );
+    }
+
+    wpssb_enqueue_frontend_block_editor_block_assets();
+
+    $editor_settings['styles'] = array_merge(
+        isset( $editor_settings['styles'] ) && is_array( $editor_settings['styles'] ) ? $editor_settings['styles'] : [],
+        wpssb_get_frontend_presskit_editor_iframe_styles()
+    );
+
+    $editor_script_dependencies = [
+        'wp-api-fetch',
+        'wp-block-editor',
+        'wp-blocks',
+        'wp-components',
+        'wp-compose',
+        'wp-core-data',
+        'wp-data',
+        'wp-dom-ready',
+        'wp-editor',
+        'wp-element',
+        'wp-html-entities',
+        'wp-hooks',
+        'wp-i18n',
+        'wp-primitives',
+        'wp-rich-text',
+    ];
+
+    if ( wp_script_is( 'wp-media-utils', 'registered' ) && ! in_array( 'wp-media-utils', $editor_script_dependencies, true ) ) {
+        $editor_script_dependencies[] = 'wp-media-utils';
+    }
+
+    if ( wp_script_is( 'wp-block-library', 'registered' ) ) {
+        array_unshift( $editor_script_dependencies, 'wp-block-library' );
+    }
+
+    if ( wp_script_is( 'wp-format-library', 'registered' ) && ! in_array( 'wp-format-library', $editor_script_dependencies, true ) ) {
+        $editor_script_dependencies[] = 'wp-format-library';
+    }
+
+    wp_enqueue_script(
+        'wpssb-frontend-presskit-editor',
+        WPSSB_URL . 'assets/project-frontend/presskit-editor.js',
+        $editor_script_dependencies,
+        file_exists( WPSSB_PATH . 'assets/project-frontend/presskit-editor.js' ) ? (string) filemtime( WPSSB_PATH . 'assets/project-frontend/presskit-editor.js' ) : WPSSB_VERSION,
+        true
+    );
+
+    wp_add_inline_script(
+        'wpssb-frontend-presskit-editor',
+        'window.wpssbFrontendPresskitEditor = ' . wp_json_encode(
+            [
+                'postId'        => $post_id,
+                'postType'      => $post->post_type,
+                'content'       => wpssb_get_effective_presskit_document_content( $post ),
+                'previewHtml'   => wpssb_render_saved_presskit_post_content( $post_id ),
+                'previewPath'   => '/wpssb/v1/presskit-preview/' . $post_id,
+                'settings'      => $editor_settings,
+                'restPath'      => '/wp/v2/' . $post->post_type,
+                'restNonce'     => wp_create_nonce( 'wp_rest' ),
+                'saveLabel'     => __( 'Guardar presskit', 'wp-song-study-blocks' ),
+                'savedLabel'    => __( 'Presskit actualizado.', 'wp-song-study-blocks' ),
+                'errorLabel'    => __( 'No se pudo guardar el presskit.', 'wp-song-study-blocks' ),
+                'editTabLabel'  => __( 'Editar', 'wp-song-study-blocks' ),
+                'previewLabel'  => __( 'Preview', 'wp-song-study-blocks' ),
+                'inserterLabel' => __( 'Insertar bloque', 'wp-song-study-blocks' ),
+            ]
+        ) . ';',
+        'before'
+    );
+
+    $enqueued[ $post_id ] = true;
+}
+
+/**
+ * Renderiza el panel frontal de edición/preview del presskit personal.
+ *
+ * @param int $post_id ID del presskit.
+ * @return string
+ */
+function wpssb_render_frontend_presskit_workbench( $post_id ) {
+    $post_id = absint( $post_id );
+
+    if ( $post_id <= 0 || ! current_user_can( 'edit_post', $post_id ) ) {
+        return '';
+    }
+
+    wpssb_enqueue_frontend_presskit_editor_assets( $post_id );
+
+    $output  = '<section class="pd-membership-panel pd-membership-panel--presskit-workbench">';
+    $output .= '<header class="pd-membership-presskit-workbench__header">';
+    $output .= '<div>';
+    $output .= '<p class="pd-membership-shell__eyebrow">' . esc_html__( 'Presskit personal', 'wp-song-study-blocks' ) . '</p>';
+    $output .= '<h2>' . esc_html__( 'Editar tu documento público con vista en vivo', 'wp-song-study-blocks' ) . '</h2>';
+    $output .= '<p>' . esc_html__( 'Aquí trabajas directamente sobre tu presskit real con bloques. El propio lienzo de edición ya respeta los estilos del tema para que no dependas de un preview aparte.', 'wp-song-study-blocks' ) . '</p>';
+    $output .= '</div>';
+    $output .= '</header>';
+    $output .= '<div id="wpssb-frontend-presskit-editor" class="pd-membership-presskit-workbench__app"></div>';
+    $output .= '</section>';
+
+    return $output;
+}
 
 /**
  * Renderiza campos de presskit para perfiles de usuario.
@@ -720,33 +1878,21 @@ function wpssb_render_collaborator_presskit_fields( $user ) {
     }
 
     $tagline  = get_user_meta( $user->ID, 'pd_colaborador_tagline', true );
-    $presskit = get_user_meta( $user->ID, 'pd_colaborador_presskit', true );
-    $links    = get_user_meta( $user->ID, 'pd_colaborador_links', true );
-    $contact  = get_user_meta( $user->ID, 'pd_colaborador_contacto', true );
-    $gallery  = wpssb_sanitize_id_list( get_user_meta( $user->ID, 'pd_colaborador_galeria', true ) );
+    $presskit_post_id = wpssb_get_collaborator_presskit_post_id( $user->ID );
+    $presskit_edit_url = $presskit_post_id ? wpssb_get_frontend_membership_url( $user->ID, true ) : '';
+    $presskit_view_url = wpssb_get_collaborator_public_url( $user->ID );
 
     echo '<h2>' . esc_html__( 'Presskit del colaborador', 'wp-song-study-blocks' ) . '</h2>';
+    echo '<p>' . esc_html__( 'La composición pública del presskit ahora vive en un documento editable con bloques. Aquí solo se conservan datos base mínimos del perfil.', 'wp-song-study-blocks' ) . '</p>';
+    echo '<p>';
+    if ( $presskit_edit_url ) {
+        echo '<a class="button button-secondary" href="' . esc_url( $presskit_edit_url ) . '">' . esc_html__( 'Editar documento del presskit', 'wp-song-study-blocks' ) . '</a> ';
+    }
+    echo '<a class="button button-secondary" href="' . esc_url( $presskit_view_url ) . '">' . esc_html__( 'Ver página pública', 'wp-song-study-blocks' ) . '</a>';
+    echo '</p>';
     echo '<table class="form-table" role="presentation">';
     echo '<tr><th><label for="pd_colaborador_tagline">' . esc_html__( 'Tagline', 'wp-song-study-blocks' ) . '</label></th>';
     echo '<td><input type="text" name="pd_colaborador_tagline" id="pd_colaborador_tagline" value="' . esc_attr( (string) $tagline ) . '" class="regular-text" /></td></tr>';
-
-    echo '<tr><th><label for="pd_colaborador_presskit">' . esc_html__( 'Descripción / Presskit', 'wp-song-study-blocks' ) . '</label></th>';
-    echo '<td><textarea name="pd_colaborador_presskit" id="pd_colaborador_presskit" rows="4" class="large-text">' . esc_textarea( (string) $presskit ) . '</textarea></td></tr>';
-
-    echo '<tr><th><label for="pd_colaborador_links">' . esc_html__( 'Links (uno por línea)', 'wp-song-study-blocks' ) . '</label></th>';
-    echo '<td><textarea name="pd_colaborador_links" id="pd_colaborador_links" rows="3" class="large-text">' . esc_textarea( (string) $links ) . '</textarea></td></tr>';
-
-    echo '<tr><th><label for="pd_colaborador_contacto">' . esc_html__( 'Contacto', 'wp-song-study-blocks' ) . '</label></th>';
-    echo '<td><textarea name="pd_colaborador_contacto" id="pd_colaborador_contacto" rows="3" class="large-text">' . esc_textarea( (string) $contact ) . '</textarea></td></tr>';
-
-    echo '<tr><th>' . esc_html__( 'Galería', 'wp-song-study-blocks' ) . '</th><td>';
-    echo '<div class="wpssb-collaborator-gallery-meta" data-initial="' . esc_attr( implode( ',', $gallery ) ) . '">';
-    echo '<input type="hidden" name="pd_colaborador_galeria" value="' . esc_attr( implode( ',', $gallery ) ) . '" />';
-    echo '<button type="button" class="button wpssb-collaborator-gallery-select">' . esc_html__( 'Elegir imágenes', 'wp-song-study-blocks' ) . '</button>';
-    echo '<button type="button" class="button wpssb-collaborator-gallery-clear" style="margin-left:6px;">' . esc_html__( 'Limpiar galería', 'wp-song-study-blocks' ) . '</button>';
-    echo '<div class="wpssb-collaborator-gallery-preview" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;"></div>';
-    echo '</div>';
-    echo '</td></tr>';
     echo '</table>';
 }
 add_action( 'show_user_profile', 'wpssb_render_collaborator_presskit_fields' );
@@ -763,11 +1909,9 @@ function wpssb_save_collaborator_presskit_fields( $user_id ) {
         return;
     }
 
-    update_user_meta( $user_id, 'pd_colaborador_tagline', isset( $_POST['pd_colaborador_tagline'] ) ? sanitize_text_field( wp_unslash( $_POST['pd_colaborador_tagline'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_presskit', isset( $_POST['pd_colaborador_presskit'] ) ? wp_kses_post( wp_unslash( $_POST['pd_colaborador_presskit'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_links', isset( $_POST['pd_colaborador_links'] ) ? sanitize_textarea_field( wp_unslash( $_POST['pd_colaborador_links'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_contacto', isset( $_POST['pd_colaborador_contacto'] ) ? wp_kses_post( wp_unslash( $_POST['pd_colaborador_contacto'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_galeria', isset( $_POST['pd_colaborador_galeria'] ) ? wpssb_sanitize_id_list( wp_unslash( $_POST['pd_colaborador_galeria'] ) ) : [] );
+    if ( isset( $_POST['pd_colaborador_tagline'] ) ) {
+        update_user_meta( $user_id, 'pd_colaborador_tagline', sanitize_text_field( wp_unslash( $_POST['pd_colaborador_tagline'] ) ) );
+    }
 }
 add_action( 'personal_options_update', 'wpssb_save_collaborator_presskit_fields' );
 add_action( 'edit_user_profile_update', 'wpssb_save_collaborator_presskit_fields' );
@@ -866,7 +2010,7 @@ add_action( 'admin_init', 'wpssb_sync_presskit_page_template_assignment' );
 function wpssb_current_user_can_manage_own_presskit() {
     $user_id = get_current_user_id();
 
-    return $user_id > 0 && current_user_can( 'edit_user', $user_id );
+    return wpssb_current_user_can_manage_presskit_user( $user_id );
 }
 
 /**
@@ -878,7 +2022,78 @@ function wpssb_current_user_can_manage_own_presskit() {
 function wpssb_current_user_can_manage_presskit_user( $user_id ) {
     $user_id = absint( $user_id );
 
-    return $user_id > 0 && current_user_can( 'edit_user', $user_id );
+    if ( $user_id <= 0 ) {
+        return false;
+    }
+
+    $current_user_id = get_current_user_id();
+
+    if ( $current_user_id <= 0 ) {
+        return false;
+    }
+
+    if ( current_user_can( 'manage_options' ) || current_user_can( 'edit_user', $user_id ) ) {
+        return true;
+    }
+
+    return $current_user_id === $user_id && (
+        current_user_can( WPSSB_COLLABORATOR_CAP ) ||
+        current_user_can( 'edit_presskits' ) ||
+        current_user_can( 'upload_files' ) ||
+        current_user_can( 'read' )
+    );
+}
+
+/**
+ * Devuelve la URL frontal de "Mi pertenencia digital".
+ *
+ * @param int  $user_id     Usuario objetivo.
+ * @param bool $open_editor Si debe apuntar al editor frontal.
+ * @return string
+ */
+function wpssb_get_frontend_membership_url( $user_id = 0, $open_editor = false ) {
+    $user_id = absint( $user_id );
+    $page_id = 0;
+    $pages   = get_posts(
+        [
+            'post_type'      => 'page',
+            'post_status'    => [ 'publish', 'private' ],
+            'meta_key'       => '_wp_page_template',
+            'meta_value'     => 'mi-pertenencia',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'no_found_rows'  => true,
+        ]
+    );
+
+    if ( ! empty( $pages[0] ) ) {
+        $page_id = (int) $pages[0];
+    }
+
+    if ( ! $page_id ) {
+        $page = get_page_by_path( 'mi-pertenencia' );
+
+        if ( $page instanceof WP_Post ) {
+            $page_id = (int) $page->ID;
+        }
+    }
+
+    $url = $page_id ? get_permalink( $page_id ) : home_url( '/mi-pertenencia/' );
+    $args = [];
+
+    if ( $user_id > 0 && current_user_can( 'manage_options' ) && get_current_user_id() !== $user_id ) {
+        $args['membership_user'] = $user_id;
+    }
+
+    if ( $open_editor ) {
+        $args['membership_view'] = 'editor';
+    }
+
+    if ( ! empty( $args ) ) {
+        $url = add_query_arg( $args, $url );
+    }
+
+    return $open_editor ? $url . '#wpssb-frontend-presskit-editor' : $url;
 }
 
 /**
@@ -994,11 +2209,9 @@ function wpssb_handle_frontend_membership_save() {
         wpssb_redirect_membership_frontend( 'forbidden' );
     }
 
-    update_user_meta( $user_id, 'pd_colaborador_tagline', isset( $_POST['pd_colaborador_tagline'] ) ? sanitize_text_field( wp_unslash( $_POST['pd_colaborador_tagline'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_presskit', isset( $_POST['pd_colaborador_presskit'] ) ? wp_kses_post( wp_unslash( $_POST['pd_colaborador_presskit'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_links', isset( $_POST['pd_colaborador_links'] ) ? sanitize_textarea_field( wp_unslash( $_POST['pd_colaborador_links'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_contacto', isset( $_POST['pd_colaborador_contacto'] ) ? wp_kses_post( wp_unslash( $_POST['pd_colaborador_contacto'] ) ) : '' );
-    update_user_meta( $user_id, 'pd_colaborador_galeria', isset( $_POST['pd_colaborador_galeria'] ) ? wpssb_sanitize_id_list( wp_unslash( $_POST['pd_colaborador_galeria'] ) ) : [] );
+    if ( isset( $_POST['pd_colaborador_tagline'] ) ) {
+        update_user_meta( $user_id, 'pd_colaborador_tagline', sanitize_text_field( wp_unslash( $_POST['pd_colaborador_tagline'] ) ) );
+    }
 
     wp_update_user(
         [
@@ -1025,7 +2238,7 @@ function wpssb_get_membership_feedback() {
     }
 
     $messages = [
-        'updated'         => [ 'type' => 'success', 'message' => __( 'El presskit se actualizó correctamente.', 'wp-song-study-blocks' ) ],
+        'updated'         => [ 'type' => 'success', 'message' => __( 'Los datos base del perfil se actualizaron correctamente.', 'wp-song-study-blocks' ) ],
         'login_required'  => [ 'type' => 'error', 'message' => __( 'Necesitas iniciar sesión para gestionar tu pertenencia.', 'wp-song-study-blocks' ) ],
         'forbidden'       => [ 'type' => 'error', 'message' => __( 'No tienes permisos para editar este perfil.', 'wp-song-study-blocks' ) ],
         'invalid_nonce'   => [ 'type' => 'error', 'message' => __( 'La sesión del formulario expiró. Inténtalo de nuevo.', 'wp-song-study-blocks' ) ],
@@ -1056,11 +2269,11 @@ function wpssb_render_collaborator_card( $user, $settings = [] ) {
         ]
     );
 
-    $avatar  = get_avatar( $user->ID, 96, '', $user->display_name, [ 'class' => 'pd-colaborador-avatar' ] );
-    $bio     = get_user_meta( $user->ID, 'description', true );
-    $tagline = get_user_meta( $user->ID, 'pd_colaborador_tagline', true );
-    $url     = $user->user_url ? esc_url( $user->user_url ) : '';
-    $author  = get_author_posts_url( $user->ID );
+    $avatar     = get_avatar( $user->ID, 96, '', $user->display_name, [ 'class' => 'pd-colaborador-avatar' ] );
+    $bio        = get_user_meta( $user->ID, 'description', true );
+    $tagline    = get_user_meta( $user->ID, 'pd_colaborador_tagline', true );
+    $url        = $user->user_url ? esc_url( $user->user_url ) : '';
+    $public_url = wpssb_get_collaborator_public_url( $user->ID );
 
     $output  = '<article class="pd-colaborador-card">';
     $output .= '<div class="pd-colaborador-card__header">';
@@ -1069,7 +2282,7 @@ function wpssb_render_collaborator_card( $user, $settings = [] ) {
         $output .= '<div class="pd-colaborador-card__avatar">' . $avatar . '</div>';
     }
 
-    $output .= '<h3 class="pd-colaborador-card__name"><a href="' . esc_url( $author ) . '">' . esc_html( $user->display_name ) . '</a></h3>';
+    $output .= '<h3 class="pd-colaborador-card__name"><a href="' . esc_url( $public_url ) . '">' . esc_html( $user->display_name ) . '</a></h3>';
     $output .= '</div>';
 
     if ( ! empty( $settings['show_bio'] ) ) {
@@ -1278,13 +2491,14 @@ function wpssb_render_project_directory_markup( $settings = [] ) {
             return '<p>' . esc_html( $settings['login_message'] ) . '</p>';
         }
 
-        $query_args['meta_query'] = [
-            [
-                'key'     => 'pd_proyecto_colaboradores',
-                'value'   => '"' . $membership_user_id . '"',
-                'compare' => 'LIKE',
-            ],
-        ];
+        $project_ids = wpssb_get_user_project_ids( $membership_user_id );
+
+        if ( empty( $project_ids ) ) {
+            return '<p>' . esc_html( $settings['empty_message'] ) . '</p>';
+        }
+
+        $query_args['post__in'] = $project_ids;
+        $query_args['orderby']  = 'post__in';
     }
 
     $query = new WP_Query( $query_args );
@@ -1333,17 +2547,33 @@ function wpssb_get_user_project_ids( $user_id ) {
             'post_status'    => 'publish',
             'posts_per_page' => -1,
             'fields'         => 'ids',
-            'meta_query'     => [
-                [
-                    'key'     => 'pd_proyecto_colaboradores',
-                    'value'   => '"' . $user_id . '"',
-                    'compare' => 'LIKE',
-                ],
-            ],
+            'no_found_rows'  => true,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
         ]
     );
 
-    return array_map( 'intval', (array) $query->posts );
+    if ( empty( $query->posts ) ) {
+        return [];
+    }
+
+    $project_ids = [];
+
+    foreach ( (array) $query->posts as $project_id ) {
+        $project_id = (int) $project_id;
+
+        if ( $project_id <= 0 ) {
+            continue;
+        }
+
+        $collaborators = wpssb_sanitize_id_list( get_post_meta( $project_id, 'pd_proyecto_colaboradores', true ) );
+
+        if ( in_array( $user_id, $collaborators, true ) ) {
+            $project_ids[] = $project_id;
+        }
+    }
+
+    return $project_ids;
 }
 
 /**
@@ -1547,8 +2777,9 @@ function wpssb_render_project_presskit_markup( $post_id ) {
     $tagline  = get_post_meta( $post_id, 'pd_proyecto_tagline', true );
     $presskit = get_post_meta( $post_id, 'pd_proyecto_presskit', true );
     $links    = get_post_meta( $post_id, 'pd_proyecto_links', true );
+    $excerpt  = get_post_field( 'post_excerpt', $post_id );
 
-    if ( ! $tagline && ! $presskit && ! $links ) {
+    if ( ! $tagline && ! $presskit && ! $links && ! $excerpt ) {
         return '<p>' . esc_html__( 'No hay información de presskit definida.', 'wp-song-study-blocks' ) . '</p>';
     }
 
@@ -1560,6 +2791,8 @@ function wpssb_render_project_presskit_markup( $post_id ) {
 
     if ( $presskit ) {
         $output .= '<div class="pd-proyecto-presskit__text">' . wpautop( wp_kses_post( $presskit ) ) . '</div>';
+    } elseif ( $excerpt ) {
+        $output .= '<div class="pd-proyecto-presskit__text">' . wpautop( esc_html( $excerpt ) ) . '</div>';
     }
 
     $output .= wpssb_render_presskit_links_markup( $links, 'pd-proyecto-presskit__links' );
@@ -1623,6 +2856,14 @@ function wpssb_resolve_collaborator_user_id( $atts = [] ) {
 function wpssb_resolve_block_collaborator_user_id( $attributes = [], $block = null ) {
     $user_id = isset( $attributes['userId'] ) ? absint( $attributes['userId'] ) : 0;
 
+    if ( ! $user_id && is_page() ) {
+        $presskit_page_id = (int) get_queried_object_id();
+
+        if ( $presskit_page_id > 0 && 'presskit' === get_page_template_slug( $presskit_page_id ) ) {
+            $user_id = wpssb_resolve_presskit_page_target_user_id( $presskit_page_id );
+        }
+    }
+
     if ( ! $user_id ) {
         $queried_object = get_queried_object();
         if ( $queried_object instanceof WP_User ) {
@@ -1674,9 +2915,10 @@ function wpssb_render_collaborator_presskit_markup( $user_id ) {
         return '';
     }
 
-    $tagline  = get_user_meta( $user_id, 'pd_colaborador_tagline', true );
-    $presskit = get_user_meta( $user_id, 'pd_colaborador_presskit', true );
-    $links    = get_user_meta( $user_id, 'pd_colaborador_links', true );
+    $tagline      = get_user_meta( $user_id, 'pd_colaborador_tagline', true );
+    $presskit     = get_user_meta( $user_id, 'pd_colaborador_presskit', true );
+    $links        = get_user_meta( $user_id, 'pd_colaborador_links', true );
+    $fallback_url = $user->user_url ? esc_url_raw( $user->user_url ) : '';
 
     $output  = '<section class="pd-colaborador-presskit">';
     $output .= '<div class="pd-colaborador-presskit__header">';
@@ -1694,7 +2936,7 @@ function wpssb_render_collaborator_presskit_markup( $user_id ) {
         $output .= '<div class="pd-colaborador-presskit__text">' . wpautop( esc_html( $user->description ) ) . '</div>';
     }
 
-    $output .= wpssb_render_presskit_links_markup( $links, 'pd-colaborador-presskit__links' );
+    $output .= wpssb_render_presskit_links_markup( $links ?: $fallback_url, 'pd-colaborador-presskit__links' );
     $output .= '</section>';
 
     return $output;
@@ -1766,19 +3008,18 @@ function wpssb_render_collaborator_projects_markup( $user_id, $posts_per_page = 
         return '';
     }
 
+    $project_ids = array_slice( wpssb_get_user_project_ids( $user_id ), 0, $posts_per_page );
+
+    if ( empty( $project_ids ) ) {
+        return '<p>' . esc_html__( 'No hay proyectos asociados todavía.', 'wp-song-study-blocks' ) . '</p>';
+    }
+
     $query = new WP_Query(
         [
             'post_type'      => WPSSB_PROJECT_POST_TYPE,
             'posts_per_page' => $posts_per_page,
-            'orderby'        => 'date',
-            'order'          => 'DESC',
-            'meta_query'     => [
-                [
-                    'key'     => 'pd_proyecto_colaboradores',
-                    'value'   => '"' . $user_id . '"',
-                    'compare' => 'LIKE',
-                ],
-            ],
+            'orderby'        => 'post__in',
+            'post__in'       => $project_ids,
         ]
     );
 
@@ -2031,10 +3272,10 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
     $manageable_users   = $can_switch_targets ? wpssb_get_manageable_membership_users() : [];
     $feedback = wpssb_get_membership_feedback();
     $action   = admin_url( 'admin-post.php' );
-    $author   = get_author_posts_url( $user_id );
+    $presskit_post_id = $can_manage_target ? wpssb_ensure_collaborator_presskit_post( $user_id ) : wpssb_get_collaborator_presskit_post_id( $user_id );
+    $public_presskit  = wpssb_get_collaborator_public_url( $user_id );
+    $edit_presskit    = $presskit_post_id ? wpssb_get_frontend_membership_url( $user_id, true ) : '';
     $current_url = get_permalink() ? get_permalink() : home_url( '/' );
-    $gallery_ids = wpssb_sanitize_id_list( get_user_meta( $user_id, 'pd_colaborador_galeria', true ) );
-
     $output  = '<section class="pd-membership-shell">';
     $output .= '<header class="pd-membership-shell__header">';
     $output .= '<div class="pd-membership-shell__identity">';
@@ -2045,7 +3286,7 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
     $output .= '<p class="pd-membership-shell__meta">' . esc_html( $user->user_email ) . '</p>';
     $output .= '</div></div>';
     $output .= '<div class="pd-membership-shell__actions">';
-    $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( $author ) . '">' . esc_html__( 'Ver perfil público', 'wp-song-study-blocks' ) . '</a>';
+    $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( $public_presskit ) . '">' . esc_html__( 'Ver perfil público', 'wp-song-study-blocks' ) . '</a>';
     if ( ! empty( $settings['show_admin_link'] ) ) {
         $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( admin_url( 'profile.php' ) ) . '">' . esc_html__( 'Abrir perfil de WordPress', 'wp-song-study-blocks' ) . '</a>';
     }
@@ -2077,13 +3318,22 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
         $output .= '<p class="pd-membership-feedback ' . esc_attr( $class ) . '">' . esc_html( $feedback['message'] ) . '</p>';
     }
 
-    if ( $can_manage_target ) {
-        wpssb_enqueue_frontend_membership_assets();
+    if ( $can_manage_target && $presskit_post_id ) {
+        $output .= '<div class="pd-membership-panel pd-membership-panel--builder">';
+        $output .= '<h2>' . esc_html__( 'Documento público editable', 'wp-song-study-blocks' ) . '</h2>';
+        $output .= '<p>' . esc_html__( 'Tu presskit ahora puede construirse como una página libre con bloques. Aquí debajo sigues manteniendo los datos estructurados que el plugin puede reutilizar dentro de esa composición.', 'wp-song-study-blocks' ) . '</p>';
+        $output .= '<div class="pd-membership-shell__actions">';
+        if ( $edit_presskit ) {
+            $output .= '<a class="wp-block-button__link wp-element-button" href="' . esc_url( $edit_presskit ) . '">' . esc_html__( 'Editar documento del presskit', 'wp-song-study-blocks' ) . '</a>';
+        }
+        $output .= '<a class="wp-block-button__link wp-element-button is-style-outline" href="' . esc_url( $public_presskit ) . '">' . esc_html__( 'Abrir vista pública', 'wp-song-study-blocks' ) . '</a>';
+        $output .= '</div>';
+        $output .= '</div>';
     }
 
     $output .= '<div class="pd-membership-shell__grid">';
     $output .= '<div class="pd-membership-editor">';
-    $output .= '<h2>' . esc_html( $is_admin_override ? __( 'Editar presskit del perfil seleccionado', 'wp-song-study-blocks' ) : __( 'Editar mi presskit', 'wp-song-study-blocks' ) ) . '</h2>';
+    $output .= '<h2>' . esc_html( $is_admin_override ? __( 'Editar datos base del perfil seleccionado', 'wp-song-study-blocks' ) : __( 'Editar datos base del perfil', 'wp-song-study-blocks' ) ) . '</h2>';
     if ( ! $can_manage_target ) {
         $output .= '<p>' . esc_html__( 'No tienes permisos para editar este perfil.', 'wp-song-study-blocks' ) . '</p>';
         $output .= '</div>';
@@ -2095,35 +3345,18 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
     $output .= wp_nonce_field( 'wpssb_save_my_membership', 'wpssb_membership_nonce', true, false );
     $output .= '<label><span>' . esc_html__( 'Tagline', 'wp-song-study-blocks' ) . '</span><input type="text" name="pd_colaborador_tagline" value="' . esc_attr( (string) get_user_meta( $user_id, 'pd_colaborador_tagline', true ) ) . '" /></label>';
     $output .= '<label><span>' . esc_html__( 'Biografía breve', 'wp-song-study-blocks' ) . '</span><textarea name="pd_colaborador_descripcion_corta" rows="3">' . esc_textarea( (string) $user->description ) . '</textarea></label>';
-    $output .= '<label><span>' . esc_html__( 'Presskit', 'wp-song-study-blocks' ) . '</span><textarea name="pd_colaborador_presskit" rows="7">' . esc_textarea( (string) get_user_meta( $user_id, 'pd_colaborador_presskit', true ) ) . '</textarea></label>';
-    $output .= '<label><span>' . esc_html__( 'Links', 'wp-song-study-blocks' ) . '</span><textarea name="pd_colaborador_links" rows="4" placeholder="https://...&#10;https://...">' . esc_textarea( (string) get_user_meta( $user_id, 'pd_colaborador_links', true ) ) . '</textarea></label>';
-    $output .= '<label><span>' . esc_html__( 'Contacto', 'wp-song-study-blocks' ) . '</span><textarea name="pd_colaborador_contacto" rows="4">' . esc_textarea( (string) get_user_meta( $user_id, 'pd_colaborador_contacto', true ) ) . '</textarea></label>';
     $output .= '<label><span>' . esc_html__( 'Sitio / portafolio principal', 'wp-song-study-blocks' ) . '</span><input type="url" name="pd_colaborador_user_url" value="' . esc_attr( (string) $user->user_url ) . '" placeholder="https://..." /></label>';
-    $output .= '<div class="pd-membership-gallery-field" data-initial="' . esc_attr( implode( ',', $gallery_ids ) ) . '">';
-    $output .= '<input type="hidden" name="pd_colaborador_galeria" value="' . esc_attr( implode( ',', $gallery_ids ) ) . '" />';
-    $output .= '<div class="pd-membership-gallery-field__header">';
-    $output .= '<span>' . esc_html__( 'Galería de presskit', 'wp-song-study-blocks' ) . '</span>';
-    $output .= '<div class="pd-membership-gallery-field__actions">';
-    $output .= '<button type="button" class="button pd-membership-gallery-select">' . esc_html__( 'Elegir imágenes', 'wp-song-study-blocks' ) . '</button>';
-    $output .= '<button type="button" class="button pd-membership-gallery-clear">' . esc_html__( 'Limpiar', 'wp-song-study-blocks' ) . '</button>';
-    $output .= '</div></div>';
-    $output .= '<div class="pd-membership-gallery-preview"></div>';
-    $output .= '</div>';
-    $output .= '<p class="pd-membership-form__hint">' . esc_html__( 'Puedes elegir imágenes existentes o subir nuevas desde la biblioteca multimedia.', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '<button type="submit" class="wp-block-button__link wp-element-button">' . esc_html( $is_admin_override ? __( 'Guardar perfil seleccionado', 'wp-song-study-blocks' ) : __( 'Guardar mi presskit', 'wp-song-study-blocks' ) ) . '</button>';
+    $output .= '<p class="pd-membership-form__hint">' . esc_html__( 'El contenido rico, galerías, embeds, dossier y contacto principal ahora deben editarse dentro del documento público de bloques.', 'wp-song-study-blocks' ) . '</p>';
+    $output .= '<button type="submit" class="wp-block-button__link wp-element-button">' . esc_html( $is_admin_override ? __( 'Guardar perfil seleccionado', 'wp-song-study-blocks' ) : __( 'Guardar datos base', 'wp-song-study-blocks' ) ) . '</button>';
     $output .= '</form>';
     $output .= '</div>';
     }
 
     $output .= '<div class="pd-membership-sidebar">';
-    if ( ! empty( $settings['show_preview'] ) ) {
+    if ( ! empty( $settings['show_preview'] ) && $presskit_post_id ) {
         $output .= '<div class="pd-membership-panel">';
-        $output .= '<h2>' . esc_html__( 'Vista pública actual', 'wp-song-study-blocks' ) . '</h2>';
-        $output .= wpssb_render_collaborator_presskit_markup( $user_id );
-        $output .= '<div class="pd-membership-panel__gallery">';
-        $output .= '<h3>' . esc_html__( 'Galería pública actual', 'wp-song-study-blocks' ) . '</h3>';
-        $output .= wpssb_render_collaborator_gallery_markup( $user_id );
-        $output .= '</div>';
+        $output .= '<h2>' . esc_html__( 'Última vista pública guardada', 'wp-song-study-blocks' ) . '</h2>';
+        $output .= wpssb_render_saved_presskit_post_content( $presskit_post_id );
         $output .= '</div>';
     }
 
@@ -2146,7 +3379,13 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
         );
         $output .= '</div>';
     }
-    $output .= '</div></div></section>';
+    $output .= '</div></div>';
+
+    if ( $can_manage_target && $presskit_post_id ) {
+        $output .= wpssb_render_frontend_presskit_workbench( $presskit_post_id );
+    }
+
+    $output .= '</section>';
 
     return $output;
 }
@@ -2160,13 +3399,66 @@ function wpssb_render_current_membership_markup( $settings = [] ) {
  * @return string
  */
 function wpssb_render_block_current_membership( $attributes = [], $content = '', $block = null ) {
-    return wpssb_render_current_membership_markup(
+    $settings = [
+        'show_projects'   => ! isset( $attributes['showProjects'] ) || (bool) $attributes['showProjects'],
+        'show_preview'    => ! isset( $attributes['showPreview'] ) || (bool) $attributes['showPreview'],
+        'show_admin_link' => ! isset( $attributes['showAdminLink'] ) || (bool) $attributes['showAdminLink'],
+        'target_user_id'  => isset( $attributes['targetUserId'] ) ? absint( $attributes['targetUserId'] ) : 0,
+        'login_message'   => isset( $attributes['loginMessage'] ) ? sanitize_text_field( $attributes['loginMessage'] ) : __( 'Inicia sesión para gestionar tu presskit y revisar tus proyectos.', 'wp-song-study-blocks' ),
+    ];
+
+    $classes = [ 'pd-membership-block' ];
+    $layout_width = isset( $attributes['layoutWidth'] ) ? sanitize_key( $attributes['layoutWidth'] ) : 'immersive';
+    $valid_layout_widths = [ 'default', 'wide', 'immersive' ];
+
+    if ( ! in_array( $layout_width, $valid_layout_widths, true ) ) {
+        $layout_width = 'immersive';
+    }
+
+    $classes[] = 'is-layout-' . $layout_width;
+
+    $style_vars = [];
+    $style_attributes = [
+        'shellTextColor'       => '--pd-membership-custom-shell-text',
+        'headerBackgroundColor'=> '--pd-membership-custom-header-background',
+        'headerTextColor'      => '--pd-membership-custom-header-text',
+        'panelBackgroundColor' => '--pd-membership-custom-panel-background',
+        'panelTextColor'       => '--pd-membership-custom-panel-text',
+        'panelBorderColor'     => '--pd-membership-custom-panel-border',
+        'fieldBackgroundColor' => '--pd-membership-custom-field-background',
+        'fieldTextColor'       => '--pd-membership-custom-field-text',
+        'linkColor'            => '--pd-membership-custom-link',
+    ];
+
+    foreach ( $style_attributes as $attribute_name => $css_var ) {
+        if ( empty( $attributes[ $attribute_name ] ) || ! is_string( $attributes[ $attribute_name ] ) ) {
+            continue;
+        }
+
+        $value = trim( sanitize_text_field( $attributes[ $attribute_name ] ) );
+
+        if ( '' === $value || ! preg_match( '/^[#(),.%\sA-Za-z0-9_-]+$/', $value ) ) {
+            continue;
+        }
+
+        $style_vars[] = $css_var . ':' . $value;
+    }
+
+    if ( isset( $attributes['editorMinHeight'] ) ) {
+        $editor_min_height = max( 560, min( 1200, absint( $attributes['editorMinHeight'] ) ) );
+        $style_vars[] = '--pd-membership-editor-min-height:' . $editor_min_height . 'px';
+    }
+
+    $wrapper_attributes = get_block_wrapper_attributes(
         [
-            'show_projects'   => ! isset( $attributes['showProjects'] ) || (bool) $attributes['showProjects'],
-            'show_preview'    => ! isset( $attributes['showPreview'] ) || (bool) $attributes['showPreview'],
-            'show_admin_link' => ! isset( $attributes['showAdminLink'] ) || (bool) $attributes['showAdminLink'],
-            'target_user_id'  => isset( $attributes['targetUserId'] ) ? absint( $attributes['targetUserId'] ) : 0,
-            'login_message'   => isset( $attributes['loginMessage'] ) ? sanitize_text_field( $attributes['loginMessage'] ) : __( 'Inicia sesión para gestionar tu presskit y revisar tus proyectos.', 'wp-song-study-blocks' ),
+            'class' => implode( ' ', $classes ),
+            'style' => implode( ';', $style_vars ),
         ]
+    );
+
+    return sprintf(
+        '<div %1$s>%2$s</div>',
+        $wrapper_attributes,
+        wpssb_render_current_membership_markup( $settings )
     );
 }

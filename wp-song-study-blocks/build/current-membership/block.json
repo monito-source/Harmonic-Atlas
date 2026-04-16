@@ -2,7 +2,7 @@
   "$schema": "https://schemas.wp.org/trunk/block.json",
   "apiVersion": 3,
   "name": "wp-song-study/current-membership",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "title": "Current Membership",
   "category": "widgets",
   "icon": "admin-users",
@@ -29,11 +29,68 @@
     "loginMessage": {
       "type": "string",
       "default": "Inicia sesión para gestionar tu presskit y revisar tus proyectos."
+    },
+    "layoutWidth": {
+      "type": "string",
+      "default": "immersive"
+    },
+    "editorMinHeight": {
+      "type": "number",
+      "default": 720
+    },
+    "shellTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerBackgroundColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBackgroundColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBorderColor": {
+      "type": "string",
+      "default": ""
+    },
+    "fieldBackgroundColor": {
+      "type": "string",
+      "default": ""
+    },
+    "fieldTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "linkColor": {
+      "type": "string",
+      "default": ""
     }
   },
   "supports": {
     "html": false,
-    "align": ["wide", "full"]
+    "align": ["wide", "full"],
+    "spacing": {
+      "margin": true,
+      "padding": true,
+      "blockGap": true
+    },
+    "color": {
+      "background": true,
+      "text": true
+    },
+    "border": {
+      "radius": true,
+      "color": true
+    }
   },
   "editorScript": "file:./index.js"
 }

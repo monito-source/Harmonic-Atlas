@@ -9,6 +9,8 @@
     },
     "color": {
       "defaultPalette": false,
+      "defaultGradients": false,
+      "customGradient": true,
       "palette": [
         {
           "slug": "fondo",
@@ -64,6 +66,33 @@
           "slug": "error",
           "name": "Error",
           "color": "#991b1b"
+        }
+      ],
+      "gradients": [
+        {
+          "slug": "overlay-oscuro",
+          "name": "Overlay oscuro",
+          "gradient": "linear-gradient(135deg, rgba(31, 41, 55, 0.82) 0%, rgba(31, 41, 55, 0.46) 100%)"
+        },
+        {
+          "slug": "overlay-nocturno-azul",
+          "name": "Overlay nocturno azul",
+          "gradient": "linear-gradient(135deg, rgba(15, 23, 42, 0.86) 0%, rgba(30, 58, 138, 0.58) 100%)"
+        },
+        {
+          "slug": "overlay-editorial-suave",
+          "name": "Overlay editorial suave",
+          "gradient": "linear-gradient(160deg, rgba(236, 240, 241, 0.08) 0%, rgba(31, 41, 55, 0.52) 100%)"
+        },
+        {
+          "slug": "overlay-resalte-cian",
+          "name": "Overlay resalte cian",
+          "gradient": "linear-gradient(135deg, rgba(143, 211, 255, 0.3) 0%, rgba(30, 64, 175, 0.68) 100%)"
+        },
+        {
+          "slug": "overlay-vineta",
+          "name": "Overlay viñeta",
+          "gradient": "radial-gradient(circle at center, rgba(31, 41, 55, 0.08) 0%, rgba(31, 41, 55, 0.78) 100%)"
         }
       ]
     },
@@ -214,6 +243,20 @@
         "link": "var(--wp--preset--color--azul-principal)",
         "linkHover": "var(--wp--preset--color--azul-hover)"
       },
+      "membership": {
+        "text": "var(--wp--preset--color--texto)",
+        "muted": "var(--wp--preset--color--texto-suave)",
+        "link": "var(--wp--preset--color--azul-principal)",
+        "linkHover": "var(--wp--preset--color--azul-hover)",
+        "headerBackground": "linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--azul-principal) 10%, transparent), color-mix(in srgb, var(--wp--preset--color--blanco) 96%, transparent))",
+        "headerText": "var(--wp--preset--color--texto)",
+        "panelBackground": "var(--wp--preset--color--blanco)",
+        "panelText": "var(--wp--preset--color--texto)",
+        "panelBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 10%, transparent)",
+        "fieldBackground": "var(--wp--preset--color--blanco)",
+        "fieldText": "var(--wp--preset--color--texto)",
+        "fieldBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 14%, transparent)"
+      },
       "header": {
         "account": {
           "triggerBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
@@ -221,10 +264,10 @@
           "triggerBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 26%, transparent)",
           "triggerHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 18%, transparent)",
           "triggerHoverBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 40%, transparent)",
-          "panelBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 96%, transparent)",
-          "panelText": "var(--wp--preset--color--texto)",
-          "panelBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 10%, transparent)",
-          "panelHoverBackground": "color-mix(in srgb, var(--wp--preset--color--azul-principal) 10%, transparent)"
+          "panelBackground": "color-mix(in srgb, var(--wp--preset--color--oscuro) 88%, rgba(255,255,255,0.08))",
+          "panelText": "var(--wp--preset--color--blanco)",
+          "panelBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 22%, transparent)",
+          "panelHoverBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 10%, transparent)"
         },
         "navigation": {
           "triggerBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
