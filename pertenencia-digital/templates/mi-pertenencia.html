@@ -1,21 +1,24 @@
-<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
-  <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1rem","margin":{"bottom":"2rem"}}},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-group alignwide" style="margin-bottom:2rem">
-    <!-- wp:paragraph {"fontSize":"x-small","style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em"}}} -->
-    <p class="has-x-small-font-size" style="letter-spacing:0.08em;text-transform:uppercase">Mi pertenencia</p>
+<!-- wp:template-part {"slug":"header-musica-hijas","tagName":"header"} /-->
+<!-- wp:group {"tagName":"main","className":"pd-editorial-shell pd-editorial-shell--membership pd-editorial-shell--music","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"},"blockGap":"var:preset|spacing|55"}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-editorial-shell pd-editorial-shell--membership pd-editorial-shell--music" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:group {"align":"wide","className":"pd-editorial-hero","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-hero">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow","textColor":"azul-principal"} -->
+    <p class="pd-eyebrow has-azul-principal-color has-text-color has-x-small-font-size">Mi pertenencia</p>
     <!-- /wp:paragraph -->
     <!-- wp:heading {"level":1,"fontSize":"x-large"} -->
     <h1 class="wp-block-heading has-x-large-font-size">Gestiona tu presskit y tus proyectos</h1>
     <!-- /wp:heading -->
-    <!-- wp:paragraph -->
-    <p>Este espacio te permite actualizar la información pública de tu presskit y revisar en qué proyectos apareces dentro del sitio.</p>
+    <!-- wp:paragraph {"fontSize":"medium"} -->
+    <p class="has-medium-font-size">Este espacio concentra tu identidad base, tu presskit público y la relación con los proyectos donde participas.</p>
     <!-- /wp:paragraph -->
   </div>
   <!-- /wp:group -->
-
-  <!-- wp:wp-song-study/current-membership /-->
+  <!-- wp:group {"align":"wide","className":"pd-editorial-surface pd-editorial-surface--tool","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-surface pd-editorial-surface--tool">
+    <!-- wp:wp-song-study/current-membership /-->
+  </div>
+  <!-- /wp:group -->
 </main>
 <!-- /wp:group -->
 <!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->

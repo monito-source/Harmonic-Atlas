@@ -171,6 +171,15 @@ export function createApi(wpData) {
     listProjects() {
       return request('proyectos')
     },
+    getProjectRehearsals(id) {
+      return request(`proyecto/${id}/ensayos`)
+    },
+    saveProjectRehearsals(id, payload) {
+      return request(`proyecto/${id}/ensayos`, { method: 'POST', body: payload })
+    },
+    syncProjectRehearsalCalendar(id, payload) {
+      return request(`proyecto/${id}/ensayos/google-calendar`, { method: 'POST', body: payload })
+    },
     assignRepertoire(items) {
       return request('repertorio-asignaciones', { method: 'POST', body: { items } })
     },

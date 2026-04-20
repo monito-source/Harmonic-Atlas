@@ -1,0 +1,104 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "wp-song-study/current-rehearsals",
+  "version": "2.1.1",
+  "title": "Current Rehearsals",
+  "category": "widgets",
+  "icon": "calendar-alt",
+  "description": "Displays a frontend rehearsal workspace where the logged-in collaborator can manage their own availability and votes.",
+  "textdomain": "wp-song-study-blocks",
+  "keywords": ["rehearsals", "availability", "calendar", "logbook"],
+  "attributes": {
+    "showAdminLink": {
+      "type": "boolean",
+      "default": true
+    },
+    "loginMessage": {
+      "type": "string",
+      "default": "Inicia sesión para definir tu disponibilidad, votar propuestas de ensayo y revisar la bitácora del proyecto."
+    },
+    "layoutWidth": {
+      "type": "string",
+      "default": "immersive"
+    },
+    "formPanelMinWidth": {
+      "type": "number",
+      "default": 720
+    },
+    "panelBackgroundColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelBorderColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelGradientAccentColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelGradientHighlightColor": {
+      "type": "string",
+      "default": ""
+    },
+    "usePanelGradient": {
+      "type": "boolean",
+      "default": true
+    },
+    "panelGradientAccentOpacity": {
+      "type": "number",
+      "default": 10
+    },
+    "panelGradientHighlightOpacity": {
+      "type": "number",
+      "default": 12
+    },
+    "headerBackgroundColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerBorderColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerTitleColor": {
+      "type": "string",
+      "default": ""
+    },
+    "headerMutedColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelTitleColor": {
+      "type": "string",
+      "default": ""
+    },
+    "panelMutedColor": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "supports": {
+    "html": false,
+    "align": ["wide", "full"],
+    "spacing": {
+      "margin": true,
+      "padding": true,
+      "blockGap": true
+    },
+    "border": {
+      "radius": true,
+      "color": true
+    }
+  },
+  "editorScript": "file:./index.js"
+}

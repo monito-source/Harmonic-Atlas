@@ -8,6 +8,7 @@ import ReadingView from './components/ReadingView.jsx'
 import PublicReader from './components/PublicReader.jsx'
 import ChordLibrary from './components/ChordLibrary.jsx'
 import GroupsManager from './components/GroupsManager.jsx'
+import ProjectRehearsalsManager from './components/ProjectRehearsalsManager.jsx'
 import DriveSettings from './components/DriveSettings.jsx'
 import SongImportExport from './components/SongImportExport.jsx'
 
@@ -119,6 +120,8 @@ export default function AppShell() {
         <ChordLibrary />
       ) : state.view === 'groups' ? (
         <GroupsManager />
+      ) : state.view === 'project-rehearsals' ? (
+        <ProjectRehearsalsManager />
       ) : state.view === 'drive' ? (
         <DriveSettings />
       ) : state.view === 'import-export' ? (

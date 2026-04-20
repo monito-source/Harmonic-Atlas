@@ -1,6 +1,19 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+<!-- wp:group {"tagName":"main","className":"pd-editorial-shell pd-editorial-shell--access","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"},"blockGap":"var:preset|spacing|55"}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-editorial-shell pd-editorial-shell--access" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:group {"align":"wide","className":"pd-editorial-hero pd-editorial-hero--center","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-hero pd-editorial-hero--center">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow","textColor":"azul-principal"} -->
+    <p class="pd-eyebrow has-azul-principal-color has-text-color has-x-small-font-size">Acceso</p>
+    <!-- /wp:paragraph -->
+    <!-- wp:heading {"level":1,"fontSize":"x-large"} -->
+    <h1 class="wp-block-heading has-x-large-font-size">Entra a tu espacio digital</h1>
+    <!-- /wp:heading -->
+    <!-- wp:paragraph {"fontSize":"medium"} -->
+    <p class="has-medium-font-size">Una entrada clara y frontal para recuperar tu sesión, volver a tu pertenencia y seguir el recorrido sin caer en la interfaz blanca de WordPress.</p>
+    <!-- /wp:paragraph -->
+  </div>
+  <!-- /wp:group -->
   <!-- wp:shortcode -->
   [pd_login_form title="Accede a tu pertenencia digital" intro="Usa esta pantalla para iniciar sesion, recuperar tu contrasena y entrar a tu espacio sin depender de la interfaz blanca de WordPress."]
   <!-- /wp:shortcode -->

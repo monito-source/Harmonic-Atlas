@@ -28,6 +28,7 @@ function pd_get_custom_page_templates(): array {
         'acceso'                 => __( 'Acceso', 'pertenencia-digital' ),
         'inicio'                 => __( 'Inicio / Landing', 'pertenencia-digital' ),
         'presskit'               => __( 'Press Kit', 'pertenencia-digital' ),
+        'ensayos'                => __( 'Ensayos', 'pertenencia-digital' ),
         'mi-pertenencia'         => __( 'Mi pertenencia', 'pertenencia-digital' ),
         'proyectos-musica'       => __( 'Proyectos (Música)', 'pertenencia-digital' ),
         'proyectos-tecnologias'  => __( 'Proyectos (Tecnologías y web)', 'pertenencia-digital' ),
@@ -2520,6 +2521,12 @@ function pd_ensure_theme_pages(): void {
                 'slug'     => 'proyectos',
                 'content'  => '<!-- wp:paragraph --><p>Explora proyectos musicales y sus colaboradores.</p><!-- /wp:paragraph -->',
                 'template' => 'proyectos-musica',
+            ],
+            [
+                'title'    => 'Ensayos',
+                'slug'     => 'ensayos',
+                'content'  => '<!-- wp:paragraph --><p>Espacio colaborativo para disponibilidad, votaciones de ensayo y bitácora del proyecto musical.</p><!-- /wp:paragraph -->',
+                'template' => 'ensayos',
             ],
         ],
         'tecnologias-web' => [

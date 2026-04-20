@@ -468,7 +468,6 @@
     const selectedGroupOverlay = selectedIsGroup
       ? getGroupOverlaySettings(editorState.overlayTargetBlock?.attributes || {})
       : null
-
     const updateSelectedGroupOverlay = (patch) => {
       if (!selectedIsGroup || !editorState.overlayTargetClientId || !blockEditorDispatch) {
         return
@@ -601,7 +600,7 @@
                   'div',
                   { className: 'pd-membership-presskit-editor__fallback' },
                   el('p', {}, __('No se pudo cargar el canvas nativo del editor.', 'wp-song-study-blocks'))
-                )
+            )
           ),
           el(
             'aside',
@@ -691,13 +690,44 @@
                   )
                 )
               : null,
-            el(
-              'p',
-              { className: 'pd-membership-presskit-editor__sidebar-label' },
-              __('Ajustes del bloque', 'wp-song-study-blocks')
-            ),
-            typeof BlockInspector === 'function'
-              ? el(BlockInspector, {})
+            editorState.selectedBlock
+              ? el(
+                  Fragment,
+                  {},
+                  el(
+                    'p',
+                    { className: 'pd-membership-presskit-editor__sidebar-label' },
+                    __('Ajustes del bloque', 'wp-song-study-blocks')
+                  ),
+                  typeof BlockInspector === 'function'
+                    ? el(
+                        'div',
+                        { className: 'pd-membership-presskit-editor__inspector-slot' },
+                        el(BlockInspector, {})
+                      )
+                    : null,
+                  typeof BlockInspector !== 'function' && InspectorControls && typeof InspectorControls.Slot === 'function'
+                    ? el(
+                        Fragment,
+                        {},
+                        el(
+                          'p',
+                          { className: 'pd-membership-presskit-editor__sidebar-label pd-membership-presskit-editor__sidebar-label--secondary' },
+                          __('Estilo y colores', 'wp-song-study-blocks')
+                        ),
+                        el(
+                          'div',
+                          { className: 'pd-membership-presskit-editor__inspector-slot pd-membership-presskit-editor__inspector-slot--styles' },
+                          el(InspectorControls.Slot, {}),
+                          el(InspectorControls.Slot, { group: 'styles' }),
+                          el(InspectorControls.Slot, { group: 'color' }),
+                          el(InspectorControls.Slot, { group: 'typography' }),
+                          el(InspectorControls.Slot, { group: 'dimensions' }),
+                          el(InspectorControls.Slot, { group: 'border' })
+                        )
+                      )
+                    : null
+                )
               : el(
                   'p',
                   { className: 'pd-membership-presskit-editor__sidebar-empty' },

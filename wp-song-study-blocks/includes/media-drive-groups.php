@@ -14,6 +14,7 @@ add_action( 'init', 'wpss_maybe_handle_google_drive_query_callback', 1 );
 add_action( 'admin_init', 'wpss_register_google_drive_settings' );
 add_action( 'rest_api_init', 'wpss_register_media_drive_group_routes' );
 add_action( 'admin_post_wpss_google_drive_connect', 'wpss_handle_google_drive_connect' );
+add_action( 'admin_post_wpss_google_calendar_connect', 'wpss_handle_google_calendar_connect' );
 add_action( 'admin_post_wpss_google_drive_callback', 'wpss_handle_google_drive_callback' );
 add_action( 'admin_post_nopriv_wpss_google_drive_callback', 'wpss_handle_google_drive_callback' );
 add_action( 'before_delete_post', 'wpss_cleanup_song_media_on_post_delete', 10, 1 );
@@ -290,6 +291,36 @@ function wpss_get_google_drive_oauth_scopes() {
 }
 
 /**
+ * Scopes OAuth requeridos para sincronizar ensayos con Google Calendar.
+ *
+ * @return string[]
+ */
+function wpss_get_google_calendar_event_scopes() {
+    return [
+        'https://www.googleapis.com/auth/calendar.events',
+    ];
+}
+
+/**
+ * Scopes OAuth requeridos para operar Google Calendar por separado de Drive.
+ *
+ * @return string[]
+ */
+function wpss_get_google_calendar_oauth_scopes() {
+    return array_values(
+        array_unique(
+            array_merge(
+                wpss_get_google_calendar_event_scopes(),
+                [
+                    'https://www.googleapis.com/auth/userinfo.email',
+                    'openid',
+                ]
+            )
+        )
+    );
+}
+
+/**
  * Normaliza scopes OAuth en un arreglo estable.
  *
  * @param mixed $raw_scopes Scopes crudos.
@@ -328,6 +359,7 @@ function wpss_normalize_google_drive_scopes( $raw_scopes ) {
 function wpss_get_google_drive_scope_labels() {
     return [
         'https://www.googleapis.com/auth/drive'          => __( 'Acceso completo a Google Drive para adjuntos del cancionero', 'wp-song-study' ),
+        'https://www.googleapis.com/auth/calendar.events'=> __( 'Gestionar eventos de Google Calendar para ensayos', 'wp-song-study' ),
         'https://www.googleapis.com/auth/userinfo.email' => __( 'Lectura del email de la cuenta conectada', 'wp-song-study' ),
         'openid'                                         => __( 'Identidad básica OpenID', 'wp-song-study' ),
     ];
@@ -642,14 +674,16 @@ function wpss_google_drive_base64url_decode( $value ) {
  * @param int    $user_id    Usuario.
  * @param string $return_url URL de retorno.
  * @param string $flow_id    Identificador aleatorio del flujo.
+ * @param string $provider   Proveedor OAuth.
  * @return string
  */
-function wpss_build_google_drive_oauth_state( $user_id, $return_url, $flow_id ) {
+function wpss_build_google_drive_oauth_state( $user_id, $return_url, $flow_id, $provider = 'google_drive' ) {
     $payload = [
         'u' => absint( $user_id ),
         'r' => esc_url_raw( (string) $return_url ),
         'f' => sanitize_text_field( (string) $flow_id ),
         'i' => time(),
+        'v' => sanitize_key( (string) $provider ),
     ];
 
     $json = wp_json_encode( $payload );
@@ -692,6 +726,7 @@ function wpss_parse_google_drive_oauth_state( $state ) {
     $return_url = isset( $container['p']['r'] ) ? esc_url_raw( (string) $container['p']['r'] ) : '';
     $flow_id    = isset( $container['p']['f'] ) ? sanitize_text_field( (string) $container['p']['f'] ) : '';
     $issued_at  = isset( $container['p']['i'] ) ? absint( $container['p']['i'] ) : 0;
+    $provider   = isset( $container['p']['v'] ) ? sanitize_key( (string) $container['p']['v'] ) : 'google_drive';
 
     if ( $user_id <= 0 || '' === $flow_id || $issued_at <= 0 ) {
         return [];
@@ -706,6 +741,7 @@ function wpss_parse_google_drive_oauth_state( $state ) {
         'return_url' => $return_url,
         'flow_id'    => $flow_id,
         'issued_at'  => $issued_at,
+        'provider'   => in_array( $provider, [ 'google_drive', 'google_calendar' ], true ) ? $provider : 'google_drive',
     ];
 }
 
@@ -915,6 +951,123 @@ function wpss_clear_google_drive_last_error( $user_id ) {
 }
 
 /**
+ * Obtiene la configuración Calendar del usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return array
+ */
+function wpss_get_google_calendar_user_config( $user_id ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return [];
+    }
+
+    $config = get_user_meta( $user_id, '_wpss_google_calendar_config', true );
+    if ( ! is_array( $config ) ) {
+        $config = [];
+    }
+
+    return [
+        'provider'          => 'google_calendar',
+        'connected'         => ! empty( $config['refresh_token'] ) || ! empty( $config['access_token'] ),
+        'has_access_token'  => ! empty( $config['access_token'] ),
+        'has_refresh_token' => ! empty( $config['refresh_token'] ),
+        'account_email'     => isset( $config['account_email'] ) ? sanitize_email( $config['account_email'] ) : '',
+        'access_token'      => isset( $config['access_token'] ) ? (string) $config['access_token'] : '',
+        'refresh_token'     => isset( $config['refresh_token'] ) ? (string) $config['refresh_token'] : '',
+        'token_expires_at'  => isset( $config['token_expires_at'] ) ? absint( $config['token_expires_at'] ) : 0,
+        'connected_at'      => isset( $config['connected_at'] ) ? sanitize_text_field( $config['connected_at'] ) : '',
+        'granted_scopes'    => wpss_normalize_google_drive_scopes( isset( $config['granted_scopes'] ) ? $config['granted_scopes'] : [] ),
+    ];
+}
+
+/**
+ * Persiste la configuración Calendar del usuario.
+ *
+ * @param int   $user_id ID del usuario.
+ * @param array $config  Configuración.
+ * @return void
+ */
+function wpss_set_google_calendar_user_config( $user_id, array $config ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    update_user_meta( $user_id, '_wpss_google_calendar_config', $config );
+}
+
+/**
+ * Elimina la configuración Calendar del usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return void
+ */
+function wpss_delete_google_calendar_user_config( $user_id ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    delete_user_meta( $user_id, '_wpss_google_calendar_config' );
+    delete_user_meta( $user_id, '_wpss_google_calendar_oauth_state' );
+}
+
+/**
+ * Registra el último error OAuth/Calendar del usuario.
+ *
+ * @param int    $user_id ID del usuario.
+ * @param string $code    Código corto.
+ * @param string $message Mensaje legible.
+ * @return void
+ */
+function wpss_set_google_calendar_last_error( $user_id, $code, $message ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    update_user_meta(
+        $user_id,
+        '_wpss_google_calendar_last_error',
+        [
+            'code'        => sanitize_key( (string) $code ),
+            'message'     => sanitize_textarea_field( (string) $message ),
+            'recorded_at' => current_time( 'mysql' ),
+        ]
+    );
+}
+
+/**
+ * Obtiene el último error OAuth/Calendar del usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return array
+ */
+function wpss_get_google_calendar_last_error( $user_id ) {
+    $value = get_user_meta( absint( $user_id ), '_wpss_google_calendar_last_error', true );
+    if ( ! is_array( $value ) ) {
+        return [];
+    }
+
+    return [
+        'code'        => isset( $value['code'] ) ? sanitize_key( (string) $value['code'] ) : '',
+        'message'     => isset( $value['message'] ) ? sanitize_textarea_field( (string) $value['message'] ) : '',
+        'recorded_at' => isset( $value['recorded_at'] ) ? sanitize_text_field( (string) $value['recorded_at'] ) : '',
+    ];
+}
+
+/**
+ * Limpia el último error OAuth/Calendar del usuario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return void
+ */
+function wpss_clear_google_calendar_last_error( $user_id ) {
+    delete_user_meta( absint( $user_id ), '_wpss_google_calendar_last_error' );
+}
+
+/**
  * Obtiene la clave transient para mapear un state OAuth con un usuario.
  *
  * @param string $state State OAuth.
@@ -977,6 +1130,71 @@ function wpss_delete_google_drive_state_payload( $state ) {
     }
 
     delete_transient( wpss_get_google_drive_state_transient_key( $state ) );
+}
+
+/**
+ * Obtiene la clave transient para mapear un state OAuth de Calendar con un usuario.
+ *
+ * @param string $state State OAuth.
+ * @return string
+ */
+function wpss_get_google_calendar_state_transient_key( $state ) {
+    return 'wpss_calendar_state_' . md5( (string) $state );
+}
+
+/**
+ * Guarda un state OAuth temporal de Calendar.
+ *
+ * @param string $state      State OAuth.
+ * @param int    $user_id    Usuario destino.
+ * @param string $return_url URL de retorno.
+ * @return void
+ */
+function wpss_store_google_calendar_state_payload( $state, $user_id, $return_url ) {
+    $state = sanitize_text_field( (string) $state );
+    if ( '' === $state ) {
+        return;
+    }
+
+    set_transient(
+        wpss_get_google_calendar_state_transient_key( $state ),
+        [
+            'user_id'    => absint( $user_id ),
+            'return_url' => esc_url_raw( (string) $return_url ),
+        ],
+        15 * MINUTE_IN_SECONDS
+    );
+}
+
+/**
+ * Obtiene el payload asociado a un state OAuth de Calendar.
+ *
+ * @param string $state State OAuth.
+ * @return array
+ */
+function wpss_get_google_calendar_state_payload( $state ) {
+    $state = sanitize_text_field( (string) $state );
+    if ( '' === $state ) {
+        return [];
+    }
+
+    $payload = get_transient( wpss_get_google_calendar_state_transient_key( $state ) );
+    return is_array( $payload ) ? $payload : [];
+}
+
+/**
+ * Elimina el payload temporal de un state OAuth de Calendar.
+ *
+ * @param string $state State OAuth.
+ * @return void
+ */
+function wpss_delete_google_calendar_state_payload( $state ) {
+    $state = sanitize_text_field( (string) $state );
+    if ( '' === $state ) {
+        return;
+    }
+
+    delete_transient( wpss_get_google_calendar_state_transient_key( $state ) );
 }
 
 /**
@@ -1100,7 +1318,7 @@ function wpss_render_google_drive_user_profile_fields( $user ) {
                     ?>
                 </p>
                 <p class="description">
-                    <?php echo esc_html__( 'La carpeta y la conexión OAuth siguen administrándose desde el menú "Mi Drive" del cancionero.', 'wp-song-study' ); ?>
+                    <?php echo esc_html__( 'La carpeta y la conexión OAuth de Drive siguen administrándose desde el menú "Mi Drive". La autorización de Google Calendar para ensayos se gestiona por separado desde la herramienta de ensayos.', 'wp-song-study' ); ?>
                 </p>
                 <p>
                     <?php if ( ! empty( $drive_status['configured'] ) ) : ?>
@@ -1208,28 +1426,91 @@ function wpss_get_google_drive_return_url( $user_id, $redirect_to = '' ) {
 }
 
 /**
- * Crea la URL de conexión OAuth para el usuario actual.
+ * Resuelve la URL de retorno para el flujo OAuth de Calendar.
  *
  * @param int    $user_id     ID del usuario.
- * @param string $redirect_to URL opcional de retorno.
+ * @param string $redirect_to URL solicitada.
  * @return string
  */
-function wpss_get_google_drive_connect_url( $user_id, $redirect_to = '' ) {
+function wpss_get_google_calendar_return_url( $user_id, $redirect_to = '' ) {
+    $user_id      = absint( $user_id );
+    $default_url  = admin_url( 'admin.php?page=wpss-ensayos-proyecto' );
+    $fallback_url = $default_url;
+
+    if ( $user_id > 0 && current_user_can( 'edit_user', $user_id ) ) {
+        $fallback_url = get_current_user_id() === $user_id
+            ? admin_url( 'profile.php' )
+            : add_query_arg( 'user_id', $user_id, admin_url( 'user-edit.php' ) );
+    }
+
+    $redirect_to = is_string( $redirect_to ) ? trim( $redirect_to ) : '';
+    if ( '' === $redirect_to ) {
+        return $default_url;
+    }
+
+    return wp_validate_redirect( $redirect_to, $fallback_url );
+}
+
+/**
+ * Crea la URL de conexión OAuth para el usuario actual.
+ *
+ * @param int          $user_id            ID del usuario.
+ * @param string       $redirect_to        URL opcional de retorno.
+ * @param array|string $requested_scopes   Scopes opcionales a solicitar.
+ * @param bool         $force_reset_tokens Si debe limpiar tokens antes de reconectar.
+ * @return string
+ */
+function wpss_get_google_drive_connect_url( $user_id, $redirect_to = '', $requested_scopes = [], $force_reset_tokens = false ) {
     $user_id = absint( $user_id );
     if ( $user_id <= 0 || ! wpss_google_drive_is_configured_for_user( $user_id ) ) {
         return '';
     }
 
+    $scopes     = wpss_normalize_google_drive_scopes( $requested_scopes );
     $action_url = admin_url( 'admin-post.php?action=wpss_google_drive_connect' );
     return wp_nonce_url(
         add_query_arg(
             [
-                'user_id'     => $user_id,
-                'redirect_to' => wpss_get_google_drive_return_url( $user_id, $redirect_to ),
+                'user_id'            => $user_id,
+                'redirect_to'        => wpss_get_google_drive_return_url( $user_id, $redirect_to ),
+                'scopes'             => ! empty( $scopes ) ? implode( ' ', $scopes ) : '',
+                'force_reset_tokens' => $force_reset_tokens ? '1' : '',
             ],
             $action_url
         ),
         'wpss_google_drive_connect_' . $user_id
+    );
+}
+
+/**
+ * Crea la URL de conexión OAuth para Google Calendar.
+ *
+ * @param int          $user_id            ID del usuario.
+ * @param string       $redirect_to        URL opcional de retorno.
+ * @param array|string $requested_scopes   Scopes opcionales a solicitar.
+ * @param bool         $force_reset_tokens Si debe limpiar tokens antes de reconectar.
+ * @return string
+ */
+function wpss_get_google_calendar_connect_url( $user_id, $redirect_to = '', $requested_scopes = [], $force_reset_tokens = false ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 || ! wpss_google_drive_is_configured_for_user( $user_id ) ) {
+        return '';
+    }
+
+    $scopes     = wpss_normalize_google_drive_scopes( $requested_scopes );
+    $action_url = admin_url( 'admin-post.php?action=wpss_google_calendar_connect' );
+
+    return wp_nonce_url(
+        add_query_arg(
+            [
+                'user_id'            => $user_id,
+                'redirect_to'        => wpss_get_google_calendar_return_url( $user_id, $redirect_to ),
+                'scopes'             => ! empty( $scopes ) ? implode( ' ', $scopes ) : '',
+                'force_reset_tokens' => $force_reset_tokens ? '1' : '',
+            ],
+            $action_url
+        ),
+        'wpss_google_calendar_connect_' . $user_id
     );
 }
 
@@ -1265,6 +1546,39 @@ function wpss_handle_google_drive_connect() {
 
     wpss_clear_google_drive_last_error( $user_id );
     $credentials = wpss_get_google_drive_oauth_credentials( $user_id );
+    $scopes      = wpss_normalize_google_drive_scopes(
+        isset( $_GET['scopes'] ) ? sanitize_text_field( wp_unslash( $_GET['scopes'] ) ) : wpss_get_google_drive_oauth_scopes()
+    );
+
+    if ( empty( $scopes ) ) {
+        $scopes = wpss_get_google_drive_oauth_scopes();
+    }
+
+    if ( ! empty( $_GET['force_reset_tokens'] ) ) {
+        $existing = wpss_get_google_drive_user_config( $user_id );
+        wpss_set_google_drive_user_config(
+            $user_id,
+            [
+                'provider'         => 'google_drive',
+                'account_email'    => isset( $existing['account_email'] ) ? sanitize_email( $existing['account_email'] ) : '',
+                'folder_id'        => isset( $existing['folder_id'] ) ? sanitize_text_field( $existing['folder_id'] ) : '',
+                'folder_name'      => isset( $existing['folder_name'] ) ? sanitize_text_field( $existing['folder_name'] ) : '',
+                'folder_url'       => isset( $existing['folder_url'] ) ? esc_url_raw( $existing['folder_url'] ) : '',
+                'access_token'     => '',
+                'refresh_token'    => '',
+                'token_expires_at' => 0,
+                'connected_at'     => current_time( 'mysql' ),
+                'granted_scopes'   => [],
+            ]
+        );
+        wpss_google_drive_debug_log(
+            'Reconexión OAuth con limpieza previa de tokens.',
+            [
+                'user_id' => $user_id,
+                'scopes'  => $scopes,
+            ]
+        );
+    }
 
     $flow_id = wp_generate_password( 40, false, false );
     $state   = wpss_build_google_drive_oauth_state( $user_id, $return_url, $flow_id );
@@ -1292,8 +1606,107 @@ function wpss_handle_google_drive_connect() {
         'access_type'           => 'offline',
         'prompt'                => 'consent',
         'include_granted_scopes'=> 'true',
-        'scope'                 => implode( ' ', wpss_get_google_drive_oauth_scopes() ),
+        'scope'                 => implode( ' ', $scopes ),
         'state'                 => $state,
+    ];
+
+    wp_redirect( 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ), 302 );
+    exit;
+}
+
+/**
+ * Inicia el flujo OAuth contra Google Calendar usando un token separado de Drive.
+ *
+ * @return void
+ */
+function wpss_handle_google_calendar_connect() {
+    if ( ! is_user_logged_in() ) {
+        wp_die( esc_html__( 'Debes iniciar sesión para conectar Google Calendar.', 'wp-song-study' ) );
+    }
+
+    $current_user_id   = get_current_user_id();
+    $requested_user_id = isset( $_GET['user_id'] ) ? absint( wp_unslash( $_GET['user_id'] ) ) : 0;
+    $user_id           = $requested_user_id > 0 ? $requested_user_id : $current_user_id;
+    $return_url        = wpss_get_google_calendar_return_url(
+        $user_id,
+        isset( $_GET['redirect_to'] ) ? sanitize_text_field( wp_unslash( $_GET['redirect_to'] ) ) : ''
+    );
+
+    if ( $user_id <= 0 || $user_id !== $current_user_id ) {
+        wpss_set_google_calendar_last_error( $current_user_id, 'user', __( 'La conexión de Calendar se intentó para un usuario distinto al de la sesión activa.', 'wp-song-study' ) );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'user', $return_url ) );
+        exit;
+    }
+
+    if ( ! wpss_google_drive_is_configured_for_user( $user_id ) ) {
+        wpss_set_google_calendar_last_error( $user_id, 'config', __( 'Faltan credenciales OAuth válidas para este usuario.', 'wp-song-study' ) );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'config', $return_url ) );
+        exit;
+    }
+
+    wpss_clear_google_calendar_last_error( $user_id );
+    $credentials = wpss_get_google_drive_oauth_credentials( $user_id );
+    $scopes      = wpss_normalize_google_drive_scopes(
+        isset( $_GET['scopes'] ) ? sanitize_text_field( wp_unslash( $_GET['scopes'] ) ) : wpss_get_google_calendar_oauth_scopes()
+    );
+
+    if ( empty( $scopes ) ) {
+        $scopes = wpss_get_google_calendar_oauth_scopes();
+    }
+
+    if ( ! empty( $_GET['force_reset_tokens'] ) ) {
+        $existing = wpss_get_google_calendar_user_config( $user_id );
+        wpss_set_google_calendar_user_config(
+            $user_id,
+            [
+                'provider'         => 'google_calendar',
+                'account_email'    => isset( $existing['account_email'] ) ? sanitize_email( $existing['account_email'] ) : '',
+                'access_token'     => '',
+                'refresh_token'    => '',
+                'token_expires_at' => 0,
+                'connected_at'     => current_time( 'mysql' ),
+                'granted_scopes'   => [],
+            ]
+        );
+        wpss_google_drive_debug_log(
+            'Reconexión OAuth de Calendar con limpieza previa de tokens.',
+            [
+                'provider' => 'google_calendar',
+                'user_id'  => $user_id,
+                'scopes'   => $scopes,
+            ]
+        );
+    }
+
+    $flow_id = wp_generate_password( 40, false, false );
+    $state   = wpss_build_google_drive_oauth_state( $user_id, $return_url, $flow_id, 'google_calendar' );
+
+    update_user_meta( $user_id, '_wpss_google_calendar_oauth_state', $flow_id );
+    update_user_meta( $user_id, '_wpss_google_calendar_oauth_redirect_to', $return_url );
+    wpss_store_google_calendar_state_payload( $flow_id, $user_id, $return_url );
+    wpss_google_drive_debug_log(
+        'Inicio de conexión OAuth de Calendar.',
+        [
+            'provider'       => 'google_calendar',
+            'user_id'        => $user_id,
+            'return_url'     => $return_url,
+            'redirect_uri'   => wpss_get_google_drive_redirect_uri(),
+            'source'         => $credentials['source'],
+            'flow_id_prefix' => substr( $flow_id, 0, 8 ),
+            'client_id_hint' => wpss_google_drive_debug_hint( $credentials['client_id'] ),
+            'scopes'         => $scopes,
+        ]
+    );
+
+    $query = [
+        'client_id'              => $credentials['client_id'],
+        'redirect_uri'           => wpss_get_google_drive_redirect_uri(),
+        'response_type'          => 'code',
+        'access_type'            => 'offline',
+        'prompt'                 => 'consent',
+        'include_granted_scopes' => 'true',
+        'scope'                  => implode( ' ', $scopes ),
+        'state'                  => $state,
     ];
 
     wp_redirect( 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 ), 302 );
@@ -1524,12 +1937,202 @@ function wpss_complete_google_drive_callback( array $params ) {
 }
 
 /**
+ * Completa el callback OAuth de Google Calendar con un token separado de Drive.
+ *
+ * @param array $params Parámetros recibidos.
+ * @return void
+ */
+function wpss_complete_google_calendar_callback( array $params ) {
+    $state          = isset( $params['state'] ) ? sanitize_text_field( (string) $params['state'] ) : '';
+    $code           = isset( $params['code'] ) ? sanitize_text_field( (string) $params['code'] ) : '';
+    $oauth_error    = isset( $params['error'] ) ? sanitize_key( (string) $params['error'] ) : '';
+    $callback_scopes = wpss_normalize_google_drive_scopes( isset( $params['scope'] ) ? $params['scope'] : [] );
+
+    $signed_state  = wpss_parse_google_drive_oauth_state( $state );
+    $state_key     = ! empty( $signed_state['flow_id'] ) ? $signed_state['flow_id'] : $state;
+    $state_payload = wpss_get_google_calendar_state_payload( $state_key );
+    $user_id       = ! empty( $signed_state['user_id'] )
+        ? absint( $signed_state['user_id'] )
+        : ( ! empty( $state_payload['user_id'] ) ? absint( $state_payload['user_id'] ) : get_current_user_id() );
+    $return_url    = wpss_get_google_calendar_return_url(
+        $user_id,
+        ! empty( $signed_state['return_url'] )
+            ? (string) $signed_state['return_url']
+            : ( isset( $state_payload['return_url'] ) ? (string) $state_payload['return_url'] : '' )
+    );
+
+    wpss_google_drive_debug_log(
+        'Callback OAuth de Calendar recibido.',
+        [
+            'provider'        => 'google_calendar',
+            'user_id'         => $user_id,
+            'has_state'       => '' !== $state,
+            'has_code'        => '' !== $code,
+            'oauth_error'     => $oauth_error,
+            'return_url'      => $return_url,
+            'redirect_uri'    => wpss_get_google_drive_redirect_uri(),
+            'request_uri'     => isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '',
+            'state_mode'      => ! empty( $signed_state ) ? 'signed' : ( ! empty( $state_payload ) ? 'transient' : 'none' ),
+            'flow_id_prefix'  => ! empty( $signed_state['flow_id'] ) ? substr( (string) $signed_state['flow_id'], 0, 8 ) : '',
+            'callback_scopes' => $callback_scopes,
+        ]
+    );
+
+    if ( $user_id <= 0 ) {
+        wpss_google_drive_debug_log( 'Callback de Calendar sin usuario resoluble.', [ 'provider' => 'google_calendar' ] );
+        wp_die( esc_html__( 'No fue posible resolver el usuario para completar la conexión con Google Calendar.', 'wp-song-study' ) );
+    }
+
+    $expected_state   = (string) get_user_meta( $user_id, '_wpss_google_calendar_oauth_state', true );
+    $received_flow_id = ! empty( $signed_state['flow_id'] ) ? (string) $signed_state['flow_id'] : (string) $state;
+
+    if ( '' === $expected_state || '' === $received_flow_id || ! hash_equals( $expected_state, $received_flow_id ) ) {
+        delete_user_meta( $user_id, '_wpss_google_calendar_oauth_redirect_to' );
+        delete_user_meta( $user_id, '_wpss_google_calendar_oauth_state' );
+        wpss_delete_google_calendar_state_payload( $state_key );
+        wpss_set_google_calendar_last_error( $user_id, 'state', __( 'El state recibido en el callback no coincide con el esperado para Google Calendar.', 'wp-song-study' ) );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'state', $return_url ) );
+        exit;
+    }
+
+    delete_user_meta( $user_id, '_wpss_google_calendar_oauth_state' );
+    delete_user_meta( $user_id, '_wpss_google_calendar_oauth_redirect_to' );
+    wpss_delete_google_calendar_state_payload( $state_key );
+
+    if ( '' !== $oauth_error ) {
+        $message = sprintf(
+            /* translators: %s error de Google OAuth. */
+            __( 'Google devolvió un error OAuth para Calendar: %s', 'wp-song-study' ),
+            $oauth_error
+        );
+        wpss_set_google_calendar_last_error( $user_id, $oauth_error, $message );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'token', $return_url ) );
+        exit;
+    }
+
+    if ( '' === $code ) {
+        wpss_set_google_calendar_last_error( $user_id, 'code', __( 'Google no devolvió un código de autorización para Calendar.', 'wp-song-study' ) );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'code', $return_url ) );
+        exit;
+    }
+
+    $credentials = wpss_get_google_drive_oauth_credentials( $user_id );
+    if ( '' === $credentials['client_id'] || '' === $credentials['client_secret'] ) {
+        wpss_set_google_calendar_last_error( $user_id, 'config', __( 'Faltan credenciales OAuth válidas al volver del callback de Calendar.', 'wp-song-study' ) );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'config', $return_url ) );
+        exit;
+    }
+
+    $token_response = wp_remote_post(
+        'https://oauth2.googleapis.com/token',
+        [
+            'timeout' => 20,
+            'body'    => [
+                'code'          => $code,
+                'client_id'     => $credentials['client_id'],
+                'client_secret' => $credentials['client_secret'],
+                'redirect_uri'  => wpss_get_google_drive_redirect_uri(),
+                'grant_type'    => 'authorization_code',
+            ],
+        ]
+    );
+
+    if ( is_wp_error( $token_response ) ) {
+        wpss_set_google_calendar_last_error( $user_id, 'token_request', $token_response->get_error_message() );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'token', $return_url ) );
+        exit;
+    }
+
+    $token_body = json_decode( wp_remote_retrieve_body( $token_response ), true );
+    if ( ! is_array( $token_body ) || empty( $token_body['access_token'] ) ) {
+        $token_error_message = is_array( $token_body ) && ! empty( $token_body['error_description'] )
+            ? (string) $token_body['error_description']
+            : wp_remote_retrieve_body( $token_response );
+        wpss_set_google_calendar_last_error( $user_id, 'token_body', $token_error_message );
+        wp_safe_redirect( add_query_arg( 'wpss_calendar_error', 'token', $return_url ) );
+        exit;
+    }
+
+    $existing_config = wpss_get_google_calendar_user_config( $user_id );
+
+    $userinfo_response = wp_remote_get(
+        'https://www.googleapis.com/oauth2/v2/userinfo',
+        [
+            'timeout' => 20,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token_body['access_token'],
+            ],
+        ]
+    );
+
+    $userinfo = [];
+    if ( ! is_wp_error( $userinfo_response ) ) {
+        $userinfo = json_decode( wp_remote_retrieve_body( $userinfo_response ), true );
+        if ( ! is_array( $userinfo ) ) {
+            $userinfo = [];
+        }
+    }
+
+    $config = [
+        'provider'         => 'google_calendar',
+        'account_email'    => isset( $userinfo['email'] ) ? sanitize_email( $userinfo['email'] ) : '',
+        'access_token'     => sanitize_text_field( $token_body['access_token'] ),
+        'refresh_token'    => isset( $token_body['refresh_token'] ) ? sanitize_text_field( $token_body['refresh_token'] ) : '',
+        'token_expires_at' => time() + max( 60, absint( isset( $token_body['expires_in'] ) ? $token_body['expires_in'] : 3600 ) ),
+        'connected_at'     => ! empty( $existing_config['connected_at'] ) ? sanitize_text_field( $existing_config['connected_at'] ) : current_time( 'mysql' ),
+        'granted_scopes'   => wpss_normalize_google_drive_scopes(
+            ! empty( $token_body['scope'] ) ? $token_body['scope'] : $callback_scopes
+        ),
+    ];
+
+    if ( '' === $config['refresh_token'] && ! empty( $existing_config['refresh_token'] ) ) {
+        $config['refresh_token'] = $existing_config['refresh_token'];
+    }
+
+    wpss_set_google_calendar_user_config( $user_id, $config );
+    wpss_clear_google_calendar_last_error( $user_id );
+    wpss_google_drive_debug_log(
+        'Tokens de Calendar guardados tras callback.',
+        [
+            'provider'          => 'google_calendar',
+            'user_id'           => $user_id,
+            'has_access_token'  => ! empty( $config['access_token'] ),
+            'has_refresh_token' => ! empty( $config['refresh_token'] ),
+            'account_email'     => $config['account_email'],
+            'granted_scopes'    => $config['granted_scopes'],
+        ]
+    );
+
+    wp_safe_redirect( add_query_arg( 'wpss_calendar_status', 'connected', $return_url ) );
+    exit;
+}
+
+/**
+ * Enruta el callback OAuth al proveedor correcto.
+ *
+ * @param array $params Parámetros recibidos.
+ * @return void
+ */
+function wpss_dispatch_google_oauth_callback( array $params ) {
+    $state        = isset( $params['state'] ) ? sanitize_text_field( (string) $params['state'] ) : '';
+    $signed_state = wpss_parse_google_drive_oauth_state( $state );
+    $provider     = ! empty( $signed_state['provider'] ) ? sanitize_key( (string) $signed_state['provider'] ) : 'google_drive';
+
+    if ( 'google_calendar' === $provider ) {
+        wpss_complete_google_calendar_callback( $params );
+        return;
+    }
+
+    wpss_complete_google_drive_callback( $params );
+}
+
+/**
  * Atiende el callback OAuth legado vía admin-post.
  *
  * @return void
  */
 function wpss_handle_google_drive_callback() {
-    wpss_complete_google_drive_callback( wp_unslash( $_GET ) );
+    wpss_dispatch_google_oauth_callback( wp_unslash( $_GET ) );
 }
 
 /**
@@ -1550,7 +2153,7 @@ function wpss_maybe_handle_google_drive_query_callback() {
         ]
     );
 
-    wpss_complete_google_drive_callback( wp_unslash( $_GET ) );
+    wpss_dispatch_google_oauth_callback( wp_unslash( $_GET ) );
 }
 
 /**
@@ -1585,7 +2188,7 @@ function wpss_rest_google_drive_callback( WP_REST_Request $request ) {
         ]
     );
 
-    wpss_complete_google_drive_callback( $params );
+    wpss_dispatch_google_oauth_callback( $params );
 }
 
 /**
@@ -1640,6 +2243,62 @@ function wpss_get_google_drive_access_token( $user_id ) {
     $config['access_token']     = sanitize_text_field( $body['access_token'] );
     $config['token_expires_at'] = time() + max( 60, absint( isset( $body['expires_in'] ) ? $body['expires_in'] : 3600 ) );
     wpss_set_google_drive_user_config( $user_id, $config );
+
+    return (string) $config['access_token'];
+}
+
+/**
+ * Devuelve un access token válido para Google Calendar, refrescando si es necesario.
+ *
+ * @param int $user_id ID del usuario.
+ * @return string|WP_Error
+ */
+function wpss_get_google_calendar_access_token( $user_id ) {
+    $user_id     = absint( $user_id );
+    $config      = wpss_get_google_calendar_user_config( $user_id );
+    $credentials = wpss_get_google_drive_oauth_credentials( $user_id );
+
+    if ( empty( $config['access_token'] ) && empty( $config['refresh_token'] ) ) {
+        return new WP_Error( 'wpss_calendar_not_connected', __( 'El usuario no tiene Google Calendar conectado.', 'wp-song-study' ) );
+    }
+
+    if ( ! empty( $config['access_token'] ) && ! empty( $config['token_expires_at'] ) && (int) $config['token_expires_at'] > time() + 60 ) {
+        return (string) $config['access_token'];
+    }
+
+    if ( empty( $config['refresh_token'] ) ) {
+        return new WP_Error( 'wpss_calendar_refresh_missing', __( 'No hay refresh token disponible para Google Calendar.', 'wp-song-study' ) );
+    }
+
+    if ( '' === $credentials['client_id'] || '' === $credentials['client_secret'] ) {
+        return new WP_Error( 'wpss_calendar_config_missing', __( 'Faltan las credenciales OAuth de Google Calendar para este usuario.', 'wp-song-study' ) );
+    }
+
+    $response = wp_remote_post(
+        'https://oauth2.googleapis.com/token',
+        [
+            'timeout' => 20,
+            'body'    => [
+                'client_id'     => $credentials['client_id'],
+                'client_secret' => $credentials['client_secret'],
+                'refresh_token' => $config['refresh_token'],
+                'grant_type'    => 'refresh_token',
+            ],
+        ]
+    );
+
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( ! is_array( $body ) || empty( $body['access_token'] ) ) {
+        return new WP_Error( 'wpss_calendar_refresh_failed', __( 'No fue posible refrescar la sesión de Google Calendar.', 'wp-song-study' ) );
+    }
+
+    $config['access_token']     = sanitize_text_field( $body['access_token'] );
+    $config['token_expires_at'] = time() + max( 60, absint( isset( $body['expires_in'] ) ? $body['expires_in'] : 3600 ) );
+    wpss_set_google_calendar_user_config( $user_id, $config );
 
     return (string) $config['access_token'];
 }
@@ -3002,6 +3661,49 @@ function wpss_get_google_drive_status_payload( $user_id, $include_health = false
     }
 
     return $payload;
+}
+
+/**
+ * Genera payload de estado Calendar para la UI.
+ *
+ * @param int $user_id ID usuario.
+ * @return array
+ */
+function wpss_get_google_calendar_status_payload( $user_id ) {
+    $config             = wpss_get_google_calendar_user_config( $user_id );
+    $credentials        = wpss_get_google_drive_oauth_credentials( $user_id );
+    $last_error         = wpss_get_google_calendar_last_error( $user_id );
+    $required_scopes    = wpss_get_google_calendar_oauth_scopes();
+    $granted_scopes     = wpss_normalize_google_drive_scopes( $config['granted_scopes'] ?? [] );
+    $redirect_uri       = wpss_get_google_drive_redirect_uri();
+    $redirect_parts     = wp_parse_url( $redirect_uri );
+    $authorized_origin  = '';
+
+    if ( is_array( $redirect_parts ) && ! empty( $redirect_parts['scheme'] ) && ! empty( $redirect_parts['host'] ) ) {
+        $authorized_origin = $redirect_parts['scheme'] . '://' . $redirect_parts['host'];
+        if ( ! empty( $redirect_parts['port'] ) ) {
+            $authorized_origin .= ':' . absint( $redirect_parts['port'] );
+        }
+    }
+
+    return [
+        'configured'          => wpss_google_drive_is_configured_for_user( $user_id ),
+        'connected'           => ! empty( $config['connected'] ),
+        'has_access_token'    => ! empty( $config['has_access_token'] ),
+        'has_refresh_token'   => ! empty( $config['has_refresh_token'] ),
+        'account_email'       => $config['account_email'],
+        'connected_at'        => $config['connected_at'],
+        'credentials_source'  => $credentials['source'],
+        'has_user_client_id'  => '' !== wpss_get_google_drive_user_client_id( $user_id ),
+        'has_user_client_secret' => '' !== wpss_get_google_drive_user_client_secret( $user_id ),
+        'last_error'          => $last_error,
+        'granted_scopes'      => $granted_scopes,
+        'required_scopes'     => $required_scopes,
+        'has_required_scope'  => empty( array_diff( $required_scopes, $granted_scopes ) ),
+        'authorized_origin'   => $authorized_origin,
+        'connect_url'         => wpss_get_google_calendar_connect_url( $user_id ),
+        'redirect_uri'        => $redirect_uri,
+    ];
 }
 
 /**

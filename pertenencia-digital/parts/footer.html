@@ -1,10 +1,55 @@
-<!-- wp:group {"tagName":"footer","style":{"spacing":{"padding":{"top":"var:preset|spacing|60","bottom":"var:preset|spacing|60","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}},"color":{"background":"var:preset|color|oscuro","text":"var:preset|color|fondo"}},"layout":{"type":"constrained"}} -->
-<footer class="wp-block-group has-text-color has-background" style="background-color:var(--wp--preset--color--oscuro);color:var(--wp--preset--color--fondo);padding-top:var(--wp--preset--spacing--60);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--preset--spacing--60);padding-left:var(--wp--custom--layout--content-padding)">
-  <!-- wp:shortcode -->
-  [pd_legal_links]
-  <!-- /wp:shortcode -->
-  <!-- wp:paragraph {"align":"center","style":{"typography":{"fontSize":"0.95rem"}}} -->
-  <p class="has-text-align-center">© Pertenencia Digital. Tema de bloques inspirado en Laboratorio Digital.</p>
+<!-- wp:group {"tagName":"footer","className":"pd-site-footer","style":{"spacing":{"padding":{"top":"var:preset|spacing|70","bottom":"var:preset|spacing|60","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"},"blockGap":"var:preset|spacing|55"},"color":{"background":"var:preset|color|oscuro","text":"var:preset|color|fondo"}},"layout":{"type":"constrained"}} -->
+<footer class="wp-block-group pd-site-footer has-text-color has-background" style="background-color:var(--wp--preset--color--oscuro);color:var(--wp--preset--color--fondo);padding-top:var(--wp--preset--spacing--70);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--preset--spacing--60);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:group {"align":"wide","className":"pd-site-footer__grid","layout":{"type":"grid","minimumColumnWidth":"16rem"}} -->
+  <div class="wp-block-group alignwide pd-site-footer__grid">
+    <!-- wp:group {"className":"pd-site-footer__brand","layout":{"type":"constrained"}} -->
+    <div class="wp-block-group pd-site-footer__brand">
+      <!-- wp:site-title {"level":0,"style":{"elements":{"link":{"color":{"text":"var:preset|color|blanco"}}}},"textColor":"blanco","fontSize":"large"} /-->
+      <!-- wp:site-tagline {"style":{"color":{"text":"var:preset|color|fondo"},"typography":{"fontSize":"0.95rem"}}} /-->
+      <!-- wp:paragraph {"textColor":"texto-suave"} -->
+      <p class="has-texto-suave-color has-text-color">Un espacio para articular música, cultura digital y herramientas web desde una identidad propia, clara y viva.</p>
+      <!-- /wp:paragraph -->
+    </div>
+    <!-- /wp:group -->
+
+    <!-- wp:group {"className":"pd-site-footer__links","layout":{"type":"constrained"}} -->
+    <div class="wp-block-group pd-site-footer__links">
+      <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow","textColor":"resalte-header"} -->
+      <p class="pd-eyebrow has-resalte-header-color has-text-color has-x-small-font-size">Rutas principales</p>
+      <!-- /wp:paragraph -->
+      <!-- wp:paragraph -->
+      <p><a href="/musica/">Música</a></p>
+      <!-- /wp:paragraph -->
+      <!-- wp:paragraph -->
+      <p><a href="/musica/ensayos/">Ensayos</a></p>
+      <!-- /wp:paragraph -->
+      <!-- wp:paragraph -->
+      <p><a href="/tecnologias-web/">Tecnologías y web</a></p>
+      <!-- /wp:paragraph -->
+      <!-- wp:paragraph -->
+      <p><a href="/acceso/">Acceso</a></p>
+      <!-- /wp:paragraph -->
+    </div>
+    <!-- /wp:group -->
+
+    <!-- wp:group {"className":"pd-site-footer__legal","layout":{"type":"constrained"}} -->
+    <div class="wp-block-group pd-site-footer__legal">
+      <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow","textColor":"resalte-header"} -->
+      <p class="pd-eyebrow has-resalte-header-color has-text-color has-x-small-font-size">Legal y contexto</p>
+      <!-- /wp:paragraph -->
+      <!-- wp:paragraph {"textColor":"texto-suave"} -->
+      <p class="has-texto-suave-color has-text-color">Las plantillas del tema comparten una misma dirección editorial para que el recorrido completo del sitio se sienta coherente.</p>
+      <!-- /wp:paragraph -->
+      <!-- wp:shortcode -->
+      [pd_legal_links]
+      <!-- /wp:shortcode -->
+    </div>
+    <!-- /wp:group -->
+  </div>
+  <!-- /wp:group -->
+
+  <!-- wp:paragraph {"align":"center","className":"pd-site-footer__meta","style":{"typography":{"fontSize":"0.92rem"}},"textColor":"texto-suave"} -->
+  <p class="has-text-align-center pd-site-footer__meta has-texto-suave-color has-text-color" style="font-size:0.92rem">© Pertenencia Digital. Tema de bloques con lenguaje editorial propio para música, aprendizaje y cultura web.</p>
   <!-- /wp:paragraph -->
 </footer>
 <!-- /wp:group -->

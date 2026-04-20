@@ -504,6 +504,60 @@ function wpss_register_rest_routes() {
 
     register_rest_route(
         'wpss/v1',
+        '/proyecto/(?P<id>\d+)/ensayos',
+        [
+            [
+                'methods'             => WP_REST_Server::READABLE,
+                'callback'            => 'wpss_rest_get_project_rehearsals',
+                'permission_callback' => 'wpssb_rest_verify_project_rehearsal_permissions',
+                'args'                => [
+                    'id' => [
+                        'description'       => __( 'ID del proyecto.', 'wp-song-study' ),
+                        'type'              => 'integer',
+                        'required'          => true,
+                        'sanitize_callback' => 'absint',
+                        'validate_callback' => 'wpss_validate_positive_id',
+                    ],
+                ],
+            ],
+            [
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => 'wpss_rest_save_project_rehearsals',
+                'permission_callback' => 'wpssb_rest_verify_project_rehearsal_permissions',
+                'args'                => [
+                    'id' => [
+                        'description'       => __( 'ID del proyecto.', 'wp-song-study' ),
+                        'type'              => 'integer',
+                        'required'          => true,
+                        'sanitize_callback' => 'absint',
+                        'validate_callback' => 'wpss_validate_positive_id',
+                    ],
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/proyecto/(?P<id>\d+)/ensayos/google-calendar',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_sync_project_rehearsal_google_calendar',
+            'permission_callback' => 'wpssb_rest_verify_project_rehearsal_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID del proyecto.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
         '/repertorio-asignaciones',
         [
             'methods'             => WP_REST_Server::CREATABLE,
@@ -719,6 +773,35 @@ function wpss_rest_verify_manage_permissions( WP_REST_Request $request ) {
 
 function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     return wpss_rest_verify_manage_permissions( $request );
+}
+
+/**
+ * Valida nonce y pertenencia para la herramienta de ensayos por proyecto.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return bool|WP_Error
+ */
+function wpssb_rest_verify_project_rehearsal_permissions( WP_REST_Request $request ) {
+    $wp_nonce   = $request->get_header( 'x-wp-nonce' );
+    $wpss_nonce = $request->get_header( 'x-wpss-nonce' );
+
+    $wp_nonce_valid   = $wp_nonce && wp_verify_nonce( $wp_nonce, 'wp_rest' );
+    $wpss_nonce_valid = $wpss_nonce && wp_verify_nonce( $wpss_nonce, 'wpss' );
+
+    if ( ! $wp_nonce_valid && ! $wpss_nonce_valid ) {
+        return new WP_Error( 'wpss_rest_invalid_nonce', __( 'Nonce inválido o ausente.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    $project_id = absint( $request['id'] ?? 0 );
+    if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
+        return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
+    }
+
+    if ( ! function_exists( 'wpssb_user_can_manage_project_rehearsals' ) || ! wpssb_user_can_manage_project_rehearsals( $project_id ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos para administrar los ensayos de este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    return true;
 }
 
 /**
@@ -1137,7 +1220,7 @@ function wpss_rest_get_proyectos( WP_REST_Request $request ) { // phpcs:ignore G
         $items[] = [
             'id'          => (int) $post->ID,
             'titulo'      => sanitize_text_field( get_the_title( $post->ID ) ),
-            'colaboradores' => function_exists( 'wpssb_get_project_collaborators' )
+            'colaboradores' => function_exists( 'wpssb_get_project_rehearsal_members' )
                 ? array_map(
                     static function( $user ) {
                         return [
@@ -1145,7 +1228,7 @@ function wpss_rest_get_proyectos( WP_REST_Request $request ) { // phpcs:ignore G
                             'nombre' => sanitize_text_field( $user->display_name ),
                         ];
                     },
-                    wpssb_get_project_collaborators( $post->ID )
+                    wpssb_get_project_rehearsal_members( $post->ID )
                 )
                 : [],
         ];
@@ -1154,6 +1237,115 @@ function wpss_rest_get_proyectos( WP_REST_Request $request ) { // phpcs:ignore G
     wp_reset_postdata();
 
     return rest_ensure_response( $items );
+}
+
+/**
+ * Devuelve la herramienta de ensayos de un proyecto.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_get_project_rehearsals( WP_REST_Request $request ) {
+    $project_id = absint( $request['id'] ?? 0 );
+
+    if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
+        return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
+    }
+
+    if ( ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'La herramienta de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    return rest_ensure_response( wpssb_get_project_rehearsal_payload( $project_id ) );
+}
+
+/**
+ * Guarda la herramienta de ensayos de un proyecto.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
+    $project_id = absint( $request['id'] ?? 0 );
+
+    if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
+        return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
+    }
+
+    if ( ! current_user_can( 'edit_post', $project_id ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes editar este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    if ( ! function_exists( 'wpssb_update_project_rehearsal_meta' ) || ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'La herramienta de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    $params = $request->get_json_params();
+    if ( ! is_array( $params ) ) {
+        $params = [];
+    }
+
+    wpssb_update_project_rehearsal_meta(
+        $project_id,
+        [
+            'project_id'    => $project_id,
+            'availability'  => isset( $params['availability'] ) && is_array( $params['availability'] ) ? $params['availability'] : [],
+            'sessions'      => isset( $params['sessions'] ) && is_array( $params['sessions'] ) ? $params['sessions'] : [],
+        ]
+    );
+
+    $auto_sync_results = function_exists( 'wpssb_auto_sync_project_rehearsal_google_calendar' )
+        ? wpssb_auto_sync_project_rehearsal_google_calendar( $project_id )
+        : [];
+    $payload           = wpssb_get_project_rehearsal_payload( $project_id );
+
+    if ( ! empty( $auto_sync_results ) ) {
+        $payload['google_calendar_sync'] = $auto_sync_results;
+    }
+
+    return rest_ensure_response( $payload );
+}
+
+/**
+ * Sincroniza una sesión de ensayo con Google Calendar.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_sync_project_rehearsal_google_calendar( WP_REST_Request $request ) {
+    $project_id = absint( $request['id'] ?? 0 );
+
+    if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
+        return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
+    }
+
+    if ( ! current_user_can( 'edit_post', $project_id ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes editar este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    if ( ! function_exists( 'wpssb_sync_project_rehearsal_google_calendar' ) || ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'La integración con Google Calendar no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    $params     = $request->get_json_params();
+    $session_id = is_array( $params ) ? sanitize_key( (string) ( $params['session_id'] ?? '' ) ) : '';
+
+    if ( '' === $session_id ) {
+        return new WP_Error( 'wpss_rehearsal_session_missing', __( 'Indica qué ensayo quieres sincronizar con Google Calendar.', 'wp-song-study' ), [ 'status' => 400 ] );
+    }
+
+    $result = wpssb_sync_project_rehearsal_google_calendar( $project_id, $session_id );
+    if ( is_wp_error( $result ) ) {
+        return $result;
+    }
+
+    return rest_ensure_response(
+        [
+            'message' => sanitize_text_field( (string) ( $result['message'] ?? '' ) ),
+            'event'   => isset( $result['event'] ) && is_array( $result['event'] ) ? $result['event'] : [],
+            'payload' => wpssb_get_project_rehearsal_payload( $project_id ),
+        ]
+    );
 }
 
 /**

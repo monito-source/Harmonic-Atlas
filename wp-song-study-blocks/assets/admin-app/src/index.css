@@ -259,6 +259,420 @@
   font-size: 0.62rem;
 }
 
+.wpss-project-rehearsals__editor {
+  background:
+    radial-gradient(circle at top right, rgba(254, 240, 138, 0.22), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.wpss-project-rehearsals__stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.wpss-project-rehearsals__hero,
+.wpss-project-rehearsals__panel,
+.wpss-project-rehearsals__metric,
+.wpss-project-rehearsals__recommendation,
+.wpss-project-rehearsals__session-card,
+.wpss-project-rehearsals__leaderboard-item {
+  border: 1px solid #dbe3ef;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+}
+
+.wpss-project-rehearsals__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.wpss-project-rehearsals__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.wpss-project-rehearsals__hero h1 {
+  margin: 0;
+  font-size: 1.55rem;
+}
+
+.wpss-project-rehearsals__hero p {
+  margin: 0.5rem 0 0;
+  color: #475569;
+}
+
+.wpss-project-rehearsals__hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: start;
+  justify-content: end;
+}
+
+.wpss-project-rehearsals__metrics {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wpss-project-rehearsals__metric {
+  display: grid;
+  gap: 0.3rem;
+  padding: 1rem;
+}
+
+.wpss-project-rehearsals__metric strong {
+  font-size: 1.45rem;
+  color: #0f172a;
+}
+
+.wpss-project-rehearsals__metric span {
+  color: #475569;
+}
+
+.wpss-project-rehearsals__panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+}
+
+.wpss-project-rehearsals__panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.wpss-project-rehearsals__panel-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.wpss-project-rehearsals__panel-header p {
+  margin: 0.35rem 0 0;
+  color: #475569;
+}
+
+.wpss-project-rehearsals__availability-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.wpss-project-rehearsals__card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.wpss-project-rehearsals__card-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wpss-project-rehearsals__availability-section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.wpss-project-rehearsals__subheader,
+.wpss-project-rehearsals__google-status,
+.wpss-project-rehearsals__google-status-actions,
+.wpss-project-rehearsals__consensus-actions {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wpss-project-rehearsals__subheader {
+  flex-wrap: wrap;
+}
+
+.wpss-project-rehearsals__day-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.wpss-project-rehearsals__day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
+.wpss-project-rehearsals__day-chip input {
+  margin: 0;
+}
+
+.wpss-project-rehearsals__slot-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.wpss-project-rehearsals__slot-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.wpss-project-rehearsals__google-status {
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.wpss-project-rehearsals__google-status.is-ready {
+  border-color: #86efac;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.wpss-project-rehearsals__google-status.is-warning {
+  border-color: #fcd34d;
+  background: linear-gradient(180deg, #fffbea 0%, #ffffff 100%);
+}
+
+.wpss-project-rehearsals__google-status p,
+.wpss-project-rehearsals__google-status small {
+  margin: 0.25rem 0 0;
+  color: #475569;
+}
+
+.wpss-project-rehearsals__google-status-actions,
+.wpss-project-rehearsals__consensus-actions {
+  flex-wrap: wrap;
+}
+
+.wpss-project-rehearsals__google-diagnostics {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.wpss-project-rehearsals__google-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.wpss-project-rehearsals__google-card strong {
+  color: #0f172a;
+}
+
+.wpss-project-rehearsals__google-card span {
+  color: #475569;
+  word-break: break-word;
+}
+
+.wpss-project-rehearsals__recommendations,
+.wpss-project-rehearsals__leaderboard {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.wpss-project-rehearsals__recommendation,
+.wpss-project-rehearsals__leaderboard-item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+}
+
+.wpss-project-rehearsals__recommendation strong,
+.wpss-project-rehearsals__leaderboard-item strong {
+  color: #0f172a;
+}
+
+.wpss-project-rehearsals__recommendation span,
+.wpss-project-rehearsals__leaderboard-item span {
+  color: #334155;
+}
+
+.wpss-project-rehearsals__recommendation small {
+  color: #64748b;
+}
+
+.wpss-project-rehearsals__sessions-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.wpss-project-rehearsals__sessions-list {
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+}
+
+.wpss-project-rehearsals__session-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem;
+  text-align: left;
+  transition: border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.wpss-project-rehearsals__session-card:hover,
+.wpss-project-rehearsals__session-card:focus-visible {
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.wpss-project-rehearsals__session-card.is-active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+}
+
+.wpss-project-rehearsals__session-card span,
+.wpss-project-rehearsals__session-card small {
+  color: #475569;
+}
+
+.wpss-project-rehearsals__session-editor {
+  min-width: 0;
+}
+
+.wpss-project-rehearsals__session-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.wpss-project-rehearsals__session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: end;
+}
+
+.wpss-project-rehearsals__field-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wpss-project-rehearsals__field-grid--double {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wpss-project-rehearsals__consensus-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+}
+
+.wpss-project-rehearsals__consensus-banner strong {
+  color: #1d4ed8;
+}
+
+.wpss-project-rehearsals__consensus-banner span {
+  color: #475569;
+}
+
+.wpss-project-rehearsals__attendance {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.wpss-project-rehearsals__attendance-header {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.wpss-project-rehearsals__attendance-header span {
+  color: #475569;
+}
+
+.wpss-project-rehearsals__attendance-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.wpss-project-rehearsals__attendance-row {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: minmax(0, 180px) minmax(0, 160px) minmax(0, 1fr);
+  align-items: center;
+}
+
+.wpss-project-rehearsals__status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+@media (max-width: 980px) {
+  .wpss-project-rehearsals__hero,
+  .wpss-project-rehearsals__sessions-layout,
+  .wpss-project-rehearsals__field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wpss-project-rehearsals__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wpss-project-rehearsals__slot-row,
+  .wpss-project-rehearsals__attendance-row {
+    grid-template-columns: 1fr;
+  }
+
+  .wpss-project-rehearsals__session-actions,
+  .wpss-project-rehearsals__hero-actions,
+  .wpss-project-rehearsals__google-status,
+  .wpss-project-rehearsals__subheader,
+  .wpss-project-rehearsals__consensus-banner,
+  .wpss-project-rehearsals__consensus-actions {
+    justify-content: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .wpss-project-rehearsals__metrics,
+  .wpss-project-rehearsals__recommendations,
+  .wpss-project-rehearsals__leaderboard {
+    grid-template-columns: 1fr;
+  }
+}
+
 .wpss-import-export {
   display: grid;
   gap: 1.25rem;

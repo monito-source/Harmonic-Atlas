@@ -25,6 +25,7 @@ function wpssb_register_blocks() {
         'collaborator-gallery'    => 'wpssb_render_block_collaborator_gallery',
         'collaborator-contact'    => 'wpssb_render_block_collaborator_contact',
         'current-membership'      => 'wpssb_render_block_current_membership',
+        'current-rehearsals'      => 'wpssb_render_block_current_rehearsals',
         'collaborator-projects'   => 'wpssb_render_block_collaborator_projects',
     ];
 

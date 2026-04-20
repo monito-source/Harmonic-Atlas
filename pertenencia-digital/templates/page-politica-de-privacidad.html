@@ -1,15 +1,19 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
-  <!-- wp:group {"align":"wide","style":{"spacing":{"blockGap":"1.25rem"}},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-group alignwide">
-    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","style":{"typography":{"textTransform":"uppercase","letterSpacing":"0.08em"}}} -->
-    <p class="has-azul-principal-color has-text-color has-x-small-font-size" style="letter-spacing:0.08em;text-transform:uppercase">Información legal</p>
+<!-- wp:group {"tagName":"main","className":"pd-editorial-shell pd-editorial-shell--legal","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"},"blockGap":"var:preset|spacing|55"}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-editorial-shell pd-editorial-shell--legal" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:group {"align":"wide","className":"pd-editorial-hero","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-hero">
+    <!-- wp:paragraph {"textColor":"azul-principal","fontSize":"x-small","className":"pd-eyebrow"} -->
+    <p class="pd-eyebrow has-azul-principal-color has-text-color has-x-small-font-size">Información legal</p>
     <!-- /wp:paragraph -->
     <!-- wp:post-title {"level":1,"fontSize":"x-large"} /-->
-    <!-- wp:paragraph -->
-    <p>Consulta aquí cómo se recopilan, resguardan y utilizan los datos personales dentro de este espacio digital.</p>
+    <!-- wp:paragraph {"fontSize":"medium"} -->
+    <p class="has-medium-font-size">Consulta aquí cómo se recopilan, resguardan y utilizan los datos personales dentro de este espacio digital.</p>
     <!-- /wp:paragraph -->
+  </div>
+  <!-- /wp:group -->
+  <!-- wp:group {"align":"wide","className":"pd-editorial-surface pd-editorial-surface--body pd-editorial-surface--legal","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-surface pd-editorial-surface--body pd-editorial-surface--legal">
     <!-- wp:post-content {"layout":{"type":"constrained"}} /-->
   </div>
   <!-- /wp:group -->

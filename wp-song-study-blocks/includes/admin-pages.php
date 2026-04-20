@@ -77,6 +77,15 @@ function wpss_register_admin_pages() {
         'wpss_render_groups_page'
     );
 
+    $project_rehearsals_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Ensayos por proyecto', 'wp-song-study' ),
+        __( 'Ensayos por proyecto', 'wp-song-study' ),
+        $capability,
+        'wpss-ensayos-proyecto',
+        'wpss_render_project_rehearsals_page'
+    );
+
     $drive_hook = add_submenu_page(
         $parent_slug,
         __( 'Mi Drive', 'wp-song-study' ),
@@ -104,7 +113,7 @@ function wpss_register_admin_pages() {
         'wpss_render_google_drive_global_settings_page'
     );
 
-    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $drive_hook, $import_export_hook ];
+    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $project_rehearsals_hook, $drive_hook, $import_export_hook ];
 
     add_submenu_page(
         $parent_slug,
@@ -142,6 +151,13 @@ function wpss_render_chords_page() {
  */
 function wpss_render_groups_page() {
     echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="groups"></div>';
+}
+
+/**
+ * Renderiza el contenedor del SPA para administrar ensayos por proyecto.
+ */
+function wpss_render_project_rehearsals_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="project-rehearsals"></div>';
 }
 
 /**
@@ -251,7 +267,7 @@ function wpss_render_google_drive_global_settings_page() {
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Credenciales globales de Google Drive', 'wp-song-study' ) . '</h1>';
-    echo '<p>' . esc_html__( 'Estas credenciales funcionan como respaldo global. Si un usuario configura su propio Client ID y Client Secret en su perfil, esas credenciales personales tienen prioridad.', 'wp-song-study' ) . '</p>';
+    echo '<p>' . esc_html__( 'Estas credenciales funcionan como respaldo global. Si un usuario configura su propio Client ID y Client Secret en su perfil, esas credenciales personales tienen prioridad. Drive y Calendar pueden reutilizar este mismo cliente OAuth, pero cada integración mantiene su propio token y sus propios scopes.', 'wp-song-study' ) . '</p>';
     echo '<form method="post" action="options.php">';
     settings_fields( 'wpss_settings' );
     echo '<table class="form-table" role="presentation">';
@@ -397,6 +413,7 @@ function wpss_get_admin_localized_data() {
         'adminUrls'    => [
             'drivePage'        => admin_url( 'admin.php?page=wpss-mi-drive' ),
             'groupsPage'       => admin_url( 'admin.php?page=wpss-agrupaciones' ),
+            'projectRehearsalsPage' => admin_url( 'admin.php?page=wpss-ensayos-proyecto' ),
             'importExportPage' => admin_url( 'admin.php?page=wpss-import-export' ),
             'profilePage'      => admin_url( 'profile.php' ),
         ],

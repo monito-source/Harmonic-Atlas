@@ -1,25 +1,42 @@
 <!-- wp:template-part {"slug":"header","tagName":"header"} /-->
-<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"}}},"layout":{"type":"constrained"}} -->
-<main class="wp-block-group" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
-  <!-- wp:query-title {"type":"archive","showPrefix":false} /-->
-  <!-- wp:term-description /-->
-  <!-- wp:query {"queryId":1,"query":{"inherit":true},"layout":{"type":"constrained"}} -->
-  <div class="wp-block-query">
-    <!-- wp:post-template -->
-    <!-- wp:group {"style":{"spacing":{"padding":{"bottom":"2rem"}},"border":{"bottom":{"color":"var:preset|color|borde-suave","width":"1px"}}},"layout":{"type":"constrained"}} -->
-    <div class="wp-block-group" style="border-bottom-color:var(--wp--preset--color--borde-suave);border-bottom-width:1px;padding-bottom:2rem">
-      <!-- wp:post-title {"isLink":true} /-->
-      <!-- wp:post-excerpt {"moreText":"Leer más"} /-->
-    </div>
-    <!-- /wp:group -->
-    <!-- /wp:post-template -->
-    <!-- wp:query-no-results -->
-    <!-- wp:paragraph -->
-    <p>No hay contenido aún.</p>
+<!-- wp:group {"tagName":"main","className":"pd-editorial-shell pd-editorial-shell--query","style":{"spacing":{"padding":{"top":"var(--wp--custom--layout--section-padding)","bottom":"var(--wp--custom--layout--section-padding)","left":"var(--wp--custom--layout--content-padding)","right":"var(--wp--custom--layout--content-padding)"},"blockGap":"var:preset|spacing|55"}},"layout":{"type":"constrained"}} -->
+<main class="wp-block-group pd-editorial-shell pd-editorial-shell--query" style="padding-top:var(--wp--custom--layout--section-padding);padding-right:var(--wp--custom--layout--content-padding);padding-bottom:var(--wp--custom--layout--section-padding);padding-left:var(--wp--custom--layout--content-padding)">
+  <!-- wp:group {"align":"wide","className":"pd-editorial-hero","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-hero">
+    <!-- wp:paragraph {"fontSize":"x-small","className":"pd-eyebrow","textColor":"azul-principal"} -->
+    <p class="pd-eyebrow has-azul-principal-color has-text-color has-x-small-font-size">Archivo editorial</p>
     <!-- /wp:paragraph -->
-    <!-- /wp:query-no-results -->
+    <!-- wp:query-title {"type":"archive","showPrefix":false,"fontSize":"x-large"} /-->
+    <!-- wp:term-description /-->
   </div>
-  <!-- /wp:query -->
+  <!-- /wp:group -->
+
+  <!-- wp:group {"align":"wide","className":"pd-editorial-surface pd-editorial-surface--listing","layout":{"type":"constrained"}} -->
+  <div class="wp-block-group alignwide pd-editorial-surface pd-editorial-surface--listing">
+    <!-- wp:query {"queryId":1,"query":{"inherit":true},"className":"pd-editorial-query","layout":{"type":"constrained"}} -->
+    <div class="wp-block-query pd-editorial-query">
+      <!-- wp:post-template -->
+      <!-- wp:group {"className":"pd-editorial-card pd-editorial-card--listing","layout":{"type":"constrained"}} -->
+      <div class="wp-block-group pd-editorial-card pd-editorial-card--listing">
+        <!-- wp:post-title {"isLink":true,"fontSize":"large"} /-->
+        <!-- wp:post-excerpt {"moreText":"Leer más"} /-->
+      </div>
+      <!-- /wp:group -->
+      <!-- /wp:post-template -->
+      <!-- wp:query-no-results -->
+      <!-- wp:paragraph {"className":"pd-editorial-empty"} -->
+      <p class="pd-editorial-empty">No hay contenido aún.</p>
+      <!-- /wp:paragraph -->
+      <!-- /wp:query-no-results -->
+      <!-- wp:query-pagination {"layout":{"type":"flex","justifyContent":"space-between"}} -->
+      <!-- wp:query-pagination-previous /-->
+      <!-- wp:query-pagination-numbers /-->
+      <!-- wp:query-pagination-next /-->
+      <!-- /wp:query-pagination -->
+    </div>
+    <!-- /wp:query -->
+  </div>
+  <!-- /wp:group -->
 </main>
 <!-- /wp:group -->
 <!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->
