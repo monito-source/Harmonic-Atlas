@@ -1568,6 +1568,392 @@
     gap: 10px;
 }
 
+.wpss-youtube-linker,
+.wpss-section-youtube-fields,
+.wpss-youtube-player {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.9rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.wpss-youtube-linker__header,
+.wpss-section-youtube-fields__title,
+.wpss-youtube-player__controls,
+.wpss-youtube-player__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.wpss-youtube-linker__hint,
+.wpss-section-youtube-fields__title span,
+.wpss-youtube-player__controls span {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.wpss-youtube-linker input,
+.wpss-section-youtube-fields input {
+    width: 100%;
+}
+
+.wpss-section-youtube-fields {
+    grid-template-columns: minmax(0, 1.4fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr);
+    align-items: end;
+}
+
+.wpss-youtube-player {
+    margin-top: 0.85rem;
+}
+
+.wpss-youtube-player__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #0f172a;
+}
+
+.wpss-youtube-player__frame iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.wpss-youtube-player__controls > div:first-child {
+    display: grid;
+    gap: 0.2rem;
+}
+
+.wpss-youtube-player__loop {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.wpss-youtube-player--floating,
+.wpss-youtube-mini {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 10020;
+    width: min(360px, calc(100vw - 36px));
+    padding: 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+}
+
+.wpss-youtube-player--floating .wpss-youtube-player__controls {
+    gap: 0.45rem;
+}
+
+.wpss-youtube-player--floating .wpss-youtube-player__controls strong,
+.wpss-youtube-mini__bar span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wpss-youtube-player--floating .wpss-youtube-player__actions {
+    justify-content: flex-start;
+}
+
+.wpss-youtube-player--floating .wpss-youtube-player__actions .button {
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+.wpss-youtube-mini {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.wpss-youtube-mini--inline {
+    position: static;
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+}
+
+.wpss-youtube-mini__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 9px;
+    background: #0f172a;
+}
+
+.wpss-youtube-mini__frame iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.wpss-youtube-mini__bar {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    justify-content: space-between;
+    color: #475569;
+    font-size: 0.82rem;
+}
+
+.wpss-youtube-mini__bar strong {
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+}
+
+.wpss-youtube-mini__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.wpss-youtube-mini__actions .button {
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+.wpss-youtube-sync {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.wpss-youtube-sync__target,
+.wpss-youtube-sync__timeline {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.wpss-youtube-sync__target-head,
+.wpss-youtube-sync__timeline-head,
+.wpss-youtube-sync__actions,
+.wpss-youtube-sync__marker-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.wpss-youtube-sync__target-head span,
+.wpss-youtube-sync__timeline-head span {
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.wpss-youtube-sync__fields {
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wpss-youtube-sync__fields label {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.wpss-youtube-sync__fields input {
+    width: 100%;
+}
+
+.wpss-youtube-sync__track {
+    position: relative;
+    height: 2.3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #eef2ff 0%, #f8fafc 100%);
+}
+
+.wpss-youtube-sync__track.is-disabled {
+    opacity: 0.55;
+}
+
+.wpss-youtube-sync__marker {
+    position: absolute;
+    top: 50%;
+    width: 1.55rem;
+    height: 1.55rem;
+    padding: 0;
+    border: 2px solid #2563eb;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #1d4ed8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+}
+
+.wpss-youtube-sync__marker:active {
+    cursor: grabbing;
+}
+
+.wpss-youtube-sync__marker.is-unset {
+    border-style: dashed;
+    color: #64748b;
+}
+
+.wpss-youtube-sync__marker-list {
+    justify-content: flex-start;
+}
+
+.wpss-youtube-structure-sync {
+    display: grid;
+    gap: 1rem;
+}
+
+.wpss-youtube-structure-sync > header {
+    align-items: end;
+}
+
+.wpss-youtube-structure-sync__layout {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+    align-items: start;
+}
+
+.wpss-youtube-structure-sync__player {
+    position: sticky;
+    top: calc(var(--wp-admin--admin-bar--height, 0px) + 1rem);
+    display: grid;
+    gap: 0.65rem;
+}
+
+.wpss-youtube-structure-sync__status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.wpss-youtube-structure-sync__sections {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.wpss-youtube-structure-sync__section {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.8rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.wpss-youtube-structure-sync__section.is-active {
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.wpss-youtube-structure-sync__section-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: center;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #0f172a;
+    text-align: left;
+}
+
+.wpss-youtube-structure-sync__section-head span,
+.wpss-youtube-structure-sync__section-head em {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.8rem;
+    min-height: 1.8rem;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #1d4ed8;
+    font-size: 0.78rem;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.wpss-youtube-structure-sync__section-head strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wpss-youtube-structure-sync__notes {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.wpss-youtube-structure-sync .wpss-youtube-sync__target {
+    padding: 0;
+    border: 0;
+}
+
+.wpss-youtube-structure-sync .wpss-youtube-sync__target-head {
+    display: none;
+}
+
+@media (max-width: 760px) {
+    .wpss-section-youtube-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .wpss-youtube-player__actions {
+        justify-content: flex-start;
+    }
+
+    .wpss-youtube-player--floating,
+    .wpss-youtube-mini {
+        right: 8px;
+        bottom: 8px;
+        width: calc(100vw - 16px);
+    }
+
+    .wpss-youtube-sync__fields {
+        grid-template-columns: 1fr;
+    }
+
+    .wpss-youtube-structure-sync__layout {
+        grid-template-columns: 1fr;
+    }
+
+    .wpss-youtube-structure-sync__player {
+        position: static;
+    }
+}
+
 .wpss-section-preview__tool-stack > .button,
 .wpss-section-preview__tool-stack > .wpss-reading-media,
 .wpss-section-preview__tool-stack > .wpss-preview-media,
@@ -3178,13 +3564,14 @@
 .wpss-reading__section-nav-repeat {
     display: inline-flex;
     align-items: center;
-    font-size: 11px;
+    font-size: 0.82rem;
     line-height: 1;
-    padding: 2px 6px;
+    padding: 0.28rem 0.55rem;
     border-radius: 999px;
-    background: rgba(34, 113, 177, 0.15);
-    color: #1d4f73;
-    font-weight: 600;
+    background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e3a8a;
+    font-weight: 800;
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
 }
 
 .wpss-reading__group-controls .button {
@@ -3436,10 +3823,18 @@
 }
 
 .wpss-reading__repeat {
-    margin-left: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #50575e;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 10px;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e3a8a;
+    font-size: 0.95rem;
+    font-weight: 850;
+    line-height: 1;
+    vertical-align: middle;
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.22);
 }
 
 .wpss-reading__verses li.is-playing .wpss-reading__line,
@@ -4317,6 +4712,11 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     color: var(--wpssb-heading-color);
 }
 
+.wpssb-interface .wpss-public-reader .wpss-reading__repeat,
+.wpssb-interface .wpss-public-reader .wpss-reading__section-nav-repeat {
+    color: #1e3a8a;
+}
+
 .wpssb-interface .wpss-public-reader .button.button-primary,
 .wpssb-interface .wpss-public-reader .button:not(.button-secondary):not(.button-link):not(.button-danger) {
     background: var(--wpssb-button-bg);
@@ -4397,7 +4797,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
 }
 
 .wpss-public-reader__workarea > * + * {
@@ -4416,7 +4816,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
     overflow-x: visible;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
-    overscroll-behavior-y: contain;
+    overscroll-behavior-y: auto;
 }
 
 .wpss-public-reader__reading .wpss-panel {
@@ -4739,7 +5139,7 @@ body.wpss-reading-global-width #wpss-cancion-app .wpss-reading__section-nav {
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
-        overscroll-behavior-y: contain;
+        overscroll-behavior-y: auto;
     }
 
     .wpss-public-reader__songs {

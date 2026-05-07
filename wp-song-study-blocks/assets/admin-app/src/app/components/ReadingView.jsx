@@ -9,6 +9,10 @@ import {
   isHoldChordToken,
   getDefaultSectionName,
   getValidSegmentIndex,
+  normalizeYouTubeSeconds,
+  formatSecondsAsTimecode,
+  extractYouTubeVideoId,
+  getYouTubeEmbedUrl,
   transposePitchToken,
   transposeChordSymbol,
   stripHtml,
@@ -66,6 +70,12 @@ const READING_ZOOM_MAX = 180
 const READING_ZOOM_STEP = 5
 const LOCAL_READING_TOOLBAR_STORAGE_PREFIX = 'wpss-reading-toolbar:'
 const SONG_REFRESH_INTERVAL_MS = 30000
+const READING_SECTION_NAV_KEYS = {
+  ArrowDown: 1,
+  ArrowRight: 1,
+  ArrowUp: -1,
+  ArrowLeft: -1,
+}
 
 const DEFAULT_LOCAL_READING_TOOLBAR_PREFERENCES = {
   repeatsEnabled: true,
@@ -106,6 +116,27 @@ const getTouchDistance = (touches) => {
   const deltaX = second.clientX - first.clientX
   const deltaY = second.clientY - first.clientY
   return Math.hypot(deltaX, deltaY)
+}
+
+const shouldIgnoreReadingSectionShortcut = (event) => {
+  if (
+    event.defaultPrevented
+    || event.altKey
+    || event.ctrlKey
+    || event.metaKey
+    || event.shiftKey
+  ) {
+    return true
+  }
+
+  const target = event.target
+  if (!target || typeof target.closest !== 'function') {
+    return false
+  }
+
+  return !!target.closest(
+    'input, textarea, select, audio, video, [contenteditable=""], [contenteditable="true"], [role="textbox"], [role="slider"], [role="spinbutton"]',
+  )
 }
 
 const normalizeProjectId = (value) => {
@@ -208,6 +239,144 @@ const buildRehearsalTitle = (target, projectTitle = '') => {
         ? `fragmento ${Number(target?.segment_index) + 1}`
         : 'canción completa'
   return projectTitle ? `Ensayo · ${scopeLabel} · ${projectTitle}` : `Ensayo · ${scopeLabel}`
+}
+
+function YouTubeSectionPlayer({ song, section, sectionIndex, repeat = 1 }) {
+  const iframeRef = useRef(null)
+  const stopTimerRef = useRef(null)
+  const playbackTickerRef = useRef(null)
+  const playbackStartedAtRef = useRef(null)
+  const [playbackElapsed, setPlaybackElapsed] = useState(0)
+  const videoId = extractYouTubeVideoId(song?.youtube_video_id || song?.youtube_url)
+  const start = normalizeYouTubeSeconds(section?.youtube_start)
+  const end = normalizeYouTubeSeconds(section?.youtube_end)
+  const hasTiming = start !== null
+  const safeStart = hasTiming ? start : 0
+  const safeEnd = end !== null && end > safeStart ? end : null
+  const repeatCount = Math.max(1, Math.min(Number.parseInt(repeat, 10) || 1, 16))
+  const sectionDuration = safeEnd !== null ? Math.max(safeEnd - safeStart, 0) : 0
+  const repeatAverage = repeatCount > 1 && sectionDuration > 0 ? sectionDuration / repeatCount : 0
+  const currentRepeat = repeatAverage > 0
+    ? Math.min(repeatCount, Math.floor(playbackElapsed / repeatAverage) + 1)
+    : 1
+  const embedUrl = getYouTubeEmbedUrl(videoId, 0)
+
+  const postCommand = useCallback((func, args = []) => {
+    const frame = iframeRef.current
+    if (!frame?.contentWindow) {
+      return
+    }
+    frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*')
+  }, [])
+
+  const clearStopTimer = useCallback(() => {
+    if (stopTimerRef.current) {
+      window.clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = null
+    }
+  }, [])
+
+  const clearPlaybackTicker = useCallback(() => {
+    if (playbackTickerRef.current) {
+      window.clearInterval(playbackTickerRef.current)
+      playbackTickerRef.current = null
+    }
+    playbackStartedAtRef.current = null
+  }, [])
+
+  useEffect(() => () => {
+    clearStopTimer()
+    clearPlaybackTicker()
+  }, [clearPlaybackTicker, clearStopTimer])
+
+  useEffect(() => {
+    if (!videoId) {
+      return
+    }
+    clearStopTimer()
+    clearPlaybackTicker()
+    setPlaybackElapsed(0)
+    postCommand('seekTo', [safeStart, true])
+    postCommand('pauseVideo')
+  }, [clearPlaybackTicker, clearStopTimer, postCommand, safeStart, sectionIndex, videoId])
+
+  const handlePlaySection = () => {
+    if (!videoId) {
+      return
+    }
+    clearStopTimer()
+    clearPlaybackTicker()
+    setPlaybackElapsed(0)
+    postCommand('seekTo', [safeStart, true])
+    postCommand('playVideo')
+    playbackStartedAtRef.current = window.Date.now()
+    playbackTickerRef.current = window.setInterval(() => {
+      if (!playbackStartedAtRef.current) {
+        return
+      }
+      setPlaybackElapsed(Math.max(0, (window.Date.now() - playbackStartedAtRef.current) / 1000))
+    }, 250)
+
+    if (safeEnd !== null) {
+      stopTimerRef.current = window.setTimeout(() => {
+        postCommand('pauseVideo')
+        postCommand('seekTo', [safeEnd, true])
+        clearPlaybackTicker()
+        setPlaybackElapsed(sectionDuration)
+        stopTimerRef.current = null
+      }, Math.max((safeEnd - safeStart) * 1000, 250))
+    }
+  }
+
+  const handleCueSection = () => {
+    clearStopTimer()
+    clearPlaybackTicker()
+    setPlaybackElapsed(0)
+    postCommand('seekTo', [safeStart, true])
+    postCommand('pauseVideo')
+  }
+
+  if (!videoId || !embedUrl) {
+    return null
+  }
+
+  return (
+    <div className="wpss-youtube-player wpss-youtube-player--floating">
+      <div className="wpss-youtube-player__frame">
+        <iframe
+          ref={iframeRef}
+          title={`Referencia de YouTube para ${song?.titulo || 'canción'}`}
+          src={embedUrl}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          onLoad={handleCueSection}
+        />
+      </div>
+      <div className="wpss-youtube-player__controls">
+        <div>
+          <strong>{section?.nombre || getDefaultSectionName(sectionIndex)}</strong>
+          <span>
+            {hasTiming
+              ? `${formatSecondsAsTimecode(safeStart)}${safeEnd !== null ? ` - ${formatSecondsAsTimecode(safeEnd)}` : ''}`
+              : 'Sin marcador; se preparara desde 0:00'}
+          </span>
+          {repeatAverage > 0 ? (
+            <span className="wpss-youtube-player__loop">
+              {`Vuelta ${currentRepeat} de ${repeatCount} · promedio ${formatSecondsAsTimecode(Math.max(1, Math.round(repeatAverage)))} por vuelta`}
+            </span>
+          ) : null}
+        </div>
+        <div className="wpss-youtube-player__actions">
+          <button type="button" className="button button-secondary" onClick={handleCueSection}>
+            Preparar sección
+          </button>
+          <button type="button" className="button button-primary" onClick={handlePlaySection}>
+            Reproducir sección
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
@@ -558,6 +727,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
   const currentSectionIndex = groups.length
     ? Math.min(activeSectionIndex, groups.length - 1)
     : 0
+  const currentGroup = groups[currentSectionIndex] || null
 
   const sectionNavItems = useMemo(
     () =>
@@ -696,8 +866,17 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     runPrint()
   }
 
-  const handleSectionJump = (index) => {
-    const target = sectionRefs.current.get(index)
+  const handleSectionJump = useCallback((index) => {
+    if (!groups.length) {
+      return
+    }
+
+    const lastIndex = groups.length - 1
+    const numericIndex = Number.parseInt(index, 10)
+    const nextIndex = Number.isFinite(numericIndex)
+      ? Math.min(Math.max(numericIndex, 0), lastIndex)
+      : 0
+    const target = sectionRefs.current.get(nextIndex)
     if (!target) {
       return
     }
@@ -731,8 +910,32 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
     } else if (typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    setActiveSectionIndex(index)
-  }
+    setActiveSectionIndex(nextIndex)
+  }, [groups.length])
+
+  useEffect(() => {
+    if (!groups.length) {
+      return undefined
+    }
+
+    const handleKeyDown = (event) => {
+      const direction = READING_SECTION_NAV_KEYS[event.key]
+      if (!direction || shouldIgnoreReadingSectionShortcut(event)) {
+        return
+      }
+
+      const nextIndex = Math.min(Math.max(currentSectionIndex + direction, 0), groups.length - 1)
+      if (nextIndex === currentSectionIndex) {
+        return
+      }
+
+      event.preventDefault()
+      handleSectionJump(nextIndex)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [currentSectionIndex, groups.length, handleSectionJump])
 
   const canZoomOut = readingZoom > READING_ZOOM_MIN
   const canZoomIn = readingZoom < READING_ZOOM_MAX
@@ -1475,6 +1678,14 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
               />
             ) : null}
           </div>
+        ) : null}
+        {song?.youtube_video_id || song?.youtube_url ? (
+          <YouTubeSectionPlayer
+            song={song}
+            section={currentGroup?.section || null}
+            sectionIndex={currentSectionIndex}
+            repeat={currentGroup?.repeat || 1}
+          />
         ) : null}
         {sectionNavItems.length ? (
           <nav className="wpss-reading__section-nav" aria-label="Navegación de secciones">

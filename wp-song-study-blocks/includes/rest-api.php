@@ -558,6 +558,45 @@ function wpss_register_rest_routes() {
 
     register_rest_route(
         'wpss/v1',
+        '/ensayos/rescate/proyectos',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_project_rehearsal_rescue_projects',
+            'permission_callback' => 'wpss_rest_verify_admin_permissions',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/proyecto/(?P<id>\d+)/ensayos/rescate',
+        [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => 'wpss_rest_get_project_rehearsal_rescue_availability',
+            'permission_callback' => 'wpss_rest_verify_admin_permissions',
+            'args'                => [
+                'id' => [
+                    'description'       => __( 'ID del proyecto origen.', 'wp-song-study' ),
+                    'type'              => 'integer',
+                    'required'          => true,
+                    'sanitize_callback' => 'absint',
+                    'validate_callback' => 'wpss_validate_positive_id',
+                ],
+            ],
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
+        '/ensayos/rescate/disponibilidad',
+        [
+            'methods'             => WP_REST_Server::CREATABLE,
+            'callback'            => 'wpss_rest_rescue_project_rehearsal_availability',
+            'permission_callback' => 'wpss_rest_verify_admin_permissions',
+        ]
+    );
+
+    register_rest_route(
+        'wpss/v1',
         '/repertorio-asignaciones',
         [
             'methods'             => WP_REST_Server::CREATABLE,
@@ -771,6 +810,30 @@ function wpss_rest_verify_manage_permissions( WP_REST_Request $request ) {
     return true;
 }
 
+/**
+ * Valida nonce y permisos estrictos de administración.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return bool|WP_Error
+ */
+function wpss_rest_verify_admin_permissions( WP_REST_Request $request ) {
+    $wp_nonce   = $request->get_header( 'x-wp-nonce' );
+    $wpss_nonce = $request->get_header( 'x-wpss-nonce' );
+
+    $wp_nonce_valid   = $wp_nonce && wp_verify_nonce( $wp_nonce, 'wp_rest' );
+    $wpss_nonce_valid = $wpss_nonce && wp_verify_nonce( $wpss_nonce, 'wpss' );
+
+    if ( ! $wp_nonce_valid && ! $wpss_nonce_valid ) {
+        return new WP_Error( 'wpss_rest_invalid_nonce', __( 'Nonce inválido o ausente.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    if ( ! function_exists( 'wpss_user_can_manage_songbook' ) || ! wpss_user_can_manage_songbook() ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'Necesitas permisos de gestión del cancionero para usar este rescate de horarios.', 'wp-song-study' ), [ 'status' => 403 ] );
+    }
+
+    return true;
+}
+
 function wpss_rest_verify_permissions( WP_REST_Request $request ) {
     return wpss_rest_verify_manage_permissions( $request );
 }
@@ -798,7 +861,7 @@ function wpssb_rest_verify_project_rehearsal_permissions( WP_REST_Request $reque
     }
 
     if ( ! function_exists( 'wpssb_user_can_manage_project_rehearsals' ) || ! wpssb_user_can_manage_project_rehearsals( $project_id ) ) {
-        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos para administrar los ensayos de este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No tienes permisos para usar el Planificador de ensayos de este proyecto musical.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
     return true;
@@ -1201,12 +1264,24 @@ function wpss_rest_get_colegas_musicales( WP_REST_Request $request ) { // phpcs:
  * @return WP_REST_Response
  */
 function wpss_rest_get_proyectos( WP_REST_Request $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+    $user_id     = get_current_user_id();
+    $project_ids = function_exists( 'wpssb_get_user_rehearsal_project_ids' )
+        ? wpssb_get_user_rehearsal_project_ids( $user_id )
+        : [];
+
+    if ( empty( $project_ids ) ) {
+        return rest_ensure_response( [] );
+    }
+
     $query = new WP_Query(
         [
             'post_type'      => 'proyecto',
-            'post_status'    => 'publish',
+            'post_status'    => function_exists( 'wpssb_get_rehearsal_project_post_statuses' )
+                ? wpssb_get_rehearsal_project_post_statuses()
+                : [ 'publish', 'private', 'draft', 'pending', 'future' ],
             'posts_per_page' => -1,
-            'orderby'        => 'title',
+            'post__in'       => array_map( 'absint', $project_ids ),
+            'orderby'        => 'post__in',
             'order'          => 'ASC',
         ]
     );
@@ -1240,6 +1315,70 @@ function wpss_rest_get_proyectos( WP_REST_Request $request ) { // phpcs:ignore G
 }
 
 /**
+ * Devuelve el catálogo admin de proyectos para rescate de horarios.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response
+ */
+function wpss_rest_get_project_rehearsal_rescue_projects( WP_REST_Request $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+    $query = new WP_Query(
+        [
+            'post_type'      => 'proyecto',
+            'post_status'    => function_exists( 'wpssb_get_rehearsal_project_post_statuses' )
+                ? wpssb_get_rehearsal_project_post_statuses()
+                : [ 'publish', 'private', 'draft', 'pending', 'future' ],
+            'posts_per_page' => -1,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+            'fields'         => 'ids',
+        ]
+    );
+
+    $items = [];
+
+    foreach ( $query->posts as $project_id ) {
+        $project_id = absint( $project_id );
+        if ( $project_id <= 0 || ! function_exists( 'wpssb_get_project_rehearsal_rescue_project_summary' ) ) {
+            continue;
+        }
+
+        $summary = wpssb_get_project_rehearsal_rescue_project_summary( $project_id );
+        if ( ! empty( $summary ) ) {
+            $items[] = $summary;
+        }
+    }
+
+    wp_reset_postdata();
+
+    return rest_ensure_response( $items );
+}
+
+/**
+ * Devuelve la disponibilidad cruda rescatable de un proyecto.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_get_project_rehearsal_rescue_availability( WP_REST_Request $request ) {
+    $project_id = absint( $request['id'] ?? 0 );
+
+    if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
+        return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
+    }
+
+    if ( ! function_exists( 'wpssb_get_project_rehearsal_rescue_availability' ) || ! function_exists( 'wpssb_get_project_rehearsal_rescue_project_summary' ) ) {
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'El rescate de horarios no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    return rest_ensure_response(
+        [
+            'project'      => wpssb_get_project_rehearsal_rescue_project_summary( $project_id ),
+            'availability' => wpssb_get_project_rehearsal_rescue_availability( $project_id ),
+        ]
+    );
+}
+
+/**
  * Devuelve la herramienta de ensayos de un proyecto.
  *
  * @param WP_REST_Request $request Solicitud entrante.
@@ -1253,7 +1392,7 @@ function wpss_rest_get_project_rehearsals( WP_REST_Request $request ) {
     }
 
     if ( ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
-        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'La herramienta de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'El Planificador de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
     }
 
     return rest_ensure_response( wpssb_get_project_rehearsal_payload( $project_id ) );
@@ -1272,12 +1411,12 @@ function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
         return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
     }
 
-    if ( ! current_user_can( 'edit_post', $project_id ) ) {
-        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes editar este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+    if ( ! function_exists( 'wpssb_user_can_manage_project_rehearsals' ) || ! wpssb_user_can_manage_project_rehearsals( $project_id ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes guardar el Planificador de ensayos de este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
     if ( ! function_exists( 'wpssb_update_project_rehearsal_meta' ) || ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
-        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'La herramienta de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'El Planificador de ensayos no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
     }
 
     $params = $request->get_json_params();
@@ -1285,12 +1424,21 @@ function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
         $params = [];
     }
 
+    $sessions = isset( $params['sessions'] ) && is_array( $params['sessions'] ) ? $params['sessions'] : [];
+
+    if ( function_exists( 'wpssb_validate_project_rehearsal_sessions_payload' ) ) {
+        $validation = wpssb_validate_project_rehearsal_sessions_payload( $sessions );
+        if ( is_wp_error( $validation ) ) {
+            return $validation;
+        }
+    }
+
     wpssb_update_project_rehearsal_meta(
         $project_id,
         [
             'project_id'    => $project_id,
             'availability'  => isset( $params['availability'] ) && is_array( $params['availability'] ) ? $params['availability'] : [],
-            'sessions'      => isset( $params['sessions'] ) && is_array( $params['sessions'] ) ? $params['sessions'] : [],
+            'sessions'      => $sessions,
         ]
     );
 
@@ -1319,8 +1467,8 @@ function wpss_rest_sync_project_rehearsal_google_calendar( WP_REST_Request $requ
         return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
     }
 
-    if ( ! current_user_can( 'edit_post', $project_id ) ) {
-        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes editar este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
+    if ( ! function_exists( 'wpssb_user_can_manage_project_rehearsals' ) || ! wpssb_user_can_manage_project_rehearsals( $project_id ) ) {
+        return new WP_Error( 'wpss_rest_forbidden', __( 'No puedes sincronizar el Planificador de ensayos de este proyecto.', 'wp-song-study' ), [ 'status' => 403 ] );
     }
 
     if ( ! function_exists( 'wpssb_sync_project_rehearsal_google_calendar' ) || ! function_exists( 'wpssb_get_project_rehearsal_payload' ) ) {
@@ -1346,6 +1494,36 @@ function wpss_rest_sync_project_rehearsal_google_calendar( WP_REST_Request $requ
             'payload' => wpssb_get_project_rehearsal_payload( $project_id ),
         ]
     );
+}
+
+/**
+ * Copia o mueve disponibilidad entre proyectos para rescate admin.
+ *
+ * @param WP_REST_Request $request Solicitud entrante.
+ * @return WP_REST_Response|WP_Error
+ */
+function wpss_rest_rescue_project_rehearsal_availability( WP_REST_Request $request ) {
+    if ( ! function_exists( 'wpssb_rescue_project_rehearsal_availability' ) ) {
+        return new WP_Error( 'wpss_project_rehearsal_unavailable', __( 'El rescate de horarios no está disponible.', 'wp-song-study' ), [ 'status' => 500 ] );
+    }
+
+    $params = $request->get_json_params();
+    if ( ! is_array( $params ) ) {
+        $params = [];
+    }
+
+    $result = wpssb_rescue_project_rehearsal_availability(
+        absint( $params['source_project_id'] ?? 0 ),
+        absint( $params['target_project_id'] ?? 0 ),
+        absint( $params['user_id'] ?? 0 ),
+        sanitize_key( (string) ( $params['mode'] ?? 'move' ) )
+    );
+
+    if ( is_wp_error( $result ) ) {
+        return $result;
+    }
+
+    return rest_ensure_response( $result );
 }
 
 /**
@@ -2452,6 +2630,11 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
     $ficha_fuente           = sanitize_text_field( get_post_meta( $post_id, '_ficha_fuente_verificacion', true ) );
     $ficha_incompleta       = (bool) absint( get_post_meta( $post_id, '_ficha_incompleta', true ) );
     $ficha_incompleta_motivo = sanitize_textarea_field( get_post_meta( $post_id, '_ficha_incompleta_motivo', true ) );
+    $youtube_url            = esc_url_raw( get_post_meta( $post_id, '_youtube_url', true ) );
+    $youtube_video_id       = wpss_extract_youtube_video_id( get_post_meta( $post_id, '_youtube_video_id', true ) );
+    if ( '' === $youtube_video_id && '' !== $youtube_url ) {
+        $youtube_video_id = wpss_extract_youtube_video_id( $youtube_url );
+    }
     $prestamos_cancion      = wpss_decode_json_meta( get_post_meta( $post_id, '_prestamos_tonales_json', true ) );
     $modulaciones_cancion   = wpss_decode_json_meta( get_post_meta( $post_id, '_modulaciones_json', true ) );
     $bpm                    = absint( get_post_meta( $post_id, '_bpm', true ) );
@@ -2519,6 +2702,8 @@ function wpss_rest_get_cancion( WP_REST_Request $request ) {
             'ficha_fuente_verificacion'  => $ficha_fuente,
             'ficha_incompleta'           => $ficha_incompleta,
             'ficha_incompleta_motivo'    => $ficha_incompleta_motivo,
+            'youtube_url'                => $youtube_url,
+            'youtube_video_id'           => $youtube_video_id,
             'bpm'                        => $bpm,
             'prestamos_cancion'          => $prestamos_cancion,
             'modulaciones_cancion'       => $modulaciones_cancion,
@@ -2626,6 +2811,13 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     $ficha_incompleta_motivo = isset( $params['ficha_incompleta_motivo'] )
         ? sanitize_textarea_field( $params['ficha_incompleta_motivo'] )
         : '';
+    $youtube_url = isset( $params['youtube_url'] ) ? esc_url_raw( $params['youtube_url'] ) : '';
+    $youtube_video_id = isset( $params['youtube_video_id'] )
+        ? wpss_extract_youtube_video_id( $params['youtube_video_id'] )
+        : '';
+    if ( '' === $youtube_video_id && '' !== $youtube_url ) {
+        $youtube_video_id = wpss_extract_youtube_video_id( $youtube_url );
+    }
     $visibility_mode = isset( $params['visibility_mode'] ) ? sanitize_key( $params['visibility_mode'] ) : 'private';
     if ( ! in_array( $visibility_mode, [ 'public', 'private', 'project', 'groups', 'users' ], true ) ) {
         $visibility_mode = 'private';
@@ -2854,6 +3046,16 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
     update_post_meta( $post_id, '_ficha_estado_legal', $ficha_estado_legal );
     update_post_meta( $post_id, '_ficha_licencia', $ficha_licencia );
     update_post_meta( $post_id, '_ficha_fuente_verificacion', $ficha_fuente );
+    if ( '' !== $youtube_url ) {
+        update_post_meta( $post_id, '_youtube_url', $youtube_url );
+    } else {
+        delete_post_meta( $post_id, '_youtube_url' );
+    }
+    if ( '' !== $youtube_video_id ) {
+        update_post_meta( $post_id, '_youtube_video_id', $youtube_video_id );
+    } else {
+        delete_post_meta( $post_id, '_youtube_video_id' );
+    }
     update_post_meta( $post_id, '_wpss_visibility_mode', $visibility_mode );
     update_post_meta( $post_id, '_wpss_visibility_project_ids', $visibility_project_ids );
     update_post_meta( $post_id, '_wpss_visibility_group_ids', $visibility_group_ids );
@@ -2998,6 +3200,8 @@ function wpss_rest_save_cancion( WP_REST_Request $request ) {
             'estado_ensayo'      => $estado_ensayo,
             'estado_ensayo_label' => wpss_get_estado_label( $estado_ensayo_options, $estado_ensayo ),
             'bpm'                => $bpm,
+            'youtube_url'        => $youtube_url,
+            'youtube_video_id'   => $youtube_video_id,
             'tiene_prestamos'    => $tiene_prestamos,
             'tiene_modulaciones' => $tiene_modulaciones,
             'secciones'          => $secciones,
@@ -3839,6 +4043,12 @@ function wpss_normalize_segmento_item( $segmento ) {
     $texto  = isset( $segmento['texto'] ) ? wpss_sanitize_segment_text( $segmento['texto'] ) : '';
     $acorde = isset( $segmento['acorde'] ) ? sanitize_text_field( $segmento['acorde'] ) : '';
     $comentarios = isset( $segmento['comentarios'] ) ? wpss_sanitize_comments_array( $segmento['comentarios'] ) : [];
+    $youtube_start = array_key_exists( 'youtube_start', $segmento )
+        ? wpss_sanitize_youtube_seconds( $segmento['youtube_start'] )
+        : null;
+    $youtube_end = array_key_exists( 'youtube_end', $segmento )
+        ? wpss_sanitize_youtube_seconds( $segmento['youtube_end'] )
+        : null;
     $midi_clips = [];
 
     if ( array_key_exists( 'midi_clips', $segmento ) ) {
@@ -3850,9 +4060,13 @@ function wpss_normalize_segmento_item( $segmento ) {
     if ( '' !== $acorde ) {
         $acorde = wpss_truncate_string( $acorde, 64 );
     }
+    if ( null !== $youtube_start && null !== $youtube_end && $youtube_end <= $youtube_start ) {
+        $youtube_end = null;
+    }
 
-    $has_midi = ! empty( $midi_clips );
-    if ( '' === $texto && '' === $acorde && ! $has_midi ) {
+    $has_midi    = ! empty( $midi_clips );
+    $has_youtube = null !== $youtube_start || null !== $youtube_end;
+    if ( '' === $texto && '' === $acorde && ! $has_midi && ! $has_youtube ) {
         return null;
     }
 
@@ -3863,6 +4077,12 @@ function wpss_normalize_segmento_item( $segmento ) {
 
     if ( ! empty( $midi_clips ) ) {
         $normalized['midi_clips'] = $midi_clips;
+    }
+    if ( null !== $youtube_start ) {
+        $normalized['youtube_start'] = $youtube_start;
+    }
+    if ( null !== $youtube_end ) {
+        $normalized['youtube_end'] = $youtube_end;
     }
     if ( ! empty( $comentarios ) ) {
         $normalized['comentarios'] = $comentarios;
@@ -3983,11 +4203,27 @@ function wpss_sanitize_secciones_array( array $secciones ) {
         if ( array_key_exists( 'comentarios', $seccion ) ) {
             $comentarios = wpss_sanitize_comments_array( $seccion['comentarios'] );
         }
+        $youtube_start = array_key_exists( 'youtube_start', $seccion )
+            ? wpss_sanitize_youtube_seconds( $seccion['youtube_start'] )
+            : null;
+        $youtube_end = array_key_exists( 'youtube_end', $seccion )
+            ? wpss_sanitize_youtube_seconds( $seccion['youtube_end'] )
+            : null;
+        if ( null !== $youtube_start && null !== $youtube_end && $youtube_end <= $youtube_start ) {
+            $youtube_end = null;
+        }
 
         $normalized_section = [
             'id'     => $id,
             'nombre' => $nombre,
         ];
+
+        if ( null !== $youtube_start ) {
+            $normalized_section['youtube_start'] = $youtube_start;
+        }
+        if ( null !== $youtube_end ) {
+            $normalized_section['youtube_end'] = $youtube_end;
+        }
 
         if ( ! empty( $midi_clips ) ) {
             $normalized_section['midi_clips'] = $midi_clips;
@@ -4001,6 +4237,73 @@ function wpss_sanitize_secciones_array( array $secciones ) {
     }
 
     return $normalizadas;
+}
+
+/**
+ * Normaliza segundos de marcadores de video.
+ *
+ * @param mixed $value Valor recibido.
+ * @return int|null
+ */
+function wpss_sanitize_youtube_seconds( $value ) {
+    if ( null === $value || '' === $value ) {
+        return null;
+    }
+
+    $seconds = is_numeric( $value ) ? (int) floor( (float) $value ) : null;
+    if ( null === $seconds || $seconds < 0 ) {
+        return null;
+    }
+
+    return min( $seconds, 24 * 60 * 60 );
+}
+
+/**
+ * Extrae IDs validos de YouTube desde URL, embed o ID directo.
+ *
+ * @param string $value URL o ID de YouTube.
+ * @return string
+ */
+function wpss_extract_youtube_video_id( $value ) {
+    $raw = trim( (string) $value );
+    if ( '' === $raw ) {
+        return '';
+    }
+
+    if ( preg_match( '/^[A-Za-z0-9_-]{11}$/', $raw ) ) {
+        return $raw;
+    }
+
+    $parts = wp_parse_url( $raw );
+    if ( empty( $parts['host'] ) ) {
+        return '';
+    }
+
+    $host = strtolower( preg_replace( '/^www\./', '', $parts['host'] ) );
+    $path = isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
+
+    if ( 'youtu.be' === $host && preg_match( '/^[A-Za-z0-9_-]{11}$/', $path ) ) {
+        return $path;
+    }
+
+    if ( preg_match( '/(^|\.)youtube\.com$/', $host ) || preg_match( '/(^|\.)youtube-nocookie\.com$/', $host ) ) {
+        if ( ! empty( $parts['query'] ) ) {
+            parse_str( $parts['query'], $query );
+            if ( ! empty( $query['v'] ) && preg_match( '/^[A-Za-z0-9_-]{11}$/', (string) $query['v'] ) ) {
+                return (string) $query['v'];
+            }
+        }
+
+        $segments = array_values( array_filter( explode( '/', $path ) ) );
+        foreach ( [ 'embed', 'shorts', 'live' ] as $marker ) {
+            $index = array_search( $marker, $segments, true );
+            if ( false !== $index && ! empty( $segments[ $index + 1 ] ) && preg_match( '/^[A-Za-z0-9_-]{11}$/', $segments[ $index + 1 ] ) ) {
+                return $segments[ $index + 1 ];
+            }
+        }
+    }
+
+    return '';
 }
 
 /**
@@ -5319,6 +5622,12 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
         $orden        = isset( $verso['orden'] ) ? absint( $verso['orden'] ) : 0;
         $comentario   = isset( $verso['comentario'] ) ? sanitize_text_field( $verso['comentario'] ) : '';
         $comentarios  = isset( $verso['comentarios'] ) ? wpss_sanitize_comments_array( $verso['comentarios'] ) : [];
+        $youtube_start = array_key_exists( 'youtube_start', $verso )
+            ? wpss_sanitize_youtube_seconds( $verso['youtube_start'] )
+            : null;
+        $youtube_end = array_key_exists( 'youtube_end', $verso )
+            ? wpss_sanitize_youtube_seconds( $verso['youtube_end'] )
+            : null;
         $evento_input = isset( $verso['evento_armonico'] ) ? $verso['evento_armonico'] : null;
         $midi_clips   = [];
 
@@ -5373,6 +5682,9 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
         if ( ! $fin_de_estrofa ) {
             $nombre_estrofa = '';
         }
+        if ( null !== $youtube_start && null !== $youtube_end && $youtube_end <= $youtube_start ) {
+            $youtube_end = null;
+        }
 
         $section_id = '';
         if ( isset( $verso['section_id'] ) ) {
@@ -5400,7 +5712,7 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             return new WP_Error( 'wpss_rest_invalid_segmentos', __( 'Cada verso debe incluir al menos un segmento con texto, acorde o MIDI.', 'wp-song-study' ) );
         }
 
-        $limpios[] = [
+        $normalized_verse = [
             'orden'           => $orden,
             'segmentos'       => $segmentos,
             'texto'           => wpss_implode_segmentos_text( $segmentos ),
@@ -5414,6 +5726,14 @@ function wpss_sanitize_versos_array( array $versos, array $section_ids = [] ) {
             'nombre_estrofa'  => $nombre_estrofa,
             'instrumental'    => (bool) $instrumental,
         ];
+        if ( null !== $youtube_start ) {
+            $normalized_verse['youtube_start'] = $youtube_start;
+        }
+        if ( null !== $youtube_end ) {
+            $normalized_verse['youtube_end'] = $youtube_end;
+        }
+
+        $limpios[] = $normalized_verse;
     }
 
     return $limpios;

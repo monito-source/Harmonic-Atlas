@@ -3,10 +3,10 @@
   "apiVersion": 3,
   "name": "wp-song-study/current-rehearsals",
   "version": "2.1.1",
-  "title": "Current Rehearsals",
+  "title": "Planificador de ensayos",
   "category": "widgets",
   "icon": "calendar-alt",
-  "description": "Displays a frontend rehearsal workspace where the logged-in collaborator can manage their own availability and votes.",
+  "description": "Muestra un espacio frontend donde los integrantes de un proyecto musical pueden gestionar su disponibilidad, propuestas y bitácora.",
   "textdomain": "wp-song-study-blocks",
   "keywords": ["rehearsals", "availability", "calendar", "logbook"],
   "attributes": {
@@ -16,7 +16,7 @@
     },
     "loginMessage": {
       "type": "string",
-      "default": "Inicia sesión para definir tu disponibilidad, votar propuestas de ensayo y revisar la bitácora del proyecto."
+      "default": "Inicia sesión con una cuenta que ya pertenezca a un proyecto musical para gestionar tu disponibilidad, votar propuestas y revisar la bitácora."
     },
     "layoutWidth": {
       "type": "string",

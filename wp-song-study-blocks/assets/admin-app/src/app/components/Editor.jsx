@@ -6,6 +6,10 @@ import {
   getValidSegmentIndex,
   normalizeSectionsFromApi,
   normalizeStructureFromApi,
+  normalizeYouTubeSeconds,
+  parseTimecodeToSeconds,
+  formatSecondsAsTimecode,
+  extractYouTubeVideoId,
   normalizeVerseOrder,
   prepareEventoArmonicoForPayload,
   decodeUnicodeTokens,
@@ -37,6 +41,625 @@ const PREVIEW_SCALE_LEVELS = [10, 12, 15, 18, 22, 27, 33, 40, 50, 63, 79, 100]
 const TAG_SUGGESTIONS_PAGE_SIZE = 10
 const TOUCH_DRAG_ACTIVATION_DELAY = 180
 const TOUCH_DRAG_CANCEL_DISTANCE = 10
+
+const buildYouTubeSearchUrl = (title = '', artist = '') => {
+  const query = [title, artist].map((item) => String(item || '').trim()).filter(Boolean).join(' ')
+  return query ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` : ''
+}
+
+function YouTubeReferenceFields({ song, onChangeSong, onRequestAutosave }) {
+  const videoId = extractYouTubeVideoId(song?.youtube_video_id || song?.youtube_url)
+  const searchUrl = buildYouTubeSearchUrl(song?.titulo, song?.ficha_autores)
+  const hasSearchSeed = !!String(song?.titulo || '').trim() || !!String(song?.ficha_autores || '').trim()
+
+  const commitUrl = (value) => {
+    const nextUrl = String(value || '').trim()
+    onChangeSong({
+      ...song,
+      youtube_url: nextUrl,
+      youtube_video_id: extractYouTubeVideoId(nextUrl),
+    })
+    onRequestAutosave()
+  }
+
+  return (
+    <div className="wpss-youtube-linker">
+      <div className="wpss-youtube-linker__header">
+        <strong>Referencia de YouTube</strong>
+        {searchUrl ? (
+          <a className="button button-small button-secondary" href={searchUrl} target="_blank" rel="noreferrer">
+            Buscar en YouTube
+          </a>
+        ) : null}
+      </div>
+      <label>
+        <span>URL del video</span>
+        <input
+          type="text"
+          value={song?.youtube_url || ''}
+          placeholder={hasSearchSeed ? 'Pega aqui el enlace del video elegido' : 'Agrega titulo o artista para buscar una referencia'}
+          onChange={(event) => commitUrl(event.target.value)}
+        />
+      </label>
+      <p className="wpss-youtube-linker__hint">
+        {videoId
+          ? `Video vinculado: ${videoId}. Usa los tiempos de cada sección para preparar la reproducción.`
+          : 'Acepta enlaces de youtube.com, youtu.be, Shorts, Live o un ID directo de 11 caracteres.'}
+      </p>
+    </div>
+  )
+}
+
+const YOUTUBE_IFRAME_API_SRC = 'https://www.youtube.com/iframe_api'
+let youtubeIframeApiPromise = null
+
+const loadYouTubeIframeApi = () => {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('YouTube API unavailable outside the browser.'))
+  }
+  if (window.YT?.Player) {
+    return Promise.resolve(window.YT)
+  }
+  if (youtubeIframeApiPromise) {
+    return youtubeIframeApiPromise
+  }
+
+  youtubeIframeApiPromise = new Promise((resolve, reject) => {
+    const previousCallback = window.onYouTubeIframeAPIReady
+    window.onYouTubeIframeAPIReady = () => {
+      previousCallback?.()
+      resolve(window.YT)
+    }
+
+    const existingScript = document.querySelector(`script[src="${YOUTUBE_IFRAME_API_SRC}"]`)
+    if (existingScript) {
+      existingScript.addEventListener('error', reject, { once: true })
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = YOUTUBE_IFRAME_API_SRC
+    script.async = true
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
+
+  return youtubeIframeApiPromise
+}
+
+const clampTimeToDuration = (value, duration = 0) => {
+  const seconds = normalizeYouTubeSeconds(value)
+  const safeSeconds = seconds === null ? 0 : seconds
+  const safeDuration = normalizeYouTubeSeconds(duration)
+  if (safeDuration !== null && safeDuration > 0) {
+    return Math.min(safeSeconds, safeDuration)
+  }
+  return safeSeconds
+}
+
+function YouTubeFloatingPlayer({
+  videoId,
+  cueStart = 0,
+  cueLabel = '',
+  inline = false,
+  controllerRef,
+  onTimeChange,
+  onDurationChange,
+}) {
+  const playerHostRef = useRef(null)
+  const playerRef = useRef(null)
+  const stopTimerRef = useRef(null)
+  const currentTimeRef = useRef(0)
+  const durationRef = useRef(0)
+  const cueStartRef = useRef(cueStart)
+
+  useEffect(() => {
+    cueStartRef.current = cueStart
+  }, [cueStart])
+
+  const clearStopTimer = useCallback(() => {
+    if (stopTimerRef.current) {
+      window.clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = null
+    }
+  }, [])
+
+  const seekTo = useCallback((seconds, pauseAfter = true) => {
+    const player = playerRef.current
+    if (!player?.seekTo) {
+      return
+    }
+    const nextSecond = clampTimeToDuration(seconds, durationRef.current)
+    currentTimeRef.current = nextSecond
+    onTimeChange?.(nextSecond)
+    clearStopTimer()
+    player.seekTo(nextSecond, true)
+    if (pauseAfter) {
+      player.pauseVideo?.()
+    }
+  }, [clearStopTimer, onTimeChange])
+
+  const playRange = useCallback((start, end = null) => {
+    const player = playerRef.current
+    if (!player?.seekTo) {
+      return
+    }
+    const safeStart = clampTimeToDuration(start, durationRef.current)
+    const safeEnd = normalizeYouTubeSeconds(end)
+    clearStopTimer()
+    player.seekTo(safeStart, true)
+    player.playVideo?.()
+    if (safeEnd !== null && safeEnd > safeStart) {
+      stopTimerRef.current = window.setTimeout(() => {
+        player.pauseVideo?.()
+        player.seekTo(safeEnd, true)
+        stopTimerRef.current = null
+      }, Math.max((safeEnd - safeStart) * 1000, 250))
+    }
+  }, [clearStopTimer])
+
+  useEffect(() => () => clearStopTimer(), [clearStopTimer])
+
+  useEffect(() => {
+    if (!controllerRef) {
+      return undefined
+    }
+    controllerRef.current = {
+      pause: () => playerRef.current?.pauseVideo?.(),
+      play: () => playerRef.current?.playVideo?.(),
+      seekTo,
+      playRange,
+      getCurrentTime: () => {
+        const playerTime = playerRef.current?.getCurrentTime?.()
+        return Number.isFinite(Number(playerTime)) ? Math.floor(Number(playerTime)) : currentTimeRef.current
+      },
+      getDuration: () => {
+        const playerDuration = playerRef.current?.getDuration?.()
+        return Number.isFinite(Number(playerDuration)) ? Math.floor(Number(playerDuration)) : durationRef.current
+      },
+    }
+    return () => {
+      if (controllerRef.current?.seekTo === seekTo) {
+        controllerRef.current = null
+      }
+    }
+  }, [controllerRef, playRange, seekTo])
+
+  useEffect(() => {
+    if (!videoId) {
+      return undefined
+    }
+    let cancelled = false
+    loadYouTubeIframeApi()
+      .then((YT) => {
+        if (cancelled || !playerHostRef.current) {
+          return
+        }
+        playerRef.current?.destroy?.()
+        playerHostRef.current.innerHTML = ''
+        const mount = document.createElement('div')
+        playerHostRef.current.appendChild(mount)
+        playerRef.current = new YT.Player(mount, {
+          videoId,
+          playerVars: {
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+          },
+          events: {
+            onReady: (event) => {
+              const duration = Math.floor(Number(event.target?.getDuration?.()) || 0)
+              if (duration > 0) {
+                durationRef.current = duration
+                onDurationChange?.(duration)
+              }
+              seekTo(cueStartRef.current, true)
+            },
+          },
+        })
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+      playerRef.current?.destroy?.()
+      playerRef.current = null
+    }
+  }, [onDurationChange, seekTo, videoId])
+
+  useEffect(() => {
+    if (!videoId) {
+      return undefined
+    }
+    const interval = window.setInterval(() => {
+      const player = playerRef.current
+      const nextTime = Math.max(0, Math.floor(Number(player?.getCurrentTime?.()) || 0))
+      const nextDuration = Math.max(0, Math.floor(Number(player?.getDuration?.()) || 0))
+      currentTimeRef.current = nextTime
+      onTimeChange?.(nextTime)
+      if (nextDuration > 0) {
+        durationRef.current = nextDuration
+        onDurationChange?.(nextDuration)
+      }
+    }, 300)
+    return () => window.clearInterval(interval)
+  }, [onDurationChange, onTimeChange, videoId])
+
+  if (!videoId) {
+    return null
+  }
+
+  return (
+    <div className={`wpss-youtube-mini ${inline ? 'wpss-youtube-mini--inline' : ''}`} aria-label="Mini reproductor de YouTube">
+      <div className="wpss-youtube-mini__frame" ref={playerHostRef} />
+      <div className="wpss-youtube-mini__bar">
+        <span>{cueLabel || 'YouTube'}</span>
+        <strong>{formatSecondsAsTimecode(currentTimeRef.current) || '0:00'}</strong>
+      </div>
+      <div className="wpss-youtube-mini__actions">
+        <button type="button" className="button button-small" onClick={() => playerRef.current?.playVideo?.()}>
+          Play
+        </button>
+        <button type="button" className="button button-small" onClick={() => playerRef.current?.pauseVideo?.()}>
+          Pausa
+        </button>
+        <button type="button" className="button button-small" onClick={() => seekTo(cueStart, true)}>
+          Ir al marcador
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function YouTubeTimingInputs({
+  title,
+  timing,
+  currentTime,
+  controller,
+  onChange,
+}) {
+  const [startValue, setStartValue] = useState(() => formatSecondsAsTimecode(timing?.youtube_start))
+  const [endValue, setEndValue] = useState(() => formatSecondsAsTimecode(timing?.youtube_end))
+  const [focusedField, setFocusedField] = useState(null)
+  const latestValuesRef = useRef({ start: startValue, end: endValue })
+  const latestTimingRef = useRef({
+    youtube_start: normalizeYouTubeSeconds(timing?.youtube_start),
+    youtube_end: normalizeYouTubeSeconds(timing?.youtube_end),
+  })
+  const onChangeRef = useRef(onChange)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    latestTimingRef.current = {
+      youtube_start: normalizeYouTubeSeconds(timing?.youtube_start),
+      youtube_end: normalizeYouTubeSeconds(timing?.youtube_end),
+    }
+    const nextStartValue = formatSecondsAsTimecode(timing?.youtube_start)
+    const nextEndValue = formatSecondsAsTimecode(timing?.youtube_end)
+    if (focusedField !== 'youtube_start') {
+      setStartValue(nextStartValue)
+      latestValuesRef.current.start = nextStartValue
+    }
+    if (focusedField !== 'youtube_end') {
+      setEndValue(nextEndValue)
+      latestValuesRef.current.end = nextEndValue
+    }
+  }, [focusedField, timing?.youtube_end, timing?.youtube_start])
+
+  const commitTime = useCallback((field, value, { format = true, allowInvalid = false } = {}) => {
+    const seconds = parseTimecodeToSeconds(value)
+    const isBlank = String(value || '').trim() === ''
+    if (seconds === null && !isBlank && !allowInvalid) {
+      return false
+    }
+    const nextTiming = {
+      ...latestTimingRef.current,
+      [field]: seconds,
+    }
+    if (
+      nextTiming.youtube_start !== null
+      && nextTiming.youtube_end !== null
+      && nextTiming.youtube_end <= nextTiming.youtube_start
+    ) {
+      if (field === 'youtube_start') {
+        nextTiming.youtube_end = null
+      } else {
+        nextTiming[field] = null
+      }
+    }
+    latestTimingRef.current = nextTiming
+    if (format) {
+      const formattedStart = formatSecondsAsTimecode(nextTiming.youtube_start)
+      const formattedEnd = formatSecondsAsTimecode(nextTiming.youtube_end)
+      setStartValue(formattedStart)
+      setEndValue(formattedEnd)
+      latestValuesRef.current = { start: formattedStart, end: formattedEnd }
+    }
+    onChangeRef.current?.(nextTiming)
+    return true
+  }, [])
+
+  useEffect(() => () => {
+    commitTime('youtube_start', latestValuesRef.current.start, { format: false })
+    commitTime('youtube_end', latestValuesRef.current.end, { format: false })
+  }, [commitTime])
+
+  const handleFieldChange = (field, value) => {
+    if (field === 'youtube_start') {
+      setStartValue(value)
+      latestValuesRef.current.start = value
+    } else {
+      setEndValue(value)
+      latestValuesRef.current.end = value
+    }
+    commitTime(field, value, { format: false })
+  }
+
+  const handleFieldBlur = (field, value) => {
+    setFocusedField(null)
+    if (!commitTime(field, value, { format: true })) {
+      if (field === 'youtube_start') {
+        const formatted = formatSecondsAsTimecode(latestTimingRef.current.youtube_start)
+        setStartValue(formatted)
+        latestValuesRef.current.start = formatted
+      } else {
+        const formatted = formatSecondsAsTimecode(latestTimingRef.current.youtube_end)
+        setEndValue(formatted)
+        latestValuesRef.current.end = formatted
+      }
+    }
+  }
+
+  const useCurrentTime = (field) => {
+    const seconds = clampTimeToDuration(controller?.getCurrentTime?.() ?? currentTime, controller?.getDuration?.())
+    if (field === 'youtube_start') {
+      setStartValue(formatSecondsAsTimecode(seconds))
+    } else {
+      setEndValue(formatSecondsAsTimecode(seconds))
+    }
+    commitTime(field, seconds)
+  }
+
+  const start = normalizeYouTubeSeconds(timing?.youtube_start)
+  const end = normalizeYouTubeSeconds(timing?.youtube_end)
+
+  return (
+    <div className="wpss-youtube-sync__target">
+      <div className="wpss-youtube-sync__target-head">
+        <strong>{title}</strong>
+        <span>{`Momento actual: ${formatSecondsAsTimecode(currentTime) || '0:00'}`}</span>
+      </div>
+      <div className="wpss-youtube-sync__fields">
+        <label>
+          <span>Inicio</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="0:00"
+            value={startValue}
+            onFocus={() => setFocusedField('youtube_start')}
+            onChange={(event) => handleFieldChange('youtube_start', event.target.value)}
+            onBlur={(event) => handleFieldBlur('youtube_start', event.target.value)}
+          />
+          <button
+            type="button"
+            className="button button-small"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => useCurrentTime('youtube_start')}
+          >
+            Usar actual
+          </button>
+        </label>
+        <label>
+          <span>Fin</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="1:24"
+            value={endValue}
+            onFocus={() => setFocusedField('youtube_end')}
+            onChange={(event) => handleFieldChange('youtube_end', event.target.value)}
+            onBlur={(event) => handleFieldBlur('youtube_end', event.target.value)}
+          />
+          <button
+            type="button"
+            className="button button-small"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => useCurrentTime('youtube_end')}
+          >
+            Usar actual
+          </button>
+        </label>
+      </div>
+      <div className="wpss-youtube-sync__actions">
+        <button
+          type="button"
+          className="button button-small"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => controller?.seekTo?.(start || 0, true)}
+        >
+          Ir al inicio
+        </button>
+        <button
+          type="button"
+          className="button button-small button-primary"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => controller?.playRange?.(start || 0, end)}
+        >
+          Probar rango
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function YouTubeStructureSyncSection({
+  videoId,
+  song,
+  sections,
+  structure,
+  selectedSectionId,
+  currentTime,
+  duration,
+  controller,
+  onTimeChange,
+  onDurationChange,
+  onSelectSection,
+  onSectionTimingChanges,
+}) {
+  const sectionMap = useMemo(
+    () => new Map((Array.isArray(sections) ? sections : []).map((section) => [String(section.id), section])),
+    [sections],
+  )
+  const structureItems = useMemo(() => {
+    const calls = Array.isArray(structure) ? structure : []
+    const items = calls
+      .map((call, index) => {
+        const section = sectionMap.get(String(call?.ref || ''))
+        if (!section) {
+          return null
+        }
+        return {
+          key: `structure-youtube-${index}-${section.id}`,
+          section,
+          index,
+          variant: String(call?.variante || '').trim(),
+          notes: String(call?.notas || '').trim(),
+          repeat: Math.max(1, Math.min(Number.parseInt(call?.repeat, 10) || 1, 16)),
+        }
+      })
+      .filter(Boolean)
+    if (items.length) {
+      return items
+    }
+    return (Array.isArray(sections) ? sections : []).map((section, index) => ({
+      key: `section-youtube-${section.id}`,
+      section,
+      index,
+      variant: '',
+      notes: '',
+      repeat: 1,
+    }))
+  }, [sectionMap, sections, structure])
+
+  const cueSection = sectionMap.get(String(selectedSectionId || '')) || structureItems[0]?.section || null
+  const cueStart = normalizeYouTubeSeconds(cueSection?.youtube_start) || 0
+  const getCascadeSectionEndUpdate = (itemIndex, endSeconds) => {
+    const nextStart = normalizeYouTubeSeconds(endSeconds)
+    if (nextStart === null) {
+      return null
+    }
+
+    const currentId = String(structureItems[itemIndex]?.section?.id || '')
+    const nextItem = structureItems
+      .slice(itemIndex + 1)
+      .find((candidate) => String(candidate?.section?.id || '') !== currentId)
+    const nextSection = nextItem?.section || null
+    if (!nextSection?.id) {
+      return null
+    }
+
+    const nextEnd = normalizeYouTubeSeconds(nextSection.youtube_end)
+    return {
+      sectionId: nextSection.id,
+      nextSection: {
+        ...nextSection,
+        youtube_start: nextStart,
+        youtube_end: nextEnd !== null && nextEnd <= nextStart ? null : nextEnd,
+      },
+    }
+  }
+
+  return (
+    <section className="wpss-section wpss-youtube-structure-sync">
+      <header>
+        <div>
+          <h3>Sincronización YouTube</h3>
+          <p className="wpss-panel__meta">
+            Asigna inicio y fin a las secciones siguiendo la estructura de la canción.
+          </p>
+        </div>
+      </header>
+      {!videoId ? (
+        <p className="wpss-empty">Vincula primero un video en Referencia de YouTube para sincronizar secciones.</p>
+      ) : (
+        <div className="wpss-youtube-structure-sync__layout">
+          <div className="wpss-youtube-structure-sync__player">
+            <YouTubeFloatingPlayer
+              videoId={videoId}
+              cueStart={cueStart}
+              cueLabel={cueSection?.nombre || song?.titulo || 'YouTube'}
+              inline
+              controllerRef={controller}
+              onTimeChange={onTimeChange}
+              onDurationChange={onDurationChange}
+            />
+            <div className="wpss-youtube-structure-sync__status">
+              <span>{`Actual: ${formatSecondsAsTimecode(currentTime) || '0:00'}`}</span>
+              <span>{duration ? `Duración: ${formatSecondsAsTimecode(duration)}` : 'Duración pendiente'}</span>
+            </div>
+          </div>
+          <div className="wpss-youtube-structure-sync__sections">
+            {structureItems.map((item, itemIndex) => {
+              const sectionIndex = (Array.isArray(sections) ? sections : []).findIndex((section) => section.id === item.section.id)
+              const isActive = String(item.section.id) === String(selectedSectionId || '')
+              return (
+                <article
+                  key={item.key}
+                  className={`wpss-youtube-structure-sync__section ${isActive ? 'is-active' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="wpss-youtube-structure-sync__section-head"
+                    onClick={() => {
+                      onSelectSection?.(item.section.id)
+                      controller?.current?.seekTo?.(normalizeYouTubeSeconds(item.section.youtube_start) || 0, true)
+                    }}
+                  >
+                    <span>{itemIndex + 1}</span>
+                    <strong>{item.section.nombre || getDefaultSectionName(sectionIndex >= 0 ? sectionIndex : itemIndex)}</strong>
+                    {item.repeat > 1 ? <em>{`x${item.repeat}`}</em> : null}
+                  </button>
+                  {item.variant || item.notes ? (
+                    <p className="wpss-youtube-structure-sync__notes">
+                      {[item.variant, item.notes].filter(Boolean).join(' · ')}
+                    </p>
+                  ) : null}
+                  <YouTubeTimingInputs
+                    title="Rango de sección"
+                    timing={item.section}
+                    currentTime={currentTime}
+                    controller={controller?.current}
+                    onChange={(nextTiming) => {
+                      const previousEnd = normalizeYouTubeSeconds(item.section.youtube_end)
+                      const nextEnd = normalizeYouTubeSeconds(nextTiming?.youtube_end)
+                      const updates = [
+                        {
+                          sectionId: item.section.id,
+                          nextSection: { ...item.section, ...nextTiming },
+                        },
+                      ]
+                      if (nextEnd !== null && nextEnd !== previousEnd) {
+                        const cascadeUpdate = getCascadeSectionEndUpdate(itemIndex, nextEnd)
+                        if (cascadeUpdate) {
+                          updates.push(cascadeUpdate)
+                        }
+                      }
+                      onSectionTimingChanges(updates)
+                    }}
+                  />
+                </article>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
 
 const normalizeTagValue = (value) => String(value || '').trim().replace(/\s+/g, ' ')
 
@@ -314,6 +937,8 @@ export default function Editor({ onShowList }) {
   const [contextualScopeMode, setContextualScopeMode] = useState('auto')
   const [showPreviewAttachments, setShowPreviewAttachments] = useState(true)
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false)
+  const [youtubeCurrentTime, setYoutubeCurrentTime] = useState(0)
+  const [youtubeDuration, setYoutubeDuration] = useState(0)
   const [selectionState, setSelectionState] = useState({
     verse: null,
     segment: null,
@@ -322,6 +947,7 @@ export default function Editor({ onShowList }) {
     element: null,
   })
   const editingSongRef = useRef(state.editingSong)
+  const youtubeControllerRef = useRef(null)
   const editorRef = useRef(null)
   const layoutRef = useRef(null)
   const mainSectionRef = useRef(null)
@@ -856,6 +1482,8 @@ export default function Editor({ onShowList }) {
     secciones = secciones.map((seccion, index) => {
       let id = seccion && seccion.id ? String(seccion.id).trim() : ''
       let nombre = seccion && seccion.nombre ? String(seccion.nombre) : ''
+      const youtubeStart = normalizeYouTubeSeconds(seccion?.youtube_start)
+      const youtubeEnd = normalizeYouTubeSeconds(seccion?.youtube_end)
       const midiClips = Array.isArray(seccion?.midi_clips) ? seccion.midi_clips : []
       const comentarios = Array.isArray(seccion?.comentarios) ? seccion.comentarios : []
 
@@ -873,12 +1501,15 @@ export default function Editor({ onShowList }) {
         nombre = getDefaultSectionName(index)
       }
 
-      return {
+      const normalizedSection = {
         id,
         nombre: nombre.slice(0, 64),
+        youtube_start: youtubeStart,
+        youtube_end: youtubeStart !== null && youtubeEnd !== null && youtubeEnd <= youtubeStart ? null : youtubeEnd,
         midi_clips: midiClips,
         comentarios,
       }
+      return normalizedSection
     })
 
     if (!secciones.length) {
@@ -1037,6 +1668,8 @@ export default function Editor({ onShowList }) {
     const payload = {
         id: currentSong.id || null,
         titulo: currentSong.titulo,
+        youtube_url: currentSong.youtube_url || '',
+        youtube_video_id: extractYouTubeVideoId(currentSong.youtube_video_id || currentSong.youtube_url),
         bpm: currentSong.bpm,
         tonica: currentSong.tonica,
       campo_armonico: currentSong.campo_armonico,
@@ -1081,6 +1714,8 @@ export default function Editor({ onShowList }) {
           segmentos,
           comentario: verso.comentario,
           comentarios: Array.isArray(verso.comentarios) ? verso.comentarios : [],
+          youtube_start: normalizeYouTubeSeconds(verso.youtube_start),
+          youtube_end: normalizeYouTubeSeconds(verso.youtube_end),
           evento_armonico: evento,
           instrumental: !!verso.instrumental,
           midi_clips: normalizeMidiClipsForSave(verso.midi_clips),
@@ -1144,6 +1779,8 @@ export default function Editor({ onShowList }) {
           estado_ensayo_label:
             body.estado_ensayo_label || fallbackSong?.estado_ensayo_label || 'No ensayada',
           bpm: bpmDefault,
+          youtube_url: body.youtube_url || fallbackSong?.youtube_url || '',
+          youtube_video_id: body.youtube_video_id || fallbackSong?.youtube_video_id || '',
           visibility_mode: body.visibility_mode || fallbackSong?.visibility_mode || 'private',
           visibility_project_ids: Array.isArray(body.visibility_project_ids)
             ? body.visibility_project_ids
@@ -1191,6 +1828,8 @@ export default function Editor({ onShowList }) {
           id: body.id,
           titulo: normalizedSong.titulo || body.titulo || songFromList?.titulo || '',
           tonica: normalizedSong.tonica || body.tonica || songFromList?.tonica || '',
+          youtube_url: normalizedSong.youtube_url,
+          youtube_video_id: normalizedSong.youtube_video_id,
           bpm: normalizedSong.bpm,
           tags: normalizedSong.tags,
           colecciones: Array.isArray(currentSong.colecciones) ? currentSong.colecciones : (songFromList?.colecciones || []),
@@ -1960,6 +2599,7 @@ export default function Editor({ onShowList }) {
     return `section:${activeSectionId || ''}`
   }, [activeSectionId, contextualTarget])
   const contextualToolTab = contextualToolTabsByTarget[contextualTargetKey] || null
+  const youtubeVideoId = extractYouTubeVideoId(editingSong.youtube_video_id || editingSong.youtube_url)
   const selectedAttachment = useMemo(
     () =>
       selectedAttachmentId === null
@@ -2622,6 +3262,29 @@ export default function Editor({ onShowList }) {
     if (index === -1) return
     sections[index] = { ...sections[index], nombre: value.slice(0, 64) }
     handleSectionChange(sections)
+  }
+
+  const handleSectionYouTubeTimingChanges = (updates) => {
+    const sections = Array.isArray(editingSong.secciones) ? [...editingSong.secciones] : []
+    let changed = false
+    ;(Array.isArray(updates) ? updates : []).forEach((update) => {
+      const sectionId = update?.sectionId
+      const nextSection = update?.nextSection
+      const index = sections.findIndex((section) => section.id === sectionId)
+      if (index === -1) return
+      sections[index] = {
+        ...sections[index],
+        youtube_start: normalizeYouTubeSeconds(nextSection?.youtube_start),
+        youtube_end: normalizeYouTubeSeconds(nextSection?.youtube_end),
+      }
+      changed = true
+    })
+    if (!changed) return
+    handleSectionChange(sections)
+  }
+
+  const handleSectionYouTubeTimingChange = (sectionId, nextSection) => {
+    handleSectionYouTubeTimingChanges([{ sectionId, nextSection }])
   }
 
   const moveSection = (fromIndex, toIndex) => {
@@ -3600,7 +4263,6 @@ export default function Editor({ onShowList }) {
           <p>{state.feedback.message}</p>
         </div>
       ) : null}
-
       <form className="wpss-editor" onSubmit={(event) => event.preventDefault()}>
         <div className="wpss-section wpss-section--meta wpss-section--discreet">
           <header>
@@ -3797,6 +4459,11 @@ export default function Editor({ onShowList }) {
               ) : null}
             </label>
           </div>
+          <YouTubeReferenceFields
+            song={editingSong}
+            onChangeSong={(nextSong) => updateSong(nextSong)}
+            onRequestAutosave={scheduleAutosave}
+          />
           <div className="wpss-field-group">
             <label className="wpss-field">
               <span>Repertorios asignados</span>
@@ -5435,6 +6102,24 @@ export default function Editor({ onShowList }) {
             onChange={handleStructureChange}
           />
         </details>
+
+        <YouTubeStructureSyncSection
+          videoId={youtubeVideoId}
+          song={editingSong}
+          sections={sectionsList}
+          structure={editingSong.estructura}
+          selectedSectionId={activeSectionId}
+          currentTime={youtubeCurrentTime}
+          duration={youtubeDuration}
+          controller={youtubeControllerRef}
+          onTimeChange={setYoutubeCurrentTime}
+          onDurationChange={setYoutubeDuration}
+          onSelectSection={(sectionId) => {
+            persistSelectedSection(sectionId)
+            setExpandedSectionId(sectionId)
+          }}
+          onSectionTimingChanges={handleSectionYouTubeTimingChanges}
+        />
 
         <SongMediaManager
           song={editingSong}

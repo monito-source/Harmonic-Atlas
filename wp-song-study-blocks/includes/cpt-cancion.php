@@ -137,6 +137,19 @@ function wpss_register_cpt_cancion() {
 
     register_post_meta( 'cancion', '_campo_armonico_predominante', $meta_single_text );
     register_post_meta( 'cancion', '_notas_generales', $meta_single_text );
+    register_post_meta( 'cancion', '_youtube_url', $meta_single_text );
+
+    register_post_meta(
+        'cancion',
+        '_youtube_video_id',
+        [
+            'show_in_rest'      => true,
+            'single'            => true,
+            'type'              => 'string',
+            'auth_callback'     => $capability_cb,
+            'sanitize_callback' => 'sanitize_text_field',
+        ]
+    );
 
     $meta_json = [
         'show_in_rest'      => true,

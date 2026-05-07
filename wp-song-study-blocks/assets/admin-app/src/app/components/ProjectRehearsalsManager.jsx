@@ -199,14 +199,18 @@ function createSession(collaborators, seed = {}) {
   const status = SESSION_STATUS_LABELS[String(seed?.status || '')] ? String(seed.status) : 'proposed'
   const consensusReached = seed?.consensus_reached === true || computeConsensus(votes)
   const calendarSource = seed?.calendar && typeof seed.calendar === 'object' ? seed.calendar : {}
+  const hasExplicitStart = Object.prototype.hasOwnProperty.call(seed, 'start_time')
+  const hasExplicitEnd = Object.prototype.hasOwnProperty.call(seed, 'end_time')
+  const createdBy = Number(seed?.created_by || 0)
 
   return {
     id: String(seed?.id || `session-${Date.now()}-${Math.floor(Math.random() * 100000)}`),
     scheduled_for: /^\d{4}-\d{2}-\d{2}$/.test(String(seed?.scheduled_for || '')) ? String(seed.scheduled_for) : '',
-    start_time: normalizeTime(seed?.start_time, '19:00'),
-    end_time: normalizeTime(seed?.end_time, '21:00'),
+    start_time: normalizeTime(seed?.start_time, hasExplicitStart ? '' : '19:00'),
+    end_time: normalizeTime(seed?.end_time, hasExplicitEnd ? '' : '21:00'),
     location: String(seed?.location || ''),
     status: consensusReached && ['proposed', 'voting'].includes(status) ? 'confirmed' : status,
+    created_by: Number.isInteger(createdBy) && createdBy > 0 ? createdBy : 0,
     focus: String(seed?.focus || ''),
     reviewed_items: Array.isArray(seed?.reviewed_items)
       ? seed.reviewed_items.map((item) => String(item || '').trim()).filter(Boolean)
@@ -462,6 +466,62 @@ function computeSummary(collaborators, availability, sessions) {
   }
 }
 
+function getAvailabilityValidationMessage(availability) {
+  for (const entry of Array.isArray(availability) ? availability : []) {
+    for (const key of ['slots', 'unavailable_slots']) {
+      for (const slot of Array.isArray(entry?.[key]) ? entry[key] : []) {
+        const hasStart = !!normalizeTime(slot?.start)
+        const hasEnd = !!normalizeTime(slot?.end)
+
+        if (!hasStart && !hasEnd) {
+          return `Hay un rango vacío en la disponibilidad de ${entry?.nombre || 'un integrante'}.`
+        }
+
+        if (!hasStart || !hasEnd) {
+          return `Falta completar una hora en la disponibilidad de ${entry?.nombre || 'un integrante'}.`
+        }
+
+        if (getDurationMinutes(slot?.start, slot?.end) <= 0) {
+          return `Hay un horario incongruente en la disponibilidad de ${entry?.nombre || 'un integrante'}.`
+        }
+      }
+    }
+  }
+
+  return ''
+}
+
+function getSessionValidationMessage(sessions) {
+  const seenIds = new Set()
+
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const sessionLabel = session?.focus || 'una sesión'
+    const sessionId = String(session?.id || '')
+
+    if (!session?.scheduled_for) {
+      return `Falta la fecha de ${sessionLabel}.`
+    }
+
+    if (!normalizeTime(session?.start_time) || !normalizeTime(session?.end_time)) {
+      return `Falta completar la hora de inicio o fin de ${sessionLabel}.`
+    }
+
+    if (getDurationMinutes(session?.start_time, session?.end_time) <= 0) {
+      return `Hay un rango horario incongruente en ${sessionLabel}.`
+    }
+
+    if (sessionId && seenIds.has(sessionId)) {
+      return `Hay sesiones duplicadas con el mismo identificador interno (${sessionId}).`
+    }
+
+    if (sessionId) {
+      seenIds.add(sessionId)
+    }
+  }
+
+  return ''
+}
+
 function computeAttendanceLeaderboard(collaborators, sessions) {
   return (Array.isArray(collaborators) ? collaborators : [])
     .map((member) => {
@@ -493,6 +553,25 @@ function computeAttendanceLeaderboard(collaborators, sessions) {
 
 function formatSlotLabel(slot) {
   return `${DAY_LABELS[slot?.day] || 'Horario'} · ${slot?.start || '--:--'}–${slot?.end || '--:--'}`
+}
+
+function formatBlockedDaysSummary(days) {
+  const labels = (Array.isArray(days) ? days : [])
+    .map((day) => DAY_LABELS[String(day || '')] || '')
+    .filter(Boolean)
+
+  if (!labels.length) return 'Sin días cerrados'
+  return labels.join(' · ')
+}
+
+function formatSlotCollectionSummary(slots) {
+  const labels = (Array.isArray(slots) ? slots : [])
+    .map((slot) => formatSlotLabel(slot))
+    .filter(Boolean)
+
+  if (!labels.length) return 'Sin rangos'
+  if (labels.length <= 3) return labels.join(' · ')
+  return `${labels.slice(0, 3).join(' · ')} · +${labels.length - 3} más`
 }
 
 function getNextDateForDay(day) {
@@ -554,7 +633,9 @@ function renderSyncStatus(session) {
 }
 
 export default function ProjectRehearsalsManager() {
-  const { api } = useAppState()
+  const { api, wpData } = useAppState()
+  const canRescueAvailability = true
+  const currentUserId = Number(wpData?.currentUserId || 0)
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -566,6 +647,17 @@ export default function ProjectRehearsalsManager() {
   const [draft, setDraft] = useState(null)
   const [activeCalendarSessionId, setActiveCalendarSessionId] = useState(null)
   const [activeLogbookSessionId, setActiveLogbookSessionId] = useState(null)
+  const [rescueProjects, setRescueProjects] = useState([])
+  const [rescueProjectsLoading, setRescueProjectsLoading] = useState(false)
+  const [rescueEntriesLoading, setRescueEntriesLoading] = useState(false)
+  const [rescueActionLoading, setRescueActionLoading] = useState(false)
+  const [rescueError, setRescueError] = useState(null)
+  const [rescueNotice, setRescueNotice] = useState(null)
+  const [rescueSourceProjectId, setRescueSourceProjectId] = useState(null)
+  const [rescueUserId, setRescueUserId] = useState(null)
+  const [rescueTargetProjectId, setRescueTargetProjectId] = useState(null)
+  const [rescueMode, setRescueMode] = useState('move')
+  const [rescueEntries, setRescueEntries] = useState([])
 
   const refreshProjects = useCallback(
     (preferredId = null) => {
@@ -591,7 +683,7 @@ export default function ProjectRehearsalsManager() {
           })
         })
         .catch((requestError) => {
-          setError(requestError?.payload?.message || 'No fue posible cargar los proyectos.')
+          setError(requestError?.payload?.message || 'No fue posible cargar los proyectos musicales disponibles.')
         })
         .finally(() => {
           setLoading(false)
@@ -631,13 +723,82 @@ export default function ProjectRehearsalsManager() {
           setDraft(null)
           setActiveCalendarSessionId(null)
           setActiveLogbookSessionId(null)
-          setError(requestError?.payload?.message || 'No fue posible cargar la herramienta de ensayos del proyecto.')
+          setError(requestError?.payload?.message || 'No fue posible cargar el Planificador de ensayos de este proyecto.')
         })
         .finally(() => {
           setDetailLoading(false)
         })
     },
     [api],
+  )
+
+  const refreshRescueProjects = useCallback(
+    (preferredSourceId = null) => {
+      if (!canRescueAvailability) return
+
+      setRescueProjectsLoading(true)
+      setRescueError(null)
+
+      api
+        .listProjectRehearsalRescueProjects()
+        .then((response) => {
+          const items = Array.isArray(response?.data) ? response.data : []
+          setRescueProjects(items)
+          setRescueSourceProjectId((previous) => {
+            const nextPreferred = preferredSourceId || previous
+            if (nextPreferred && items.some((item) => Number(item?.id) === Number(nextPreferred) && Number(item?.raw_availability_count || 0) > 0)) {
+              return Number(nextPreferred)
+            }
+
+            const firstWithAvailability = items.find((item) => Number(item?.raw_availability_count || 0) > 0)
+            return firstWithAvailability?.id ? Number(firstWithAvailability.id) : null
+          })
+        })
+        .catch((requestError) => {
+          setRescueError(requestError?.payload?.message || 'No fue posible cargar el gestor de rescate de horarios.')
+        })
+        .finally(() => {
+          setRescueProjectsLoading(false)
+        })
+    },
+    [api, canRescueAvailability],
+  )
+
+  const loadRescueAvailability = useCallback(
+    (projectId) => {
+      if (!canRescueAvailability) return
+
+      if (!projectId) {
+        setRescueEntries([])
+        setRescueUserId(null)
+        return
+      }
+
+      setRescueEntriesLoading(true)
+      setRescueError(null)
+
+      api
+        .getProjectRehearsalRescueAvailability(projectId)
+        .then((response) => {
+          const items = Array.isArray(response?.data?.availability) ? response.data.availability : []
+          setRescueEntries(items)
+          setRescueUserId((previous) => {
+            if (previous && items.some((item) => Number(item?.user_id) === Number(previous))) {
+              return Number(previous)
+            }
+            return items[0]?.user_id ? Number(items[0].user_id) : null
+          })
+        })
+        .catch((requestError) => {
+          setRescueEntries([])
+          setRescueUserId(null)
+          setRescueError(requestError?.payload?.message || 'No fue posible leer la disponibilidad cruda del proyecto origen.')
+        })
+        .finally(() => {
+          setRescueEntriesLoading(false)
+        })
+    },
+    [api, canRescueAvailability],
   )
 
   useEffect(() => {
@@ -651,6 +812,18 @@ export default function ProjectRehearsalsManager() {
   }, [refreshProjects])
 
   useEffect(() => {
+    if (!canRescueAvailability) return undefined
+
+    const timeoutId = window.setTimeout(() => {
+      refreshRescueProjects()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [canRescueAvailability, refreshRescueProjects])
+
+  useEffect(() => {
     if (!activeProjectId) return undefined
 
     const timeoutId = window.setTimeout(() => {
@@ -661,6 +834,24 @@ export default function ProjectRehearsalsManager() {
       window.clearTimeout(timeoutId)
     }
   }, [activeProjectId, loadProject])
+
+  useEffect(() => {
+    if (!canRescueAvailability) return undefined
+
+    if (!rescueSourceProjectId) {
+      setRescueEntries([])
+      setRescueUserId(null)
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      loadRescueAvailability(rescueSourceProjectId)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [canRescueAvailability, rescueSourceProjectId, loadRescueAvailability])
 
   const collaborators = useMemo(
     () => (Array.isArray(draft?.project?.colaboradores) ? draft.project.colaboradores : []),
@@ -677,6 +868,14 @@ export default function ProjectRehearsalsManager() {
   const googleCalendar = useMemo(
     () => (draft?.project?.google_calendar && typeof draft.project.google_calendar === 'object' ? draft.project.google_calendar : {}),
     [draft],
+  )
+  const availabilityValidationMessage = useMemo(
+    () => getAvailabilityValidationMessage(availability),
+    [availability],
+  )
+  const sessionValidationMessage = useMemo(
+    () => getSessionValidationMessage(sessions),
+    [sessions],
   )
 
   const recommendedSlots = useMemo(() => computeRecommendedSlots(availability), [availability])
@@ -701,6 +900,37 @@ export default function ProjectRehearsalsManager() {
     () => logbookSessions.find((session) => session.id === activeLogbookSessionId) || null,
     [activeLogbookSessionId, logbookSessions],
   )
+  const rescueSourceProjects = useMemo(
+    () => rescueProjects.filter((project) => Number(project?.raw_availability_count || 0) > 0),
+    [rescueProjects],
+  )
+  const selectedRescueEntry = useMemo(
+    () => rescueEntries.find((entry) => Number(entry?.user_id) === Number(rescueUserId)) || null,
+    [rescueEntries, rescueUserId],
+  )
+  const availableRescueTargets = useMemo(
+    () => rescueProjects.filter((project) => {
+      const projectId = Number(project?.id || 0)
+      if (!projectId || projectId === Number(rescueSourceProjectId)) return false
+      if (project?.rehearsal_enabled !== true) return false
+      if (!rescueUserId) return false
+
+      const memberIds = Array.isArray(project?.member_ids) ? project.member_ids.map((item) => Number(item || 0)) : []
+      return memberIds.includes(Number(rescueUserId))
+    }),
+    [rescueProjects, rescueSourceProjectId, rescueUserId],
+  )
+
+  useEffect(() => {
+    if (!canRescueAvailability) return
+
+    setRescueTargetProjectId((previous) => {
+      if (previous && availableRescueTargets.some((project) => Number(project?.id) === Number(previous))) {
+        return Number(previous)
+      }
+      return availableRescueTargets[0]?.id ? Number(availableRescueTargets[0].id) : null
+    })
+  }, [availableRescueTargets, canRescueAvailability])
 
   const updateDraft = (updater) => {
     setDraft((previous) => {
@@ -769,7 +999,10 @@ export default function ProjectRehearsalsManager() {
   }
 
   const handleNewSession = (seed = {}) => {
-    const nextSession = createSession(collaborators, seed)
+    const nextSession = createSession(collaborators, {
+      ...seed,
+      created_by: Number(seed?.created_by || currentUserId || 0),
+    })
     updateDraft((previous) => ({
       ...previous,
       sessions: sortSessionsByDate([...previous.sessions, nextSession]),
@@ -838,13 +1071,8 @@ export default function ProjectRehearsalsManager() {
       return
     }
 
-    const invalidSession = sessions.find((session) => {
-      if (!session?.scheduled_for) return true
-      return !!session?.end_time && getDurationMinutes(session?.start_time, session?.end_time) <= 0
-    })
-
-    if (invalidSession) {
-      setError('Cada propuesta o ensayo necesita una fecha válida y un rango horario coherente.')
+    if (sessionValidationMessage) {
+      setError(sessionValidationMessage)
       return
     }
 
@@ -873,6 +1101,7 @@ export default function ProjectRehearsalsManager() {
         end_time: session.end_time,
         location: session.location,
         status: session.status,
+        created_by: session.created_by,
         focus: session.focus,
         reviewed_items: session.reviewed_items,
         notes: session.notes,
@@ -914,7 +1143,7 @@ export default function ProjectRehearsalsManager() {
         )
       })
       .catch((requestError) => {
-        setError(requestError?.payload?.message || 'No fue posible guardar la herramienta de ensayos.')
+        setError(requestError?.payload?.message || 'No fue posible guardar el Planificador de ensayos.')
       })
       .finally(() => {
         setSaving(false)
@@ -943,6 +1172,50 @@ export default function ProjectRehearsalsManager() {
       })
   }
 
+  const handleRescueAvailability = () => {
+    if (!rescueSourceProjectId || !rescueUserId || !rescueTargetProjectId) return
+
+    const actionLabel = rescueMode === 'copy' ? 'Copiar' : 'Mover'
+    const confirmed = window.confirm(
+      `¿${actionLabel} este horario al proyecto destino? El horario existente del usuario en destino será reemplazado.`,
+    )
+    if (!confirmed) return
+
+    setRescueActionLoading(true)
+    setRescueError(null)
+    setRescueNotice(null)
+
+    api
+      .rescueProjectRehearsalAvailability({
+        source_project_id: rescueSourceProjectId,
+        target_project_id: rescueTargetProjectId,
+        user_id: rescueUserId,
+        mode: rescueMode,
+      })
+      .then((response) => {
+        setRescueNotice(response?.data?.message || 'Horario rescatado correctamente.')
+        refreshRescueProjects(rescueSourceProjectId)
+        loadRescueAvailability(rescueSourceProjectId)
+
+        if (
+          Number(activeProjectId)
+          && [Number(rescueSourceProjectId), Number(rescueTargetProjectId)].includes(Number(activeProjectId))
+        ) {
+          loadProject(activeProjectId)
+        }
+
+        if (rescueMode === 'move') {
+          setRescueTargetProjectId(null)
+        }
+      })
+      .catch((requestError) => {
+        setRescueError(requestError?.payload?.message || 'No fue posible rescatar este horario.')
+      })
+      .finally(() => {
+        setRescueActionLoading(false)
+      })
+  }
+
   const connectCalendarUrl = googleCalendar?.connect_url || '#'
   const oauthSettingsUrl = googleCalendar?.oauth_settings_url || googleCalendar?.profile_url || '#'
   const oauthSettingsLabel = googleCalendar?.oauth_settings_label || (googleCalendar?.credentials_source === 'user' ? 'Abrir perfil OAuth' : 'Abrir credenciales globales')
@@ -952,11 +1225,11 @@ export default function ProjectRehearsalsManager() {
       <div className="wpss-project-rehearsals__editor">
         <div className="wpss-project-rehearsals__hero">
           <div>
-            <p className="wpss-project-rehearsals__eyebrow">Ensayos por proyecto</p>
-            <h1>Organiza disponibilidad, votación, agenda y bitácora del grupo.</h1>
+            <p className="wpss-project-rehearsals__eyebrow">Planificador de ensayos</p>
+            <h1>Coordina disponibilidad, votación, agenda y bitácora sólo entre integrantes reales del proyecto.</h1>
             <p>
-              Cada músico puede declarar con claridad cuándo sí puede ensayar, cuándo no puede y qué días quedan cerrados por completo.
-              A partir de eso el proyecto propone ventanas reales y permite llevar seguimiento del compromiso del grupo.
+              Aquí sólo aparecen proyectos musicales donde ya perteneces. Cada integrante declara con claridad cuándo sí puede ensayar,
+              cuándo no puede y qué días quedan cerrados por completo, para proponer ventanas reales sin mezclar miembros ajenos.
             </p>
           </div>
 
@@ -968,21 +1241,166 @@ export default function ProjectRehearsalsManager() {
                 onChange={(event) => setActiveProjectId(event.target.value ? Number(event.target.value) : null)}
                 disabled={loading || detailLoading}
               >
-                {!projects.length ? <option value="">Sin proyectos disponibles</option> : null}
+                {!projects.length ? <option value="">Sin proyectos musicales disponibles</option> : null}
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.titulo || `Proyecto ${project.id}`}</option>
                 ))}
               </select>
             </label>
-            <button type="button" className="button button-primary" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar herramienta'}
+            <button type="button" className="button button-primary" onClick={handleSave} disabled={saving || !!availabilityValidationMessage || !!sessionValidationMessage}>
+              {saving ? 'Guardando…' : 'Guardar planificador'}
             </button>
           </div>
         </div>
 
         {error ? <p className="wpss-error">{error}</p> : null}
         {notice ? <p className="wpss-feedback">{notice}</p> : null}
-        {detailLoading ? <p className="wpss-collections__hint">Cargando herramienta de ensayos…</p> : null}
+        {availabilityValidationMessage ? (
+          <p className="wpss-collections__hint">No puedes guardar mientras haya horarios incompletos o incongruentes. {availabilityValidationMessage}</p>
+        ) : null}
+        {sessionValidationMessage ? (
+          <p className="wpss-collections__hint">No puedes guardar mientras haya propuestas o ensayos incompletos. {sessionValidationMessage}</p>
+        ) : null}
+        {canRescueAvailability ? (
+          <section className="wpss-project-rehearsals__panel">
+            <div className="wpss-project-rehearsals__panel-header">
+              <div>
+                <h2>Rescate puntual de horarios</h2>
+                <p>Lee disponibilidad cruda capturada por error y la copia o mueve al proyecto musical correcto. El destino siempre reemplaza el horario actual del integrante.</p>
+              </div>
+              <button
+                type="button"
+                className="button button-small button-secondary"
+                onClick={() => {
+                  refreshRescueProjects(rescueSourceProjectId)
+                  if (rescueSourceProjectId) loadRescueAvailability(rescueSourceProjectId)
+                }}
+                disabled={rescueProjectsLoading || rescueEntriesLoading || rescueActionLoading}
+              >
+                {rescueProjectsLoading || rescueEntriesLoading ? 'Actualizando…' : 'Actualizar rescate'}
+              </button>
+            </div>
+
+            {rescueError ? <p className="wpss-error">{rescueError}</p> : null}
+            {rescueNotice ? <p className="wpss-feedback">{rescueNotice}</p> : null}
+
+            <div className="wpss-project-rehearsals__rescue-grid">
+              <label className="wpss-field">
+                <span>Proyecto origen</span>
+                <select
+                  value={rescueSourceProjectId || ''}
+                  onChange={(event) => {
+                    setRescueSourceProjectId(event.target.value ? Number(event.target.value) : null)
+                    setRescueUserId(null)
+                    setRescueTargetProjectId(null)
+                    setRescueNotice(null)
+                    setRescueError(null)
+                  }}
+                  disabled={rescueProjectsLoading || rescueActionLoading}
+                >
+                  {!rescueSourceProjects.length ? <option value="">Sin horarios crudos por rescatar</option> : null}
+                  {rescueSourceProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.titulo || `Proyecto ${project.id}`} · {project.raw_availability_count || 0} horario(s)
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="wpss-field">
+                <span>Horario detectado</span>
+                <select
+                  value={rescueUserId || ''}
+                  onChange={(event) => {
+                    setRescueUserId(event.target.value ? Number(event.target.value) : null)
+                    setRescueNotice(null)
+                    setRescueError(null)
+                  }}
+                  disabled={!rescueSourceProjectId || rescueEntriesLoading || rescueActionLoading}
+                >
+                  {!rescueEntries.length ? <option value="">Sin entradas rescatables</option> : null}
+                  {rescueEntries.map((entry) => (
+                    <option key={entry.user_id} value={entry.user_id}>
+                      {entry.nombre || `Usuario ${entry.user_id}`}{entry.is_project_member ? '' : ' · fuera del proyecto origen'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="wpss-field">
+                <span>Proyecto destino</span>
+                <select
+                  value={rescueTargetProjectId || ''}
+                  onChange={(event) => setRescueTargetProjectId(event.target.value ? Number(event.target.value) : null)}
+                  disabled={!selectedRescueEntry || rescueActionLoading}
+                >
+                  {!availableRescueTargets.length ? <option value="">Sin destino válido para este integrante</option> : null}
+                  {availableRescueTargets.map((project) => (
+                    <option key={project.id} value={project.id}>{project.titulo || `Proyecto ${project.id}`}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="wpss-field">
+                <span>Acción</span>
+                <select value={rescueMode} onChange={(event) => setRescueMode(event.target.value === 'copy' ? 'copy' : 'move')} disabled={rescueActionLoading}>
+                  <option value="move">Mover</option>
+                  <option value="copy">Copiar</option>
+                </select>
+              </label>
+            </div>
+
+            {selectedRescueEntry ? (
+              <div className="wpss-project-rehearsals__rescue-preview">
+                <article>
+                  <strong>Integrante</strong>
+                  <span>{selectedRescueEntry.nombre || `Usuario ${selectedRescueEntry.user_id}`}</span>
+                  <small>Miembro del origen: {selectedRescueEntry.is_project_member ? 'Sí' : 'No'}</small>
+                </article>
+                <article>
+                  <strong>Días cerrados</strong>
+                  <span>{formatBlockedDaysSummary(selectedRescueEntry.blocked_days)}</span>
+                </article>
+                <article>
+                  <strong>Rangos disponibles</strong>
+                  <span>{formatSlotCollectionSummary(selectedRescueEntry.slots)}</span>
+                </article>
+                <article>
+                  <strong>Bloqueos parciales</strong>
+                  <span>{formatSlotCollectionSummary(selectedRescueEntry.unavailable_slots)}</span>
+                </article>
+                <article>
+                  <strong>Notas</strong>
+                  <span>{selectedRescueEntry.notes || 'Sin notas.'}</span>
+                </article>
+                <article>
+                  <strong>Última marca</strong>
+                  <span>{selectedRescueEntry.updated_at || 'Sin fecha registrada'}</span>
+                </article>
+              </div>
+            ) : (
+              <p className="wpss-collections__hint">Selecciona un proyecto origen para revisar la disponibilidad cruda capturada por error.</p>
+            )}
+
+            <div className="wpss-project-rehearsals__rescue-actions">
+              <p className="wpss-project-rehearsals__rescue-summary">
+                Este rescate sólo toca disponibilidad semanal. No mueve propuestas, votos, asistencia ni bitácora.
+              </p>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={handleRescueAvailability}
+                disabled={!rescueSourceProjectId || !rescueUserId || !rescueTargetProjectId || rescueActionLoading}
+              >
+                {rescueActionLoading ? 'Procesando rescate…' : rescueMode === 'copy' ? 'Copiar horario' : 'Mover horario'}
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {detailLoading ? <p className="wpss-collections__hint">Cargando Planificador de ensayos…</p> : null}
+        {!loading && !detailLoading && !projects.length ? (
+          <p className="wpss-empty">Sólo se muestran proyectos musicales donde ya perteneces. Si falta uno, revisa su área y su lista de integrantes.</p>
+        ) : null}
 
         {draft ? (
           <div className="wpss-project-rehearsals__stack">

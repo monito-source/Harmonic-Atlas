@@ -68,6 +68,8 @@ export function mapSongToEditingSong(song) {
     estado_ensayo: song?.estado_ensayo || 'sin_ensayar',
     estado_ensayo_label: song?.estado_ensayo_label || 'No ensayada',
     titulo: song?.titulo || '',
+    youtube_url: song?.youtube_url || '',
+    youtube_video_id: song?.youtube_video_id || '',
     bpm: bpmDefault,
     tonica: song?.tonica || song?.tonalidad || '',
     campo_armonico: song?.campo_armonico || '',

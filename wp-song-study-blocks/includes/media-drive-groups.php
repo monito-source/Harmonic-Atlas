@@ -727,8 +727,9 @@ function wpss_parse_google_drive_oauth_state( $state ) {
     $flow_id    = isset( $container['p']['f'] ) ? sanitize_text_field( (string) $container['p']['f'] ) : '';
     $issued_at  = isset( $container['p']['i'] ) ? absint( $container['p']['i'] ) : 0;
     $provider   = isset( $container['p']['v'] ) ? sanitize_key( (string) $container['p']['v'] ) : 'google_drive';
+    $provider   = in_array( $provider, [ 'google_drive', 'google_calendar', 'google_login' ], true ) ? $provider : 'google_drive';
 
-    if ( $user_id <= 0 || '' === $flow_id || $issued_at <= 0 ) {
+    if ( ( $user_id <= 0 && 'google_login' !== $provider ) || '' === $flow_id || $issued_at <= 0 ) {
         return [];
     }
 
@@ -741,7 +742,7 @@ function wpss_parse_google_drive_oauth_state( $state ) {
         'return_url' => $return_url,
         'flow_id'    => $flow_id,
         'issued_at'  => $issued_at,
-        'provider'   => in_array( $provider, [ 'google_drive', 'google_calendar' ], true ) ? $provider : 'google_drive',
+        'provider'   => $provider,
     ];
 }
 
@@ -2121,6 +2122,15 @@ function wpss_dispatch_google_oauth_callback( array $params ) {
     if ( 'google_calendar' === $provider ) {
         wpss_complete_google_calendar_callback( $params );
         return;
+    }
+
+    if ( 'google_login' === $provider ) {
+        if ( function_exists( 'pd_complete_google_login_callback' ) ) {
+            pd_complete_google_login_callback( $params );
+            return;
+        }
+
+        wp_die( esc_html__( 'No fue posible completar el acceso con Google en este sitio.', 'wp-song-study' ) );
     }
 
     wpss_complete_google_drive_callback( $params );

@@ -74,7 +74,7 @@ export default function Edit({ attributes, setAttributes }) {
   return (
     <Fragment>
       <InspectorControls>
-        <PanelBody title={__('Current rehearsals settings', 'wp-song-study-blocks')}>
+        <PanelBody title={__('Planificador de ensayos', 'wp-song-study-blocks')}>
           <SelectControl
             label={__('Layout width', 'wp-song-study-blocks')}
             value={attributes.layoutWidth || 'immersive'}
@@ -132,7 +132,7 @@ export default function Edit({ attributes, setAttributes }) {
           />
         </PanelBody>
         <PanelColorSettings
-          title={__('Rehearsal panel colors', 'wp-song-study-blocks')}
+          title={__('Colores del panel del planificador', 'wp-song-study-blocks')}
           colorSettings={[
             {
               value: attributes.panelBackgroundColor || '',
@@ -172,7 +172,7 @@ export default function Edit({ attributes, setAttributes }) {
           ]}
         />
         <PanelColorSettings
-          title={__('Rehearsal header colors', 'wp-song-study-blocks')}
+          title={__('Colores del encabezado del planificador', 'wp-song-study-blocks')}
           colorSettings={[
             {
               value: attributes.headerBackgroundColor || '',
@@ -204,15 +204,15 @@ export default function Edit({ attributes, setAttributes }) {
       </InspectorControls>
       <div {...blockProps}>
         <Placeholder
-          label={__('Current Rehearsals', 'wp-song-study-blocks')}
+          label={__('Planificador de ensayos', 'wp-song-study-blocks')}
           instructions={__(
-            'Displays a frontend rehearsal workspace where each collaborator can define availability, vote for sessions, and review the rehearsal logbook.',
+            'Muestra un espacio frontend donde los integrantes de un proyecto musical pueden definir disponibilidad, votar propuestas y revisar la bitácora del grupo.',
             'wp-song-study-blocks'
           )}
         >
           <p>
             {__(
-              'Use this block inside the dedicated Ensayos page template so the logged-in musician can manage their own rehearsal data without entering wp-admin.',
+              'Usa este bloque dentro de la plantilla dedicada al Planificador de ensayos para que cada integrante gestione su información sin entrar a wp-admin.',
               'wp-song-study-blocks'
             )}
           </p>
