@@ -2,10 +2,10 @@
   "$schema": "https://schemas.wp.org/trunk/block.json",
   "apiVersion": 3,
   "name": "pertenencia-digital/music-subnavigation",
-  "title": "Subnavegacion de Musica",
+  "title": "Subnavegacion de seccion",
   "category": "widgets",
   "icon": "playlist-audio",
-  "description": "Muestra las paginas hijas de la seccion Musica como submenu horizontal.",
+  "description": "Muestra las paginas hijas de una seccion como submenu horizontal.",
   "textdomain": "pertenencia-digital",
   "attributes": {
     "parentPath": {

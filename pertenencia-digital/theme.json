@@ -15,57 +15,57 @@
         {
           "slug": "fondo",
           "name": "Fondo",
-          "color": "#ecf0f1"
+          "color": "#07111d"
         },
         {
           "slug": "texto",
           "name": "Texto",
-          "color": "#2c3e50"
+          "color": "#e7eef9"
         },
         {
           "slug": "azul-principal",
           "name": "Azul principal",
-          "color": "#1e3a8a"
+          "color": "#2f5ad8"
         },
         {
           "slug": "azul-hover",
           "name": "Azul hover",
-          "color": "#1e40af"
+          "color": "#4b78ff"
         },
         {
           "slug": "oscuro",
           "name": "Oscuro",
-          "color": "#1f2937"
+          "color": "#0b1320"
         },
         {
           "slug": "blanco",
           "name": "Blanco",
-          "color": "#ffffff"
+          "color": "#f5f8ff"
         },
         {
           "slug": "texto-suave",
           "name": "Texto suave",
-          "color": "#64748b"
+          "color": "#93a4bc"
         },
         {
           "slug": "borde-suave",
           "name": "Borde suave",
-          "color": "#cbd5e1"
+          "color": "#32445e"
         },
         {
           "slug": "resalte-header",
           "name": "Resalte header",
-          "color": "#8fd3ff"
+          "color": "#82e1ff"
         },
         {
           "slug": "exito",
           "name": "Éxito",
-          "color": "#166534"
+          "color": "#22c55e"
         },
         {
           "slug": "error",
           "name": "Error",
-          "color": "#991b1b"
+          "color": "#f87171"
         }
       ],
       "gradients": [
@@ -226,36 +226,86 @@
         "pill": "999px"
       },
       "shadow": {
-        "header": "0 18px 40px rgba(15, 23, 42, 0.16)",
-        "card": "0 18px 45px rgba(30, 58, 138, 0.12)",
-        "hero": "0 18px 45px rgba(15, 23, 42, 0.18)"
+        "header": "0 24px 56px rgba(2, 8, 20, 0.48)",
+        "card": "0 24px 50px rgba(2, 8, 20, 0.34)",
+        "hero": "0 30px 70px rgba(2, 8, 20, 0.42)"
+      },
+      "surface": {
+        "panelBackground": "#0f1826",
+        "panelText": "var(--wp--preset--color--texto)",
+        "panelBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
+        "cardBackground": "#141f31",
+        "cardText": "var(--wp--custom--surface--panel-text)",
+        "cardBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 14%, transparent)",
+        "fieldBackground": "#1a2740",
+        "fieldText": "var(--wp--custom--surface--card-text)",
+        "fieldBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 18%, transparent)"
+      },
+      "editorialShell": {
+        "background": "radial-gradient(circle at top left, color-mix(in srgb, var(--wp--preset--color--azul-principal) 10%, transparent), transparent 30%), radial-gradient(circle at bottom right, color-mix(in srgb, var(--wp--preset--color--resalte-header) 9%, transparent), transparent 24%)",
+        "landingBackground": "radial-gradient(circle at top left, color-mix(in srgb, var(--wp--preset--color--azul-principal) 16%, transparent), transparent 34%), radial-gradient(circle at bottom right, color-mix(in srgb, var(--wp--preset--color--resalte-header) 14%, transparent), transparent 28%), linear-gradient(180deg, color-mix(in srgb, var(--wp--preset--color--oscuro) 18%, transparent), transparent 80%)",
+        "accent": "var(--wp--preset--color--azul-principal)",
+        "accentMusic": "color-mix(in srgb, var(--wp--preset--color--azul-principal) 84%, var(--wp--preset--color--resalte-header))",
+        "accentTechnology": "color-mix(in srgb, var(--wp--preset--color--azul-principal) 58%, var(--wp--preset--color--oscuro))",
+        "accentLegal": "color-mix(in srgb, var(--wp--preset--color--oscuro) 82%, var(--wp--preset--color--azul-principal))",
+        "heroBackground": "linear-gradient(145deg, color-mix(in srgb, var(--wp--preset--color--azul-principal) 18%, var(--wp--custom--surface--panel-background)), color-mix(in srgb, var(--wp--preset--color--oscuro) 76%, var(--wp--custom--surface--card-background)))",
+        "heroBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 12%, transparent)",
+        "heroText": "var(--wp--custom--surface--panel-text)",
+        "heroTitle": "var(--wp--preset--color--blanco)",
+        "surfaceBackground": "linear-gradient(180deg, color-mix(in srgb, var(--wp--custom--surface--card-background) 92%, var(--wp--preset--color--oscuro)), color-mix(in srgb, var(--wp--custom--surface--panel-background) 94%, var(--wp--preset--color--fondo)))",
+        "surfaceBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 10%, transparent)",
+        "surfaceText": "var(--wp--custom--surface--panel-text)",
+        "surfaceHeading": "var(--wp--preset--color--blanco)"
       },
       "auth": {
         "introText": "var(--wp--preset--color--blanco)",
         "introBackground": "linear-gradient(140deg, var(--wp--preset--color--oscuro), var(--wp--preset--color--azul-principal))",
         "introGlow": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 30%, transparent)",
-        "cardBackground": "var(--wp--preset--color--blanco)",
-        "cardText": "var(--wp--preset--color--texto)",
-        "cardBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 12%, transparent)",
-        "fieldBackground": "var(--wp--preset--color--blanco)",
-        "fieldText": "var(--wp--preset--color--texto)",
-        "fieldBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 15%, transparent)",
+        "cardBackground": "var(--wp--custom--surface--card-background)",
+        "cardText": "var(--wp--custom--surface--card-text)",
+        "cardBorder": "var(--wp--custom--surface--card-border)",
+        "fieldBackground": "var(--wp--custom--surface--field-background)",
+        "fieldText": "var(--wp--custom--surface--field-text)",
+        "fieldBorder": "var(--wp--custom--surface--field-border)",
         "link": "var(--wp--preset--color--azul-principal)",
         "linkHover": "var(--wp--preset--color--azul-hover)"
+      },
+      "musicAccessGate": {
+        "shellBackground": "linear-gradient(180deg, color-mix(in srgb, var(--wp--preset--color--blanco) 5%, transparent), transparent 68%)",
+        "shellBorder": "color-mix(in srgb, var(--wp--preset--color--blanco) 10%, transparent)",
+        "eyebrow": "color-mix(in srgb, var(--wp--preset--color--blanco) 78%, transparent)",
+        "title": "var(--wp--preset--color--blanco)",
+        "introText": "var(--wp--preset--color--blanco)",
+        "introBackground": "linear-gradient(145deg, color-mix(in srgb, var(--wp--preset--color--oscuro) 92%, transparent), color-mix(in srgb, var(--wp--preset--color--azul-principal) 82%, transparent))",
+        "introGlow": "color-mix(in srgb, var(--wp--preset--color--resalte-header) 24%, transparent)",
+        "featureBackground": "color-mix(in srgb, var(--wp--preset--color--blanco) 7%, transparent)",
+        "featureText": "var(--wp--preset--color--blanco)",
+        "cardBackground": "var(--wp--custom--surface--card-background)",
+        "cardText": "var(--wp--custom--surface--card-text)",
+        "cardBorder": "var(--wp--custom--surface--card-border)",
+        "fieldBackground": "var(--wp--custom--surface--field-background)",
+        "fieldText": "var(--wp--custom--surface--field-text)",
+        "fieldBorder": "var(--wp--custom--surface--field-border)",
+        "link": "var(--wp--preset--color--azul-principal)",
+        "linkHover": "var(--wp--preset--color--azul-hover)",
+        "buttonBackground": "var(--wp--preset--color--azul-principal)",
+        "buttonText": "var(--wp--preset--color--blanco)",
+        "buttonBorder": "transparent",
+        "supportBackground": "color-mix(in srgb, var(--wp--custom--surface--card-text) 4%, var(--wp--custom--surface--card-background))"
       },
       "membership": {
         "text": "var(--wp--preset--color--texto)",
         "muted": "var(--wp--preset--color--texto-suave)",
         "link": "var(--wp--preset--color--azul-principal)",
         "linkHover": "var(--wp--preset--color--azul-hover)",
-        "headerBackground": "linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--azul-principal) 10%, transparent), color-mix(in srgb, var(--wp--preset--color--blanco) 96%, transparent))",
+        "headerBackground": "linear-gradient(135deg, color-mix(in srgb, var(--wp--preset--color--azul-principal) 24%, var(--wp--preset--color--oscuro)), color-mix(in srgb, var(--wp--custom--surface--panel-background) 90%, var(--wp--preset--color--oscuro)))",
         "headerText": "var(--wp--preset--color--texto)",
-        "panelBackground": "var(--wp--preset--color--blanco)",
-        "panelText": "var(--wp--preset--color--texto)",
-        "panelBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 10%, transparent)",
-        "fieldBackground": "var(--wp--preset--color--blanco)",
-        "fieldText": "var(--wp--preset--color--texto)",
-        "fieldBorder": "color-mix(in srgb, var(--wp--preset--color--oscuro) 14%, transparent)"
+        "panelBackground": "var(--wp--custom--surface--panel-background)",
+        "panelText": "var(--wp--custom--surface--panel-text)",
+        "panelBorder": "var(--wp--custom--surface--panel-border)",
+        "fieldBackground": "var(--wp--custom--surface--field-background)",
+        "fieldText": "var(--wp--custom--surface--field-text)",
+        "fieldBorder": "var(--wp--custom--surface--field-border)"
       },
       "header": {
         "account": {
@@ -310,7 +360,7 @@
     "elements": {
       "heading": {
         "color": {
-          "text": "var:preset|color|oscuro"
+          "text": "var:preset|color|blanco"
         }
       },
       "link": {
@@ -384,6 +434,11 @@
     {
       "name": "header-musica-hijas",
       "title": "Header música (hijas)",
+      "area": "header"
+    },
+    {
+      "name": "header-tecnologias-hijas",
+      "title": "Header tecnologías y web (hijas)",
       "area": "header"
     },
     {

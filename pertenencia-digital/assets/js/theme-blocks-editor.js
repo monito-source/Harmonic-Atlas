@@ -4,10 +4,12 @@
   }
 
   const { registerBlockType, getBlockType } = wp.blocks;
-  const { createElement: el, Fragment } = wp.element;
+  const { createElement: el, Fragment, useEffect, useState } = wp.element;
   const { __ } = wp.i18n || { __: (value) => value };
   const ServerSideRender = wp.serverSideRender;
   const { InspectorControls, useBlockProps } = wp.blockEditor || {};
+  const { createHigherOrderComponent } = wp.compose || {};
+  const { addFilter } = wp.hooks || {};
   const {
     BaseControl,
     Button,
@@ -19,10 +21,118 @@
     SelectControl,
     RangeControl,
   } = wp.components || {};
+  const apiFetch = wp.apiFetch;
   const palette =
     wp.data && typeof wp.data.select === "function"
       ? (wp.data.select("core/block-editor")?.getSettings?.().colors || [])
       : [];
+  const editorialShellThemeSettings = window.pdEditorialShellThemeSettings || {
+    canManage: false,
+    settings: {},
+  };
+  const editorialShellOptionMap = {
+    shellBackground: "pd_editorial_shell_background",
+    landingBackground: "pd_editorial_shell_landing_background",
+    accent: "pd_editorial_shell_accent",
+    accentMusic: "pd_editorial_shell_accent_music",
+    accentTechnology: "pd_editorial_shell_accent_technology",
+    accentLegal: "pd_editorial_shell_accent_legal",
+    heroBackground: "pd_editorial_hero_background",
+    heroBorder: "pd_editorial_hero_border",
+    heroText: "pd_editorial_hero_text",
+    heroTitle: "pd_editorial_hero_title",
+    surfaceBackground: "pd_editorial_surface_background",
+    surfaceBorder: "pd_editorial_surface_border",
+    surfaceText: "pd_editorial_surface_text",
+    surfaceHeading: "pd_editorial_surface_heading",
+  };
+  const editorialShellFieldGroups = [
+    {
+      title: __("Shell", "pertenencia-digital"),
+      fields: [
+        {
+          key: "shellBackground",
+          label: __("Fondo global del shell", "pertenencia-digital"),
+          type: "background",
+        },
+        {
+          key: "landingBackground",
+          label: __("Fondo del shell landing", "pertenencia-digital"),
+          type: "background",
+        },
+        {
+          key: "accent",
+          label: __("Acento editorial base", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "accentMusic",
+          label: __("Acento de musica", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "accentTechnology",
+          label: __("Acento de tecnologia", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "accentLegal",
+          label: __("Acento legal", "pertenencia-digital"),
+          type: "color",
+        },
+      ],
+    },
+    {
+      title: __("Hero", "pertenencia-digital"),
+      fields: [
+        {
+          key: "heroBackground",
+          label: __("Fondo global del hero", "pertenencia-digital"),
+          type: "background",
+        },
+        {
+          key: "heroBorder",
+          label: __("Borde global del hero", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "heroText",
+          label: __("Texto global del hero", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "heroTitle",
+          label: __("Titulos globales del hero", "pertenencia-digital"),
+          type: "color",
+        },
+      ],
+    },
+    {
+      title: __("Surface", "pertenencia-digital"),
+      fields: [
+        {
+          key: "surfaceBackground",
+          label: __("Fondo global de surface", "pertenencia-digital"),
+          type: "background",
+        },
+        {
+          key: "surfaceBorder",
+          label: __("Borde global de surface", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "surfaceText",
+          label: __("Texto global de surface", "pertenencia-digital"),
+          type: "color",
+        },
+        {
+          key: "surfaceHeading",
+          label: __("Titulos globales de surface", "pertenencia-digital"),
+          type: "color",
+        },
+      ],
+    },
+  ];
 
   const renderServerPreview = (blockName, props) => {
     const blockProps =
@@ -130,6 +240,222 @@
           label || __("Restablecer tamano por defecto", "pertenencia-digital")
         )
       : null;
+
+  const renderSettingsColorControl = (values, setValues, attribute, label) =>
+    BaseControl && ColorPalette
+      ? el(
+          BaseControl,
+          { label },
+          el(ColorPalette, {
+            colors: palette,
+            value: values[attribute] || "",
+            onChange: (value) => setValues({ ...values, [attribute]: value || "" }),
+            clearable: true,
+            enableAlpha: true,
+          })
+        )
+      : el(TextControl, {
+          label,
+          value: values[attribute] || "",
+          onChange: (value) => setValues({ ...values, [attribute]: value || "" }),
+        });
+
+  const renderSettingsBackgroundControl = (values, setValues, attribute, label) =>
+    el(TextControl, {
+      label,
+      help: __(
+        "Acepta color, gradiente o cualquier valor CSS valido para background.",
+        "pertenencia-digital"
+      ),
+      value: values[attribute] || "",
+      onChange: (value) => setValues({ ...values, [attribute]: value || "" }),
+    });
+
+  const createEditorNotice = (type, message) => {
+    const notices =
+      wp.data && typeof wp.data.dispatch === "function"
+        ? wp.data.dispatch("core/notices")
+        : null;
+
+    if (!notices) {
+      return;
+    }
+
+    if ("error" === type && typeof notices.createErrorNotice === "function") {
+      notices.createErrorNotice(message, { type: "snackbar" });
+      return;
+    }
+
+    if ("success" === type && typeof notices.createSuccessNotice === "function") {
+      notices.createSuccessNotice(message, { type: "snackbar" });
+    }
+  };
+
+  if (addFilter && createHigherOrderComponent) {
+    const withEditorialShellThemeInspector = createHigherOrderComponent(
+      (BlockEdit) =>
+        function EditorialShellThemeInspector(props) {
+          if ("core/group" !== props.name) {
+            return el(BlockEdit, props);
+          }
+
+          const className = props.attributes?.className || "";
+          const classTokens = className.split(/\s+/).filter(Boolean);
+          const isEditorialShell = classTokens.includes("pd-editorial-shell");
+          const isEditorialHero = classTokens.includes("pd-editorial-hero");
+          const isEditorialSurface = classTokens.includes("pd-editorial-surface");
+
+          if (!isEditorialShell && !isEditorialHero && !isEditorialSurface) {
+            return el(BlockEdit, props);
+          }
+
+          const [globalValues, setGlobalValues] = useState({
+            ...(editorialShellThemeSettings.settings || {}),
+          });
+          const [isSaving, setIsSaving] = useState(false);
+
+          useEffect(() => {
+            setGlobalValues({ ...(window.pdEditorialShellThemeSettings?.settings || {}) });
+          }, [props.clientId]);
+
+          const saveGlobalValues = (nextValues) => {
+            if (!apiFetch || !editorialShellThemeSettings.canManage) {
+              return;
+            }
+
+            const payload = Object.entries(editorialShellOptionMap).reduce((next, [key, option]) => {
+              next[option] = nextValues[key] || "";
+              return next;
+            }, {});
+
+            setIsSaving(true);
+
+            apiFetch({
+              path: "/wp/v2/settings",
+              method: "POST",
+              data: payload,
+            })
+              .then((response) => {
+                const savedValues = Object.entries(editorialShellOptionMap).reduce((next, [key, option]) => {
+                  next[key] = response?.[option] || "";
+                  return next;
+                }, {});
+
+                window.pdEditorialShellThemeSettings = {
+                  ...(window.pdEditorialShellThemeSettings || {}),
+                  settings: savedValues,
+                };
+                setGlobalValues(savedValues);
+                createEditorNotice(
+                  "success",
+                  __("La tematizacion global editorial fue actualizada.", "pertenencia-digital")
+                );
+              })
+              .catch(() => {
+                createEditorNotice(
+                  "error",
+                  __("No fue posible guardar la tematizacion global editorial.", "pertenencia-digital")
+                );
+              })
+              .finally(() => {
+                setIsSaving(false);
+              });
+          };
+
+          return el(
+            Fragment,
+            {},
+            el(BlockEdit, props),
+            InspectorControls
+              ? el(
+                  InspectorControls,
+                  {},
+                  el(
+                    PanelBody,
+                    {
+                      title: __("Shell y rectangulos globales", "pertenencia-digital"),
+                      initialOpen: false,
+                    },
+                    el(
+                      "p",
+                      {},
+                      __(
+                        "Estos valores se aplican globalmente a shell, hero y surface. Si un bloque ya tiene fondo propio, ese bloque conserva su override local.",
+                        "pertenencia-digital"
+                      )
+                    ),
+                    editorialShellThemeSettings.canManage
+                      ? editorialShellFieldGroups.map((group) =>
+                          el(
+                            "div",
+                            { key: group.title, className: "pd-theme-shell-settings-group" },
+                            el("h4", {}, group.title),
+                            group.fields.map((field) =>
+                              el(
+                                Fragment,
+                                { key: field.key },
+                                "background" === field.type
+                                  ? renderSettingsBackgroundControl(globalValues, setGlobalValues, field.key, field.label)
+                                  : renderSettingsColorControl(globalValues, setGlobalValues, field.key, field.label)
+                              )
+                            )
+                          )
+                        )
+                      : el(
+                          "p",
+                          {},
+                          __(
+                            "Necesitas permisos de administrador para cambiar estos colores globales.",
+                            "pertenencia-digital"
+                          )
+                        ),
+                    editorialShellThemeSettings.canManage && Button
+                      ? el(
+                          "div",
+                          { className: "pd-theme-shell-settings-actions" },
+                          el(
+                            Button,
+                            {
+                              variant: "primary",
+                              onClick: () => saveGlobalValues(globalValues),
+                              isBusy: isSaving,
+                              disabled: isSaving,
+                            },
+                            __("Guardar tematizacion global", "pertenencia-digital")
+                          ),
+                          el(
+                            Button,
+                            {
+                              variant: "secondary",
+                              onClick: () =>
+                                saveGlobalValues(
+                                  editorialShellFieldGroups.reduce((next, group) => {
+                                    group.fields.forEach((field) => {
+                                      next[field.key] = "";
+                                    });
+                                    return next;
+                                  }, {})
+                                ),
+                              disabled: isSaving,
+                            },
+                            __("Restablecer valores globales", "pertenencia-digital")
+                          )
+                        )
+                      : null
+                  )
+                )
+              : null
+          );
+        },
+      "withEditorialShellThemeInspector"
+    );
+
+    addFilter(
+      "editor.BlockEdit",
+      "pertenencia-digital/editorial-shell-theme-inspector",
+      withEditorialShellThemeInspector
+    );
+  }
 
   const renderAccountInspector = (props) =>
     InspectorControls
@@ -350,6 +676,208 @@
         )
       : null;
 
+  const renderLoginPanelInspector = (props) =>
+    InspectorControls
+      ? el(
+          InspectorControls,
+          {},
+          el(
+            PanelBody,
+            {
+              title: __("Contenido", "pertenencia-digital"),
+              initialOpen: true,
+            },
+            renderTextControl(props, "title", __("Titulo", "pertenencia-digital")),
+            renderTextControl(props, "intro", __("Texto introductorio", "pertenencia-digital"))
+          ),
+          el(
+            PanelBody,
+            {
+              title: __("Colores de textos y acentos", "pertenencia-digital"),
+              initialOpen: false,
+            },
+            renderColorControl(props, "eyebrowColor", __("Eyebrow y meta", "pertenencia-digital")),
+            renderColorControl(props, "titleColor", __("Titulos", "pertenencia-digital")),
+            renderColorControl(props, "introTextColor", __("Texto del panel introductorio", "pertenencia-digital")),
+            renderColorControl(props, "linkColor", __("Acento y enlaces", "pertenencia-digital")),
+            renderColorControl(props, "linkHoverColor", __("Hover de enlaces", "pertenencia-digital"))
+          ),
+          el(
+            PanelBody,
+            {
+              title: __("Secciones", "pertenencia-digital"),
+              initialOpen: false,
+            },
+            renderColorControl(props, "introBackground", __("Fondo del panel introductorio", "pertenencia-digital")),
+            renderColorControl(props, "introGlow", __("Glow del panel introductorio", "pertenencia-digital")),
+            renderColorControl(props, "featureBackground", __("Fondo de tarjetas intro", "pertenencia-digital")),
+            renderColorControl(props, "featureText", __("Texto de tarjetas intro", "pertenencia-digital")),
+            renderColorControl(props, "cardBackground", __("Fondo del card principal", "pertenencia-digital")),
+            renderColorControl(props, "cardText", __("Texto del card principal", "pertenencia-digital")),
+            renderColorControl(props, "cardBorder", __("Borde del card principal", "pertenencia-digital")),
+            renderColorControl(props, "supportBackground", __("Fondo de tarjetas de apoyo", "pertenencia-digital"))
+          ),
+          el(
+            PanelBody,
+            {
+              title: __("Campos y botones", "pertenencia-digital"),
+              initialOpen: false,
+            },
+            renderColorControl(props, "fieldBackground", __("Fondo de campos", "pertenencia-digital")),
+            renderColorControl(props, "fieldText", __("Texto de campos", "pertenencia-digital")),
+            renderColorControl(props, "fieldBorder", __("Borde de campos", "pertenencia-digital")),
+            renderColorControl(props, "buttonBackground", __("Fondo de botones", "pertenencia-digital")),
+            renderColorControl(props, "buttonText", __("Texto de botones", "pertenencia-digital")),
+            renderColorControl(props, "buttonBorder", __("Borde de botones", "pertenencia-digital")),
+            renderResetButton(
+              props,
+              [
+                "eyebrowColor",
+                "titleColor",
+                "introTextColor",
+                "introBackground",
+                "introGlow",
+                "featureBackground",
+                "featureText",
+                "cardBackground",
+                "cardText",
+                "cardBorder",
+                "fieldBackground",
+                "fieldText",
+                "fieldBorder",
+                "linkColor",
+                "linkHoverColor",
+                "buttonBackground",
+                "buttonText",
+                "buttonBorder",
+                "supportBackground",
+              ]
+            )
+          )
+        )
+      : null;
+
+  const renderMusicAccessGateInspector = (props) =>
+    InspectorControls
+      ? el(
+          InspectorControls,
+          {},
+          el(
+            PanelBody,
+            {
+              title: __("Contenido", "pertenencia-digital"),
+              initialOpen: true,
+            },
+            renderSelectControl(
+              props,
+              "context",
+              __("Contexto privado", "pertenencia-digital"),
+              [
+                { label: __("Estudiar repertorio", "pertenencia-digital"), value: "study-repertoire" },
+                { label: __("Mi pertenencia", "pertenencia-digital"), value: "membership" },
+                { label: __("Ensayos", "pertenencia-digital"), value: "rehearsals" },
+              ]
+            ),
+            renderToggleControl(
+              props,
+              "useMainAccessColors",
+              __("Colores del principal", "pertenencia-digital"),
+              __("Trae los colores del bloque principal de acceso en la plantilla Acceso.", "pertenencia-digital")
+            ),
+            renderTextControl(
+              props,
+              "intro",
+              __("Texto introductorio opcional", "pertenencia-digital"),
+              __("Si lo dejas vacio, el bloque usa el copy por defecto del contexto.", "pertenencia-digital")
+            )
+          ),
+          !props.attributes.useMainAccessColors
+            ? el(
+                PanelBody,
+                {
+                  title: __("Marco exterior", "pertenencia-digital"),
+                  initialOpen: false,
+                },
+                renderColorControl(props, "shellBackground", __("Fondo exterior", "pertenencia-digital")),
+                renderColorControl(props, "shellBorder", __("Borde exterior", "pertenencia-digital"))
+              )
+            : null,
+          !props.attributes.useMainAccessColors
+            ? el(
+                PanelBody,
+                {
+                  title: __("Colores de textos y acentos", "pertenencia-digital"),
+                  initialOpen: false,
+                },
+                renderColorControl(props, "eyebrowColor", __("Eyebrow y meta", "pertenencia-digital")),
+                renderColorControl(props, "titleColor", __("Titulos", "pertenencia-digital")),
+                renderColorControl(props, "introTextColor", __("Texto del panel introductorio", "pertenencia-digital")),
+                renderColorControl(props, "linkColor", __("Acento y enlaces", "pertenencia-digital")),
+                renderColorControl(props, "linkHoverColor", __("Hover de enlaces", "pertenencia-digital"))
+              )
+            : null,
+          !props.attributes.useMainAccessColors
+            ? el(
+                PanelBody,
+                {
+                  title: __("Secciones", "pertenencia-digital"),
+                  initialOpen: false,
+                },
+                renderColorControl(props, "introBackground", __("Fondo del panel introductorio", "pertenencia-digital")),
+                renderColorControl(props, "introGlow", __("Glow del panel introductorio", "pertenencia-digital")),
+                renderColorControl(props, "featureBackground", __("Fondo de tarjetas intro", "pertenencia-digital")),
+                renderColorControl(props, "featureText", __("Texto de tarjetas intro", "pertenencia-digital")),
+                renderColorControl(props, "cardBackground", __("Fondo del card principal", "pertenencia-digital")),
+                renderColorControl(props, "cardText", __("Texto del card principal", "pertenencia-digital")),
+                renderColorControl(props, "cardBorder", __("Borde del card principal", "pertenencia-digital")),
+                renderColorControl(props, "supportBackground", __("Fondo de tarjetas de apoyo", "pertenencia-digital"))
+              )
+            : null,
+          !props.attributes.useMainAccessColors
+            ? el(
+                PanelBody,
+                {
+                  title: __("Campos y botones", "pertenencia-digital"),
+                  initialOpen: false,
+                },
+                renderColorControl(props, "fieldBackground", __("Fondo de campos", "pertenencia-digital")),
+                renderColorControl(props, "fieldText", __("Texto de campos", "pertenencia-digital")),
+                renderColorControl(props, "fieldBorder", __("Borde de campos", "pertenencia-digital")),
+                renderColorControl(props, "buttonBackground", __("Fondo de botones", "pertenencia-digital")),
+                renderColorControl(props, "buttonText", __("Texto de botones", "pertenencia-digital")),
+                renderColorControl(props, "buttonBorder", __("Borde de botones", "pertenencia-digital")),
+                renderResetButton(
+                  props,
+                  [
+                    "shellBackground",
+                    "shellBorder",
+                    "eyebrowColor",
+                    "titleColor",
+                    "introTextColor",
+                    "introBackground",
+                    "introGlow",
+                    "featureBackground",
+                    "featureText",
+                    "cardBackground",
+                    "cardText",
+                    "cardBorder",
+                    "fieldBackground",
+                    "fieldText",
+                    "fieldBorder",
+                    "linkColor",
+                    "linkHoverColor",
+                    "buttonBackground",
+                    "buttonText",
+                    "buttonBorder",
+                    "supportBackground",
+                  ],
+                  __("Restablecer colores locales", "pertenencia-digital")
+                )
+              )
+            : null
+        )
+      : null;
+
   const renderMusicSubnavigationInspector = (props) =>
     InspectorControls
       ? el(
@@ -478,6 +1006,68 @@
     save: () => null,
   });
 
+  registerThemeBlock("pertenencia-digital/login-panel", {
+    apiVersion: 3,
+    title: __("Panel de acceso", "pertenencia-digital"),
+    icon: "lock",
+    category: "widgets",
+    attributes: {
+      title: { type: "string", default: "Accede a tu pertenencia digital" },
+      intro: {
+        type: "string",
+        default:
+          "Usa esta pantalla para iniciar sesión, recuperar tu contraseña y volver a tu espacio con una interfaz frontal más clara y estable.",
+      },
+      eyebrowColor: { type: "string", default: "" },
+      titleColor: { type: "string", default: "" },
+      introTextColor: { type: "string", default: "" },
+      introBackground: { type: "string", default: "" },
+      introGlow: { type: "string", default: "" },
+      featureBackground: { type: "string", default: "" },
+      featureText: { type: "string", default: "" },
+      cardBackground: { type: "string", default: "" },
+      cardText: { type: "string", default: "" },
+      cardBorder: { type: "string", default: "" },
+      fieldBackground: { type: "string", default: "" },
+      fieldText: { type: "string", default: "" },
+      fieldBorder: { type: "string", default: "" },
+      linkColor: { type: "string", default: "" },
+      linkHoverColor: { type: "string", default: "" },
+      buttonBackground: { type: "string", default: "" },
+      buttonText: { type: "string", default: "" },
+      buttonBorder: { type: "string", default: "" },
+      supportBackground: { type: "string", default: "" },
+    },
+    supports: {
+      color: {
+        background: true,
+        gradients: true,
+        text: true,
+      },
+      border: {
+        color: true,
+        radius: true,
+      },
+      spacing: {
+        margin: true,
+        padding: true,
+      },
+      typography: {
+        fontSize: true,
+        lineHeight: true,
+      },
+      html: false,
+    },
+    edit: (props) =>
+      el(
+        Fragment,
+        {},
+        renderLoginPanelInspector(props),
+        renderServerPreview("pertenencia-digital/login-panel", props)
+      ),
+    save: () => null,
+  });
+
   registerThemeBlock("pertenencia-digital/site-navigation", {
     apiVersion: 3,
     title: __("Navegacion del tema", "pertenencia-digital"),
@@ -522,7 +1112,7 @@
 
   registerThemeBlock("pertenencia-digital/music-subnavigation", {
     apiVersion: 3,
-    title: __("Subnavegacion de Musica", "pertenencia-digital"),
+    title: __("Subnavegacion de seccion", "pertenencia-digital"),
     icon: "playlist-audio",
     category: "widgets",
     attributes: {
@@ -547,6 +1137,67 @@
         {},
         renderMusicSubnavigationInspector(props),
         renderServerPreview("pertenencia-digital/music-subnavigation", props)
+      ),
+    save: () => null,
+  });
+
+  registerThemeBlock("pertenencia-digital/music-access-gate", {
+    apiVersion: 3,
+    title: __("Gate privado de musica", "pertenencia-digital"),
+    icon: "shield",
+    category: "widgets",
+    attributes: {
+      context: { type: "string", default: "study-repertoire" },
+      useMainAccessColors: { type: "boolean", default: true },
+      intro: { type: "string", default: "" },
+      shellBackground: { type: "string", default: "" },
+      shellBorder: { type: "string", default: "" },
+      eyebrowColor: { type: "string", default: "" },
+      titleColor: { type: "string", default: "" },
+      introTextColor: { type: "string", default: "" },
+      introBackground: { type: "string", default: "" },
+      introGlow: { type: "string", default: "" },
+      featureBackground: { type: "string", default: "" },
+      featureText: { type: "string", default: "" },
+      cardBackground: { type: "string", default: "" },
+      cardText: { type: "string", default: "" },
+      cardBorder: { type: "string", default: "" },
+      fieldBackground: { type: "string", default: "" },
+      fieldText: { type: "string", default: "" },
+      fieldBorder: { type: "string", default: "" },
+      linkColor: { type: "string", default: "" },
+      linkHoverColor: { type: "string", default: "" },
+      buttonBackground: { type: "string", default: "" },
+      buttonText: { type: "string", default: "" },
+      buttonBorder: { type: "string", default: "" },
+      supportBackground: { type: "string", default: "" },
+    },
+    supports: {
+      color: {
+        background: true,
+        gradients: true,
+        text: true,
+      },
+      border: {
+        color: true,
+        radius: true,
+      },
+      spacing: {
+        margin: true,
+        padding: true,
+      },
+      typography: {
+        fontSize: true,
+        lineHeight: true,
+      },
+      html: false,
+    },
+    edit: (props) =>
+      el(
+        Fragment,
+        {},
+        renderMusicAccessGateInspector(props),
+        renderServerPreview("pertenencia-digital/music-access-gate", props)
       ),
     save: () => null,
   });

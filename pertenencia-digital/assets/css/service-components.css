@@ -1,0 +1,235 @@
+/*
+ * Reusable service cards, comparison panels and editorial route clusters.
+ */
+.pd-service-grid,
+.pd-service-composition,
+.pd-service-compare,
+.pd-service-related {
+  display: grid;
+  gap: clamp(0.85rem, 1.8vw, 1.2rem);
+}
+
+.pd-service-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.pd-service-composition {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.pd-service-compare {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.pd-service-related {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.pd-service-card,
+.pd-service-composition__item,
+.pd-service-compare__item,
+.pd-service-related__item,
+.pd-service-note,
+.pd-service-cta {
+  position: relative;
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 1.35rem);
+  border: 1px solid color-mix(in srgb, var(--pd-editorial-accent) 18%, var(--pd-surface-card-border));
+  border-radius: calc(var(--pd-radius-lg) - 6px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--pd-editorial-accent) 5%, transparent), transparent 40%),
+    linear-gradient(180deg, color-mix(in srgb, var(--pd-surface-card-background) 92%, var(--pd-color-bg)), color-mix(in srgb, var(--pd-surface-panel-background) 96%, var(--pd-color-bg)));
+  box-shadow: var(--pd-shadow-card);
+  color: var(--pd-surface-card-text);
+}
+
+.pd-service-card::before,
+.pd-service-composition__item::before,
+.pd-service-compare__item::before,
+.pd-service-related__item::before,
+.pd-service-note::before,
+.pd-service-cta::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--pd-editorial-accent) 72%, transparent), transparent 85%);
+  opacity: 0.9;
+}
+
+.pd-service-card--featured,
+.pd-service-compare__item--featured {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--pd-editorial-accent) 16%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--pd-editorial-accent) 8%, var(--pd-surface-card-background)), color-mix(in srgb, var(--pd-surface-panel-background) 94%, var(--pd-color-bg)));
+  border-color: color-mix(in srgb, var(--pd-editorial-accent) 28%, var(--pd-surface-card-border));
+}
+
+.pd-service-card > *,
+.pd-service-composition__item > *,
+.pd-service-compare__item > *,
+.pd-service-related__item > *,
+.pd-service-note > *,
+.pd-service-cta > * {
+  margin: 0;
+}
+
+.pd-service-card h2,
+.pd-service-card h3,
+.pd-service-card h4,
+.pd-service-composition__item h2,
+.pd-service-composition__item h3,
+.pd-service-composition__item h4,
+.pd-service-compare__item h2,
+.pd-service-compare__item h3,
+.pd-service-compare__item h4,
+.pd-service-related__item h2,
+.pd-service-related__item h3,
+.pd-service-related__item h4,
+.pd-service-note h2,
+.pd-service-note h3,
+.pd-service-note h4,
+.pd-service-cta h2,
+.pd-service-cta h3,
+.pd-service-cta h4 {
+  color: var(--pd-color-white);
+}
+
+.pd-service-card p,
+.pd-service-composition__item p,
+.pd-service-compare__item p,
+.pd-service-related__item p,
+.pd-service-note p,
+.pd-service-cta p {
+  color: inherit;
+}
+
+.pd-service-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  padding: 0.34rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--pd-editorial-accent) 28%, transparent);
+  border-radius: var(--pd-radius-pill);
+  background: color-mix(in srgb, var(--pd-editorial-accent) 10%, transparent);
+  color: var(--pd-color-white);
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.pd-service-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pd-service-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  margin: 0;
+  padding: 0.38rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--pd-editorial-accent) 20%, transparent);
+  border-radius: var(--pd-radius-pill);
+  background: color-mix(in srgb, var(--pd-color-white) 5%, transparent);
+  color: var(--pd-color-white);
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.pd-service-list {
+  display: grid;
+  gap: 0.48rem;
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+.pd-service-list li {
+  margin: 0;
+}
+
+.pd-service-list--compact {
+  gap: 0.36rem;
+  font-size: 0.96rem;
+}
+
+.pd-service-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: clamp(1rem, 2.2vw, 1.4rem);
+  align-items: start;
+}
+
+.pd-service-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: 0.7rem;
+}
+
+.pd-service-metric {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--pd-editorial-accent) 16%, var(--pd-surface-card-border));
+  border-radius: calc(var(--pd-radius-lg) - 12px);
+  background: color-mix(in srgb, var(--pd-color-white) 4%, transparent);
+}
+
+.pd-service-metric strong {
+  color: var(--pd-color-white);
+  font-size: 1rem;
+}
+
+.pd-service-metric span {
+  color: var(--pd-color-muted);
+  font-size: 0.92rem;
+}
+
+.pd-service-related__item a:not(.wp-block-button__link),
+.pd-service-card a:not(.wp-block-button__link),
+.pd-service-compare__item a:not(.wp-block-button__link),
+.pd-service-note a:not(.wp-block-button__link),
+.pd-service-cta a:not(.wp-block-button__link) {
+  color: var(--pd-color-white);
+}
+
+.pd-service-cta {
+  align-items: start;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--pd-editorial-accent) 22%, transparent), transparent 32%),
+    linear-gradient(145deg, color-mix(in srgb, var(--pd-editorial-accent) 14%, var(--pd-surface-panel-background)), color-mix(in srgb, var(--pd-surface-card-background) 92%, var(--pd-color-bg)));
+}
+
+.pd-service-cta .wp-block-buttons {
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 860px) {
+  .pd-service-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .pd-service-grid,
+  .pd-service-composition,
+  .pd-service-compare,
+  .pd-service-related,
+  .pd-service-metric-row {
+    gap: 0.8rem;
+  }
+
+  .pd-service-card,
+  .pd-service-composition__item,
+  .pd-service-compare__item,
+  .pd-service-related__item,
+  .pd-service-note,
+  .pd-service-cta {
+    padding: 0.95rem;
+  }
+}

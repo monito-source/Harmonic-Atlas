@@ -1,0 +1,120 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "pertenencia-digital/login-panel",
+  "title": "Panel de acceso",
+  "category": "widgets",
+  "icon": "lock",
+  "description": "Renderiza el panel frontal de acceso y recuperación de contraseña.",
+  "textdomain": "pertenencia-digital",
+  "editorScript": "pertenencia-digital-theme-blocks-editor",
+  "attributes": {
+    "title": {
+      "type": "string",
+      "default": "Accede a tu pertenencia digital"
+    },
+    "intro": {
+      "type": "string",
+      "default": "Usa esta pantalla para iniciar sesión, recuperar tu contraseña y volver a tu espacio con una interfaz frontal más clara y estable."
+    },
+    "eyebrowColor": {
+      "type": "string",
+      "default": ""
+    },
+    "titleColor": {
+      "type": "string",
+      "default": ""
+    },
+    "introTextColor": {
+      "type": "string",
+      "default": ""
+    },
+    "introBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "introGlow": {
+      "type": "string",
+      "default": ""
+    },
+    "featureBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "featureText": {
+      "type": "string",
+      "default": ""
+    },
+    "cardBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "cardText": {
+      "type": "string",
+      "default": ""
+    },
+    "cardBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "fieldBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "fieldText": {
+      "type": "string",
+      "default": ""
+    },
+    "fieldBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "linkColor": {
+      "type": "string",
+      "default": ""
+    },
+    "linkHoverColor": {
+      "type": "string",
+      "default": ""
+    },
+    "buttonBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "buttonText": {
+      "type": "string",
+      "default": ""
+    },
+    "buttonBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "supportBackground": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "supports": {
+    "auto_register": true,
+    "anchor": true,
+    "className": true,
+    "html": false,
+    "color": {
+      "background": true,
+      "gradients": true,
+      "text": true
+    },
+    "border": {
+      "color": true,
+      "radius": true
+    },
+    "spacing": {
+      "margin": true,
+      "padding": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
+    }
+  }
+}
