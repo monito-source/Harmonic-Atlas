@@ -1,0 +1,82 @@
+.pdt-ticket-panel,
+.pdt-ticket-portal,
+.pdt-services-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.pdt-ticket-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.pdt-ticket-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+}
+
+.pdt-ticket-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: inherit;
+}
+
+.pdt-ticket-form label span {
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pdt-ticket-form input,
+.pdt-ticket-form select,
+.pdt-ticket-form textarea {
+  width: 100%;
+  padding: 0.78rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--wp--preset--color--azul-principal, #1f3f6d) 24%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--wp--preset--color--base, #fff) 92%, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+.pdt-ticket-form textarea {
+  resize: vertical;
+}
+
+.pdt-ticket-form__submit {
+  justify-self: start;
+  padding: 0.78rem 1.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wp--preset--color--azul-principal, #1f3f6d);
+  color: var(--wp--preset--color--base, #fff);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pdt-ticket-notice {
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+}
+
+.pdt-ticket-notice--success {
+  background: color-mix(in srgb, #2d7a46 14%, transparent);
+}
+
+.pdt-ticket-notice--error {
+  background: color-mix(in srgb, #b3261e 12%, transparent);
+}
+
+.pdt-ticket-portal,
+.pdt-services-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.pdt-ticket-portal__item,
+.pdt-services-list__item {
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--wp--preset--color--azul-principal, #1f3f6d) 18%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--wp--preset--color--base, #fff) 82%, transparent);
+}
