@@ -17,8 +17,8 @@
   <h2 class="wp-block-heading has-large-font-size">Explora nuestros contenidos</h2>
   <!-- /wp:heading -->
 
-  <!-- wp:paragraph {"textColor":"oscuro"} -->
-  <p class="has-oscuro-color has-text-color">Elige una de las dos secciones destacadas para comenzar tu recorrido.</p>
+  <!-- wp:paragraph {"textColor":"texto-suave"} -->
+  <p class="has-texto-suave-color has-text-color">Elige una de las dos secciones destacadas para comenzar tu recorrido.</p>
   <!-- /wp:paragraph -->
 
   <!-- wp:buttons {"layout":{"type":"flex","orientation":"vertical"}} -->

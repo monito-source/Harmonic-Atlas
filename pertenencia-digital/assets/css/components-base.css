@@ -1,0 +1,56 @@
+/*
+ * Small reusable theme components.
+ */
+.pd-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+}
+
+.pd-legal-links a {
+  color: inherit;
+}
+
+.pd-editorial-card {
+  border-bottom: 1px solid color-mix(in srgb, var(--pd-color-border) 80%, transparent);
+}
+
+.pd-editorial-card:last-child {
+  border-bottom: 0;
+}
+
+.pd-editorial-card--listing {
+  padding-bottom: 1rem;
+}
+
+.pd-editorial-card--listing .wp-block-post-title {
+  margin: 0;
+}
+
+.pd-editorial-card--listing .wp-block-post-excerpt {
+  margin: 0;
+  color: var(--pd-color-text);
+}
+
+.pd-editorial-card--listing .wp-block-post-excerpt__more-link {
+  font-weight: 700;
+}
+
+.pd-editorial-empty {
+  margin: 0;
+  color: var(--pd-color-muted);
+}
+
+.pd-eyebrow {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 560px) {
+  .pd-editorial-card--listing {
+    padding-bottom: 0.85rem;
+  }
+}

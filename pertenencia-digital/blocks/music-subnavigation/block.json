@@ -1,0 +1,78 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "pertenencia-digital/music-subnavigation",
+  "title": "Subnavegacion de seccion",
+  "category": "widgets",
+  "icon": "playlist-audio",
+  "description": "Muestra las paginas hijas de una seccion como submenu horizontal.",
+  "textdomain": "pertenencia-digital",
+  "attributes": {
+    "parentPath": {
+      "type": "string",
+      "default": "musica"
+    },
+    "alignItems": {
+      "type": "string",
+      "default": "center"
+    },
+    "mobileMode": {
+      "type": "string",
+      "default": "scroll"
+    },
+    "itemSize": {
+      "type": "string",
+      "default": "medium"
+    },
+    "itemScale": {
+      "type": "number",
+      "default": 100
+    },
+    "textColor": {
+      "type": "string",
+      "default": ""
+    },
+    "itemHoverBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "itemHoverBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "itemCurrentBackground": {
+      "type": "string",
+      "default": ""
+    },
+    "itemCurrentBorder": {
+      "type": "string",
+      "default": ""
+    },
+    "itemCurrentText": {
+      "type": "string",
+      "default": ""
+    }
+  },
+  "editorScript": "pertenencia-digital-theme-blocks-editor",
+  "supports": {
+    "auto_register": true,
+    "anchor": true,
+    "className": true,
+    "html": false,
+    "color": {
+      "background": true,
+      "text": true
+    },
+    "border": {
+      "radius": true
+    },
+    "spacing": {
+      "margin": true,
+      "padding": true
+    },
+    "typography": {
+      "fontSize": true,
+      "lineHeight": true
+    }
+  }
+}

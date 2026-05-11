@@ -1,0 +1,305 @@
+/*
+ * Header shells and masthead variants.
+ */
+.pd-header-musica-tecnologia {
+  --pd-auto-contrast-text: var(--pd-color-text-on-dark);
+  --pd-header-padding-inline: var(--wp--custom--layout--content-padding, clamp(0.95rem, 4vw, 2.5rem));
+  --pd-header-padding-block: clamp(0.68rem, 1.8vw, 0.98rem);
+  padding: var(--pd-header-padding-block) var(--pd-header-padding-inline);
+  background: linear-gradient(180deg, var(--wp--preset--color--oscuro) 41%, rgba(255, 255, 255, 0.17) 67%, rgba(40, 118, 252, 0) 87%);
+  box-shadow: var(--pd-shadow-header);
+}
+
+.pd-header-musica-tecnologia__topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.72rem;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-musica-tecnologia__topbar > * {
+  min-width: 0;
+}
+
+.pd-header-musica-tecnologia__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pd-header-musica-tecnologia__branding {
+  display: grid;
+  gap: 0.1rem;
+  justify-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.pd-header-musica-tecnologia__branding > * {
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title {
+  font-size: clamp(2.35rem, 6vw, 4.6rem);
+  line-height: 0.98;
+  text-wrap: balance;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title a {
+  display: inline-block;
+  max-inline-size: min(100%, 18ch);
+  overflow-wrap: anywhere;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-tagline {
+  max-inline-size: min(100%, 36rem);
+  text-wrap: balance;
+  opacity: 0.94;
+  width: 100%;
+}
+
+.pd-header-musica-tecnologia .wp-block-site-title,
+.pd-header-musica-tecnologia .wp-block-site-tagline,
+.pd-header-musica-tecnologia .wp-block-buttons {
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.pd-header-musica-tecnologia__topbar .wp-block-shortcode {
+  margin: 0;
+}
+
+.pd-header-musica-tecnologia__actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.52rem;
+  width: 100%;
+}
+
+.pd-header-musica-tecnologia__button {
+  min-width: 0;
+}
+
+.pd-header-musica-tecnologia__button .wp-block-button__link {
+  min-width: min(100%, 13rem);
+  text-align: center;
+}
+
+.pd-header-musica-tecnologia__button--secondary .wp-block-button__link {
+  border-color: currentColor;
+}
+
+.pd-header-seccion-hijas,
+.pd-header-musica-hijas {
+  --pd-header-padding-inline: clamp(0.75rem, 2.4vw, 1rem);
+  --pd-header-padding-block: clamp(0.58rem, 1.7vw, 0.82rem);
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.pd-header-seccion-hijas .pd-header-musica-tecnologia__topbar,
+.pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.pd-header-seccion-hijas .pd-header-musica-tecnologia__inner,
+.pd-header-musica-hijas .pd-header-musica-tecnologia__inner {
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pd-header-seccion-hijas .pd-header-musica-tecnologia__inner.alignwide,
+.pd-header-musica-hijas .pd-header-musica-tecnologia__inner.alignwide {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+.pd-header-seccion-hijas .pd-music-subnav,
+.pd-header-musica-hijas .pd-music-subnav {
+  margin-top: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.pd-header-tecnologias-hijas .pd-music-subnav--technology {
+  overflow-x: clip;
+}
+
+.pd-header-seccion-hijas .pd-music-subnav__list,
+.pd-header-musica-hijas .pd-music-subnav__list {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 960px) {
+  .pd-header-musica-tecnologia {
+    --pd-header-padding-inline: clamp(0.85rem, 3vw, 1.1rem);
+    --pd-header-padding-block: clamp(1rem, 3vw, 1.25rem);
+  }
+
+  .pd-header-musica-tecnologia__topbar {
+    align-items: center;
+  }
+
+  .pd-header-musica-tecnologia__inner {
+    gap: 0.75rem;
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-title a {
+    max-inline-size: 14ch;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    gap: 0.6rem;
+  }
+}
+
+@media (max-width: 781px) {
+  .pd-header-musica-tecnologia {
+    --pd-header-padding-inline: 0.75rem;
+    --pd-header-padding-block: 0.9rem;
+  }
+
+  .pd-header-musica-tecnologia__inner {
+    gap: 0.7rem;
+  }
+
+  .pd-header-musica-tecnologia__topbar {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .pd-header-musica-tecnologia__branding {
+    gap: 0.35rem;
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-title {
+    font-size: clamp(2rem, 10vw, 3rem);
+  }
+
+  .pd-header-musica-tecnologia .wp-block-site-tagline {
+    font-size: 0.92rem !important;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    gap: 0.55rem;
+  }
+
+  .pd-header-musica-tecnologia__button {
+    flex: 1 1 12rem;
+  }
+
+  .pd-header-musica-tecnologia__button .wp-block-button__link {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pd-header-seccion-hijas .pd-music-subnav,
+  .pd-header-musica-hijas .pd-music-subnav {
+    margin-inline: calc(var(--pd-header-padding-inline) * -1);
+    padding-inline: var(--pd-header-padding-inline);
+  }
+
+  .pd-header-tecnologias-hijas .pd-music-subnav--technology {
+    overflow-x: auto;
+  }
+
+  .pd-header-seccion-hijas .pd-header-musica-tecnologia__topbar,
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-content: initial;
+    gap: 0.45rem;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation-block,
+  .pd-header-seccion-hijas .pd-site-navigation,
+  .pd-header-seccion-hijas .pd-account-access-block,
+  .pd-header-seccion-hijas .pd-account-menu,
+  .pd-header-seccion-hijas .pd-account-access,
+  .pd-header-musica-hijas .pd-site-navigation-block,
+  .pd-header-musica-hijas .pd-site-navigation,
+  .pd-header-musica-hijas .pd-account-access-block,
+  .pd-header-musica-hijas .pd-account-menu,
+  .pd-header-musica-hijas .pd-account-access {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation,
+  .pd-header-musica-hijas .pd-site-navigation {
+    justify-self: start;
+  }
+
+  .pd-header-seccion-hijas .pd-account-access-block,
+  .pd-header-musica-hijas .pd-account-access-block {
+    justify-self: end;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation__toggle,
+  .pd-header-seccion-hijas .pd-account-access__login,
+  .pd-header-seccion-hijas .pd-account-menu__trigger,
+  .pd-header-musica-hijas .pd-site-navigation__toggle,
+  .pd-header-musica-hijas .pd-account-access__login,
+  .pd-header-musica-hijas .pd-account-menu__trigger {
+    min-height: 2.35rem;
+    padding: 0.42rem 0.6rem;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation__toggle-label,
+  .pd-header-musica-hijas .pd-site-navigation__toggle-label {
+    display: none;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation__toggle-icon,
+  .pd-header-musica-hijas .pd-site-navigation__toggle-icon {
+    gap: 0.18rem;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation__panel,
+  .pd-header-musica-hijas .pd-site-navigation__panel {
+    width: min(20rem, calc(100vw - 1rem));
+  }
+}
+
+@media (max-width: 560px) {
+  .pd-header-musica-tecnologia__topbar {
+    gap: 0.5rem;
+  }
+
+  .pd-header-musica-tecnologia__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pd-header-seccion-hijas .pd-header-musica-tecnologia__topbar,
+  .pd-header-musica-hijas .pd-header-musica-tecnologia__topbar {
+    gap: 0.4rem;
+  }
+
+  .pd-header-seccion-hijas .pd-site-navigation__toggle,
+  .pd-header-seccion-hijas .pd-account-access__login,
+  .pd-header-seccion-hijas .pd-account-menu__trigger,
+  .pd-header-musica-hijas .pd-site-navigation__toggle,
+  .pd-header-musica-hijas .pd-account-access__login,
+  .pd-header-musica-hijas .pd-account-menu__trigger {
+    padding-inline: 0.55rem;
+  }
+}
