@@ -1,4 +1,65 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAppState } from '../StateProvider.jsx'
+import {
+  buildMidiClipGroups,
+  playMidiClipGroupsSequence,
+  togglePlayback,
+} from './MidiSketch.jsx'
+
+const PHOTO_SIZE_STORAGE_PREFIX = 'wpss-reading-photo-sizes:'
+const PHOTO_SIZE_DEFAULT = 520
+const PHOTO_SIZE_MIN = 180
+const PHOTO_SIZE_MAX = 1280
+const PHOTO_SIZE_STEP = 40
+
+const clampPhotoSize = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return PHOTO_SIZE_DEFAULT
+  }
+  return Math.min(PHOTO_SIZE_MAX, Math.max(PHOTO_SIZE_MIN, Math.round(parsed)))
+}
+
+const getPhotoSizeStorageKey = (userId = 0) =>
+  `${PHOTO_SIZE_STORAGE_PREFIX}${Number(userId) || 0}`
+
+const loadStoredPhotoSizes = (userId = 0) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return {}
+  }
+  try {
+    const raw = window.localStorage.getItem(getPhotoSizeStorageKey(userId))
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+const loadStoredPhotoSize = (userId = 0, attachmentId = '') => {
+  const key = String(attachmentId || '')
+  const stored = loadStoredPhotoSizes(userId)
+  return key && Number.isFinite(Number(stored[key]))
+    ? clampPhotoSize(stored[key])
+    : PHOTO_SIZE_DEFAULT
+}
+
+const persistStoredPhotoSize = (userId = 0, attachmentId = '', size = PHOTO_SIZE_DEFAULT) => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return
+  }
+  const key = String(attachmentId || '')
+  if (!key) {
+    return
+  }
+  try {
+    const stored = loadStoredPhotoSizes(userId)
+    stored[key] = clampPhotoSize(size)
+    window.localStorage.setItem(getPhotoSizeStorageKey(userId), JSON.stringify(stored))
+  } catch {
+    // Ignore local storage failures.
+  }
+}
 
 function Spinner({ label = 'Procesando' }) {
   return <span className="wpss-inline-spinner" aria-label={label} />
@@ -9,6 +70,28 @@ function formatDuration(value) {
   const minutes = Math.floor(total / 60)
   const seconds = total % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function getScore(attachment) {
+  return attachment?.score && typeof attachment.score === 'object' ? attachment.score : {}
+}
+
+function hasPlayableScore(score) {
+  return Array.isArray(score?.midi_clips)
+    && score.midi_clips.some((clip) => Array.isArray(clip?.midi?.notes) && clip.midi.notes.length)
+}
+
+function getScoreStatusLabel(status) {
+  const labels = {
+    draft: 'Lista para interpretar',
+    queued: 'En cola',
+    processing: 'Interpretando',
+    ready: 'Lista para reproducir',
+    needs_info: 'Necesita información',
+    failed: 'Falló la interpretación',
+    unavailable: 'Motor OMR pendiente',
+  }
+  return labels[status] || 'Partitura'
 }
 
 function PlayIcon() {
@@ -104,9 +187,14 @@ export default function ReadingMediaAttachments({
   minimal = false,
   groupedBySegment = false,
   onDelete = null,
+  onInterpretScore = null,
   pendingActionById = {},
 }) {
   const safeAttachments = normalizeList(attachments)
+  const hasPhotos = safeAttachments.some((item) => item?.type === 'photo')
+  const className = `wpss-reading-media ${compact ? 'is-compact' : ''} ${minimal ? 'is-minimal' : ''} ${
+    hasPhotos ? 'has-photos' : ''
+  }`.trim()
 
   const groupedSegments = useMemo(() => {
     if (!groupedBySegment) return []
@@ -127,7 +215,7 @@ export default function ReadingMediaAttachments({
 
   if (groupedBySegment) {
     return (
-      <div className={`wpss-reading-media ${compact ? 'is-compact' : ''} ${minimal ? 'is-minimal' : ''}`.trim()}>
+      <div className={className}>
         {title ? <h5 className="wpss-reading-media__title">{title}</h5> : null}
         {groupedSegments.map(([segmentIndex, items]) => (
           <div key={`segment-group-${segmentIndex}`} className="wpss-reading-media__group">
@@ -140,6 +228,7 @@ export default function ReadingMediaAttachments({
                   compact={compact}
                   minimal={minimal}
                   onDelete={onDelete}
+                  onInterpretScore={onInterpretScore}
                   pendingAction={pendingActionById?.[item.id] || ''}
                 />
               ))}
@@ -151,7 +240,7 @@ export default function ReadingMediaAttachments({
   }
 
   return (
-    <div className={`wpss-reading-media ${compact ? 'is-compact' : ''} ${minimal ? 'is-minimal' : ''}`.trim()}>
+    <div className={className}>
       {title ? <h5 className="wpss-reading-media__title">{title}</h5> : null}
       <div className="wpss-reading-media__grid">
         {safeAttachments.map((item) => (
@@ -161,6 +250,7 @@ export default function ReadingMediaAttachments({
             compact={compact}
             minimal={minimal}
             onDelete={onDelete}
+            onInterpretScore={onInterpretScore}
             pendingAction={pendingActionById?.[item.id] || ''}
           />
         ))}
@@ -169,10 +259,24 @@ export default function ReadingMediaAttachments({
   )
 }
 
-function ReadingAttachmentCard({ attachment, compact = false, minimal = false, onDelete = null, pendingAction = '' }) {
+function ReadingAttachmentCard({
+  attachment,
+  compact = false,
+  minimal = false,
+  onDelete = null,
+  onInterpretScore = null,
+  pendingAction = '',
+}) {
+  const { wpData } = useAppState()
+  const currentUserId = Number(wpData?.currentUserId) || 0
   const label = attachment?.title || attachment?.file_name || 'Adjunto'
   const isPhoto = attachment?.type === 'photo'
   const isBusy = !!pendingAction
+  const score = getScore(attachment)
+  const isScorePhoto = isPhoto && !!score.enabled
+  const attachmentId = String(attachment?.id || attachment?.stream_url || label)
+  const [photoSize, setPhotoSize] = useState(() => loadStoredPhotoSize(currentUserId, attachmentId))
+  const [arePhotoControlsOpen, setArePhotoControlsOpen] = useState(false)
   const projectLabel = Array.isArray(attachment?.projects) && attachment.projects.length
     ? attachment.projects.map((project) => project?.titulo).filter(Boolean).join(' · ')
     : ''
@@ -183,7 +287,7 @@ function ReadingAttachmentCard({ attachment, compact = false, minimal = false, o
       : ''
   const createdLabel = formatCreatedAt(attachment?.created_at)
   const meta = [
-    isPhoto ? 'Foto' : 'Audio',
+    isScorePhoto ? 'Partitura' : isPhoto ? 'Foto' : 'Audio',
     sourceLabel,
     attachment?.owner_user_name ? `Por ${attachment.owner_user_name}` : '',
     projectLabel ? `Proyecto: ${projectLabel}` : '',
@@ -193,24 +297,101 @@ function ReadingAttachmentCard({ attachment, compact = false, minimal = false, o
     .filter(Boolean)
     .join(' · ')
 
+  useEffect(() => {
+    if (!isPhoto) {
+      return
+    }
+    setPhotoSize(loadStoredPhotoSize(currentUserId, attachmentId))
+  }, [attachmentId, currentUserId, isPhoto])
+
+  const updatePhotoSize = (nextSize) => {
+    const size = clampPhotoSize(nextSize)
+    setPhotoSize(size)
+    persistStoredPhotoSize(currentUserId, attachmentId, size)
+  }
+
   return (
-    <article className={`wpss-reading-media__card ${compact ? 'is-compact' : ''} ${minimal ? 'is-minimal' : ''}`.trim()}>
+    <article className={`wpss-reading-media__card ${compact ? 'is-compact' : ''} ${minimal ? 'is-minimal' : ''} ${
+      isPhoto ? 'is-photo' : ''
+    }`.trim()}>
+      {isPhoto ? (
+        <button
+          type="button"
+          className={`button button-small wpss-reading-media__image-toggle ${
+            arePhotoControlsOpen ? 'is-open' : ''
+          }`}
+          onClick={() => setArePhotoControlsOpen((current) => !current)}
+          aria-expanded={arePhotoControlsOpen}
+          aria-label={arePhotoControlsOpen ? 'Ocultar opciones de tamaño' : 'Mostrar opciones de tamaño'}
+        >
+          ▾
+        </button>
+      ) : null}
       <div className="wpss-reading-media__card-head">
         <strong>{label}</strong>
         {meta ? <span>{meta}</span> : null}
       </div>
       {isPhoto ? (
-        <a href={attachment?.stream_url || '#'} target="_blank" rel="noreferrer">
+        <div
+          className="wpss-reading-media__image-stage"
+          style={{ '--wpss-reading-photo-width': `${photoSize}px` }}
+        >
           <img
             className="wpss-reading-media__image"
             src={attachment?.stream_url || ''}
             alt={label}
             loading="lazy"
           />
-        </a>
+          {arePhotoControlsOpen ? (
+            <div className="wpss-reading-media__image-controls" aria-label={`Tamaño de ${label}`}>
+              <button
+                type="button"
+                className="button button-small"
+                onClick={() => updatePhotoSize(photoSize - PHOTO_SIZE_STEP)}
+                disabled={photoSize <= PHOTO_SIZE_MIN}
+                aria-label="Encoger imagen"
+              >
+                -
+              </button>
+              <input
+                type="range"
+                min={PHOTO_SIZE_MIN}
+                max={PHOTO_SIZE_MAX}
+                step={PHOTO_SIZE_STEP}
+                value={photoSize}
+                onChange={(event) => updatePhotoSize(event.target.value)}
+                aria-label="Ajustar tamaño de imagen"
+              />
+              <button
+                type="button"
+                className="button button-small"
+                onClick={() => updatePhotoSize(photoSize + PHOTO_SIZE_STEP)}
+                disabled={photoSize >= PHOTO_SIZE_MAX}
+                aria-label="Agrandar imagen"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                className="button button-small"
+                onClick={() => updatePhotoSize(PHOTO_SIZE_DEFAULT)}
+              >
+                100%
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : (
         <AudioAttachmentPlayer attachment={attachment} minimal={minimal} />
       )}
+      {isScorePhoto ? (
+        <ScorePhotoControls
+          attachment={attachment}
+          score={score}
+          isBusy={isBusy}
+          onInterpretScore={onInterpretScore}
+        />
+      ) : null}
       {isBusy ? (
         <p className="wpss-preview-media__status">
           <Spinner label={`Procesando ${pendingAction}`} />
@@ -225,6 +406,71 @@ function ReadingAttachmentCard({ attachment, compact = false, minimal = false, o
         </div>
       ) : null}
     </article>
+  )
+}
+
+function ScorePhotoControls({ attachment, score, isBusy = false, onInterpretScore = null }) {
+  const [isPlaying, setIsPlaying] = useState(false)
+  const playable = hasPlayableScore(score)
+  const canInterpret = typeof onInterpretScore === 'function' && attachment?.can_manage
+  const statusLabel = getScoreStatusLabel(score?.status)
+  const playbackKey = `score-photo-${attachment?.id || attachment?.stream_url || 'attachment'}`
+
+  useEffect(() => {
+    setIsPlaying(false)
+  }, [attachment?.id, score?.updated_at, score?.status])
+
+  const handleToggleScorePlayback = () => {
+    if (!playable) {
+      return
+    }
+
+    const groups = buildMidiClipGroups(score.midi_clips, true)
+    const steps = groups.map((clips, index) => ({
+      clips,
+      meta: { scoreIndex: index },
+    }))
+    const result = togglePlayback(
+      playbackKey,
+      () => playMidiClipGroupsSequence(steps, {
+        defaultTempo: score?.tempo || 100,
+        repeatsEnabled: true,
+      }),
+      () => setIsPlaying(false),
+    )
+    setIsPlaying(!!result.playing)
+  }
+
+  return (
+    <div className={`wpss-score-playback ${playable ? 'is-ready' : ''}`}>
+      <div className="wpss-score-playback__status">
+        <strong>Partitura</strong>
+        <span>{statusLabel}</span>
+      </div>
+      {score?.message ? <p>{score.message}</p> : null}
+      {score?.notes ? <p className="wpss-score-playback__notes">{score.notes}</p> : null}
+      <div className="wpss-score-playback__actions">
+        {playable ? (
+          <button
+            type="button"
+            className="button button-small button-primary"
+            onClick={handleToggleScorePlayback}
+          >
+            {isPlaying ? 'Detener partitura' : 'Reproducir partitura'}
+          </button>
+        ) : null}
+        {canInterpret ? (
+          <button
+            type="button"
+            className="button button-small"
+            onClick={() => onInterpretScore(attachment)}
+            disabled={isBusy || score?.status === 'processing'}
+          >
+            {score?.status === 'processing' ? 'Interpretando...' : 'Interpretar partitura'}
+          </button>
+        ) : null}
+      </div>
+    </div>
   )
 }
 

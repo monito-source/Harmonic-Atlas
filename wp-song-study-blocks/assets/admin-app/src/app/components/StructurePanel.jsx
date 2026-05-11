@@ -28,7 +28,10 @@ export default function StructurePanel({ structure, sections, onChange }) {
     const call = safeStructure[index]
     if (!call) return
     const next = [...safeStructure]
-    next.splice(index + 1, 0, { ...call })
+    const copy = { ...call }
+    delete copy.youtube_start
+    delete copy.youtube_end
+    next.splice(index + 1, 0, { ...copy })
     onChange(next)
   }
 

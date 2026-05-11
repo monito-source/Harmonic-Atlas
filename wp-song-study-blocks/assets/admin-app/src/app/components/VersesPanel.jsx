@@ -246,6 +246,7 @@ export default function VersesPanel({
   onMoveSegmentToVerse,
   onMoveSegmentToNewVerse,
   useContextualToolbar = false,
+  onContextMenuRequest,
 }) {
   const { state, dispatch, api, wpData } = useAppState()
   const bpmDefault = Number.isInteger(parseInt(songBpm, 10)) ? parseInt(songBpm, 10) : 120
@@ -1465,6 +1466,7 @@ export default function VersesPanel({
                 midiRangeDefault={midiRangeDefault}
                 lockMidiRange={lockMidiRange}
                 onQuickUploadAttachment={onQuickUploadAttachment}
+                onContextMenuRequest={onContextMenuRequest}
               />
             </details>
           </div>
@@ -1546,6 +1548,16 @@ export default function VersesPanel({
                       dragDropHandledRef.current = moved
                       resetDragState()
                     }
+                  }}
+                  onContextMenu={(event) => {
+                    if (!onContextMenuRequest) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    onContextMenuRequest(event, {
+                      type: 'verse',
+                      sectionId: verse.section_id || activeSectionId,
+                      verseIndex,
+                    })
                   }}
                 >
                   <div className="wpss-verse-card__header">
@@ -1650,6 +1662,15 @@ export default function VersesPanel({
                       >
                         Instrumental
                       </button>
+                      {useContextualToolbar ? (
+                        <button
+                          type="button"
+                          className="button button-small button-link-delete"
+                          onClick={() => handleRemoveVerse(verseIndex)}
+                        >
+                          Borrar verso
+                        </button>
+                      ) : null}
                       {!useContextualToolbar ? (
                         <details className="wpss-action-menu">
                           <summary aria-label="Acciones del verso" title="Acciones del verso">⋯</summary>
@@ -1799,6 +1820,17 @@ export default function VersesPanel({
                               const moved = handleSegmentDrop(verseIndex, segmentIndex, event)
                               dragDropHandledRef.current = moved
                               resetDragState()
+                            }}
+                            onContextMenu={(event) => {
+                              if (!onContextMenuRequest) return
+                              event.preventDefault()
+                              event.stopPropagation()
+                              onContextMenuRequest(event, {
+                                type: 'segment',
+                                sectionId: verse.section_id || activeSectionId,
+                                verseIndex,
+                                segmentIndex,
+                              })
                             }}
                           >
                             <div className="wpss-segment__drag">

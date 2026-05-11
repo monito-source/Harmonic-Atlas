@@ -18,6 +18,7 @@ export default function SectionsPanel({
   midiRangeDefault = '',
   lockMidiRange = false,
   onQuickUploadAttachment,
+  onContextMenuRequest,
 }) {
   const safeSections = Array.isArray(sections) ? sections : []
   const visibleSections = filterSectionId
@@ -156,6 +157,16 @@ export default function SectionsPanel({
                 setDragOverIndex(null)
                 dragOverRef.current = null
               }
+            }}
+            onContextMenu={(event) => {
+              if (!onContextMenuRequest) return
+              event.preventDefault()
+              event.stopPropagation()
+              onContextMenuRequest(event, {
+                type: 'section',
+                sectionId: section.id,
+                sectionIndex: safeSections.findIndex((item) => item.id === section.id),
+              })
             }}
           >
             <div className="wpss-section-row__header">

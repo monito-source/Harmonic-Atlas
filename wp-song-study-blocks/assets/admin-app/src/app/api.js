@@ -171,6 +171,24 @@ export function createApi(wpData) {
     listProjects() {
       return request('proyectos')
     },
+    listProjectRehearsalRescueProjects() {
+      return request('ensayos/rescate/proyectos')
+    },
+    getProjectRehearsals(id) {
+      return request(`proyecto/${id}/ensayos`)
+    },
+    getProjectRehearsalRescueAvailability(id) {
+      return request(`proyecto/${id}/ensayos/rescate`)
+    },
+    saveProjectRehearsals(id, payload) {
+      return request(`proyecto/${id}/ensayos`, { method: 'POST', body: payload })
+    },
+    rescueProjectRehearsalAvailability(payload) {
+      return request('ensayos/rescate/disponibilidad', { method: 'POST', body: payload })
+    },
+    syncProjectRehearsalCalendar(id, payload) {
+      return request(`proyecto/${id}/ensayos/google-calendar`, { method: 'POST', body: payload })
+    },
     assignRepertoire(items) {
       return request('repertorio-asignaciones', { method: 'POST', body: { items } })
     },
@@ -236,6 +254,9 @@ export function createApi(wpData) {
     },
     updateSongAttachment(songId, attachmentId, payload) {
       return request(`media/attachment/${songId}/${attachmentId}`, { method: 'POST', body: payload })
+    },
+    interpretScoreAttachment(songId, attachmentId) {
+      return request(`media/attachment/${songId}/${attachmentId}/score/interpret`, { method: 'POST', body: {} })
     },
     unlinkSongAttachment(songId, attachmentId) {
       return request(`media/attachment/${songId}/${attachmentId}/unlink`, { method: 'POST', body: {} })

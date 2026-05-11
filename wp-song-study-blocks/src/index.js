@@ -4,6 +4,7 @@ import './blocks/collaborator-gallery';
 import './blocks/collaborator-presskit';
 import './blocks/collaborator-projects';
 import './blocks/current-membership';
+import './blocks/current-rehearsals';
 import './blocks/project-contact';
 import './blocks/project-collaborators';
 import './blocks/project-directory';

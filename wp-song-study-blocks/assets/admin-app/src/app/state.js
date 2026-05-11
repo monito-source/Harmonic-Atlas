@@ -4,7 +4,14 @@ import {
 } from './chordInstruments.js'
 
 export function createEmptySegment() {
-  return { texto: '', acorde: '', midi_clips: [], comentarios: [] }
+  return {
+    texto: '',
+    acorde: '',
+    youtube_start: null,
+    youtube_end: null,
+    midi_clips: [],
+    comentarios: [],
+  }
 }
 
 export function createEmptyVerse(order, sectionId) {
@@ -13,6 +20,8 @@ export function createEmptyVerse(order, sectionId) {
     segmentos: [createEmptySegment()],
     comentario: '',
     comentarios: [],
+    youtube_start: null,
+    youtube_end: null,
     evento_armonico: null,
     section_id: sectionId || '',
     fin_de_estrofa: false,
@@ -27,6 +36,8 @@ export function createSection(nombre = '', index = 0) {
   return {
     id: `sec-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     nombre: label,
+    youtube_start: null,
+    youtube_end: null,
     midi_clips: [],
     comentarios: [],
   }
@@ -49,6 +60,8 @@ export function createEmptySong() {
     estado_ensayo: 'sin_ensayar',
     estado_ensayo_label: 'No ensayada',
     titulo: '',
+    youtube_url: '',
+    youtube_video_id: '',
     bpm: 120,
     tonica: '',
     campo_armonico: '',

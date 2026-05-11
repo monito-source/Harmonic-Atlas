@@ -77,6 +77,24 @@ function wpss_register_admin_pages() {
         'wpss_render_groups_page'
     );
 
+    $project_rehearsals_hook = add_submenu_page(
+        $parent_slug,
+        __( 'Planificador de ensayos', 'wp-song-study' ),
+        __( 'Planificador de ensayos', 'wp-song-study' ),
+        $capability,
+        'wpss-ensayos-proyecto',
+        'wpss_render_project_rehearsals_page'
+    );
+
+    add_submenu_page(
+        $parent_slug,
+        __( 'Notificaciones de ensayos', 'wp-song-study' ),
+        __( 'Notificaciones de ensayos', 'wp-song-study' ),
+        'manage_options',
+        'wpss-rehearsal-notifications',
+        'wpss_render_rehearsal_notification_settings_page'
+    );
+
     $drive_hook = add_submenu_page(
         $parent_slug,
         __( 'Mi Drive', 'wp-song-study' ),
@@ -104,7 +122,7 @@ function wpss_register_admin_pages() {
         'wpss_render_google_drive_global_settings_page'
     );
 
-    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $drive_hook, $import_export_hook ];
+    $wpss_admin_page_hooks = [ $dashboard_hook, $new_song_hook, $chords_hook, $groups_hook, $project_rehearsals_hook, $drive_hook, $import_export_hook ];
 
     add_submenu_page(
         $parent_slug,
@@ -145,6 +163,13 @@ function wpss_render_groups_page() {
 }
 
 /**
+ * Renderiza el contenedor del SPA para administrar ensayos por proyecto.
+ */
+function wpss_render_project_rehearsals_page() {
+    echo '<div id="wpss-cancion-app" class="wpss-cancion-app" data-view="project-rehearsals"></div>';
+}
+
+/**
  * Renderiza el contenedor del SPA para la conexión personal a Google Drive.
  */
 function wpss_render_drive_page() {
@@ -179,6 +204,18 @@ function wpss_register_settings() {
             'type'              => 'string',
             'sanitize_callback' => 'wpss_sanitize_midi_range_default',
             'default'           => 'medios',
+        ]
+    );
+
+    register_setting(
+        'wpss_rehearsal_notification_settings_group',
+        'wpss_rehearsal_notification_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'wpssb_sanitize_rehearsal_notification_settings',
+            'default'           => function_exists( 'wpssb_get_default_rehearsal_notification_settings' )
+                ? wpssb_get_default_rehearsal_notification_settings()
+                : [],
         ]
     );
 }
@@ -240,18 +277,123 @@ function wpss_render_settings_page() {
 }
 
 /**
+ * Renderiza la configuración de correo para notificaciones de ensayos.
+ */
+function wpss_render_rehearsal_notification_settings_page() {
+    $settings = function_exists( 'wpssb_get_rehearsal_notification_settings' )
+        ? wpssb_get_rehearsal_notification_settings()
+        : [
+            'enabled'    => 1,
+            'from_name'  => '',
+            'from_email' => '',
+            'reply_to'   => '',
+        ];
+
+    echo '<div class="wrap">';
+    echo '<h1>' . esc_html__( 'Notificaciones de ensayos', 'wp-song-study' ) . '</h1>';
+    echo '<p>' . esc_html__( 'Configura aquí el remitente usado por el Planificador de ensayos cuando avisa al grupo sobre propuestas, votos y confirmaciones.', 'wp-song-study' ) . '</p>';
+    echo '<form method="post" action="options.php">';
+    settings_fields( 'wpss_rehearsal_notification_settings_group' );
+
+    echo '<table class="form-table" role="presentation">';
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Activar avisos por correo', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<label>';
+    echo '<input type="checkbox" name="wpss_rehearsal_notification_settings[enabled]" value="1" ' . checked( ! empty( $settings['enabled'] ), true, false ) . ' />';
+    echo ' ' . esc_html__( 'Enviar notificaciones del planificador al resto del proyecto.', 'wp-song-study' );
+    echo '</label>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Nombre del remitente', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<input type="text" class="regular-text" name="wpss_rehearsal_notification_settings[from_name]" value="' . esc_attr( (string) ( $settings['from_name'] ?? '' ) ) . '" />';
+    echo '<p class="description">' . esc_html__( 'Ej. Harmony Atlas · Planificador de ensayos.', 'wp-song-study' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Correo remitente', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<input type="email" class="regular-text" name="wpss_rehearsal_notification_settings[from_email]" value="' . esc_attr( (string) ( $settings['from_email'] ?? '' ) ) . '" />';
+    echo '<p class="description">' . esc_html__( 'Usa aquí una cuenta de tu dominio, por ejemplo ensayos@tudominio.com.', 'wp-song-study' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Reply-to', 'wp-song-study' ) . '</th>';
+    echo '<td>';
+    echo '<input type="email" class="regular-text" name="wpss_rehearsal_notification_settings[reply_to]" value="' . esc_attr( (string) ( $settings['reply_to'] ?? '' ) ) . '" />';
+    echo '<p class="description">' . esc_html__( 'Opcional. Si alguien responde el correo, llegará a esta dirección.', 'wp-song-study' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+    echo '</table>';
+
+    echo '<p class="description">' . esc_html__( 'Importante: para que tu dominio entregue bien estos correos, también necesitas configurar SMTP y los registros SPF/DKIM/DMARC fuera de WordPress.', 'wp-song-study' ) . '</p>';
+
+    submit_button( __( 'Guardar notificaciones', 'wp-song-study' ) );
+    echo '</form>';
+    echo '</div>';
+}
+
+/**
  * Renderiza la configuración global de Google Drive.
  *
  * @return void
  */
 function wpss_render_google_drive_global_settings_page() {
     $google_client_id = function_exists( 'wpss_get_google_drive_client_id' ) ? wpss_get_google_drive_client_id() : '';
-    $google_client_secret = function_exists( 'wpss_get_google_drive_client_secret' ) ? wpss_get_google_drive_client_secret() : '';
-    $google_redirect_uri = function_exists( 'wpss_get_google_drive_redirect_uri' ) ? wpss_get_google_drive_redirect_uri() : '';
+	$google_client_secret = function_exists( 'wpss_get_google_drive_client_secret' ) ? wpss_get_google_drive_client_secret() : '';
+	$google_redirect_uri = function_exists( 'wpss_get_google_drive_redirect_uri' ) ? wpss_get_google_drive_redirect_uri() : '';
+	$omr_provider = function_exists( 'wpss_get_omr_provider' ) ? wpss_get_omr_provider() : 'local_service';
+	$omr_endpoint_url = function_exists( 'wpss_get_omr_endpoint_url' ) ? wpss_get_omr_endpoint_url() : '';
+	$omr_api_key = function_exists( 'wpss_get_omr_api_key' ) ? wpss_get_omr_api_key() : '';
+	$omr_timeout = function_exists( 'wpss_get_omr_timeout' ) ? wpss_get_omr_timeout() : 45;
+	$omr_external_api_url = function_exists( 'wpss_get_omr_external_api_url' ) ? wpss_get_omr_external_api_url() : '';
+	$omr_external_api_key = function_exists( 'wpss_get_omr_external_api_key' ) ? wpss_get_omr_external_api_key() : '';
+	$omr_external_api_timeout = function_exists( 'wpss_get_omr_external_api_timeout' ) ? wpss_get_omr_external_api_timeout() : 45;
+    $site_name = get_bloginfo( 'name' );
+    $home_url = home_url( '/' );
+    $privacy_policy_url = function_exists( 'get_privacy_policy_url' ) ? get_privacy_policy_url() : '';
+    $home_parts = wp_parse_url( $home_url );
+    $authorized_domain = is_array( $home_parts ) && ! empty( $home_parts['host'] ) ? preg_replace( '/^www\./', '', (string) $home_parts['host'] ) : '';
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Credenciales globales de Google Drive', 'wp-song-study' ) . '</h1>';
-    echo '<p>' . esc_html__( 'Estas credenciales funcionan como respaldo global. Si un usuario configura su propio Client ID y Client Secret en su perfil, esas credenciales personales tienen prioridad.', 'wp-song-study' ) . '</p>';
+    echo '<p>' . esc_html__( 'Estas credenciales funcionan como respaldo global. Si un usuario configura su propio Client ID y Client Secret en su perfil, esas credenciales personales tienen prioridad. Drive y Calendar pueden reutilizar este mismo cliente OAuth, pero cada integración mantiene su propio token y sus propios scopes.', 'wp-song-study' ) . '</p>';
+    if ( isset( $_GET['calendar_cleanup'] ) && 'done' === sanitize_key( wp_unslash( $_GET['calendar_cleanup'] ) ) ) {
+        $cleanup_found   = isset( $_GET['calendar_cleanup_found'] ) ? absint( wp_unslash( $_GET['calendar_cleanup_found'] ) ) : 0;
+        $cleanup_deleted = isset( $_GET['calendar_cleanup_deleted'] ) ? absint( wp_unslash( $_GET['calendar_cleanup_deleted'] ) ) : 0;
+        $cleanup_failed  = isset( $_GET['calendar_cleanup_failed'] ) ? absint( wp_unslash( $_GET['calendar_cleanup_failed'] ) ) : 0;
+        $notice_class    = $cleanup_failed > 0 ? 'notice-warning' : 'notice-success';
+
+        echo '<div class="notice ' . esc_attr( $notice_class ) . ' is-dismissible"><p>';
+        echo esc_html(
+            sprintf(
+                __( 'Limpieza de Calendar terminada: %1$d detectados, %2$d eliminados/limpiados, %3$d con error.', 'wp-song-study' ),
+                $cleanup_found,
+                $cleanup_deleted,
+                $cleanup_failed
+            )
+        );
+        echo '</p></div>';
+    }
+    echo '<div class="notice notice-info inline">';
+    echo '<p><strong>' . esc_html__( 'Pantalla de consentimiento OAuth en Google Cloud', 'wp-song-study' ) . '</strong></p>';
+    echo '<p>' . esc_html__( 'El nombre público de la app lo valida Google en Cloud Console, no WordPress. Para evitar rechazos, usa la marca real del sitio y no el nombre técnico del plugin.', 'wp-song-study' ) . '</p>';
+    echo '<ul style="list-style:disc;margin-left:1.5em;">';
+    echo '<li>' . esc_html__( 'Nombre recomendado de la app:', 'wp-song-study' ) . ' <code>' . esc_html( '' !== $site_name ? $site_name : __( 'Nombre del sitio', 'wp-song-study' ) ) . '</code></li>';
+    echo '<li>' . esc_html__( 'Página principal de la app:', 'wp-song-study' ) . ' <code>' . esc_html( $home_url ) . '</code></li>';
+    if ( '' !== $privacy_policy_url ) {
+        echo '<li>' . esc_html__( 'Política de privacidad:', 'wp-song-study' ) . ' <code>' . esc_html( $privacy_policy_url ) . '</code></li>';
+    }
+    if ( '' !== $authorized_domain ) {
+        echo '<li>' . esc_html__( 'Dominio autorizado:', 'wp-song-study' ) . ' <code>' . esc_html( $authorized_domain ) . '</code></li>';
+    }
+    echo '</ul>';
+    echo '</div>';
     echo '<form method="post" action="options.php">';
     settings_fields( 'wpss_settings' );
     echo '<table class="form-table" role="presentation">';
@@ -279,8 +421,130 @@ function wpss_render_google_drive_global_settings_page() {
     echo '</tr>';
 
     echo '</table>';
+
+	echo '<h2>' . esc_html__( 'Interpretación de partituras (OMR)', 'wp-song-study' ) . '</h2>';
+	echo '<p>' . esc_html__( 'Configura el proveedor que recibirá la imagen de la partitura y devolverá MusicXML. La conversión a midi_clips se mantiene dentro de HarmonyAtlas.', 'wp-song-study' ) . '</p>';
+	echo '<table class="form-table" role="presentation">';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'Proveedor OMR', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<select name="wpss_omr_provider">';
+	echo '<option value="local_service"' . selected( $omr_provider, 'local_service', false ) . '>' . esc_html__( 'local_service', 'wp-song-study' ) . '</option>';
+	echo '<option value="external_api"' . selected( $omr_provider, 'external_api', false ) . '>' . esc_html__( 'external_api', 'wp-song-study' ) . '</option>';
+	echo '</select>';
+	echo '<p class="description">' . esc_html__( 'local_service usa el microservicio incluido en services/omr-service. external_api permite conectar otro proveedor HTTP con el mismo contrato JSON.', 'wp-song-study' ) . '</p>';
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'Local service URL', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="url" name="wpss_omr_endpoint_url" value="' . esc_attr( $omr_endpoint_url ) . '" class="regular-text code" placeholder="http://127.0.0.1:8080/omr" />';
+	echo '<p class="description">' . esc_html__( 'Mantiene compatibilidad con el endpoint actual POST /omr.', 'wp-song-study' ) . '</p>';
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'Local service API key', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="password" name="wpss_omr_api_key" value="' . esc_attr( $omr_api_key ) . '" class="regular-text code" autocomplete="new-password" />';
+	echo '<p class="description">' . esc_html__( 'Se enviará como Authorization: Bearer y X-WPSS-OMR-Key.', 'wp-song-study' ) . '</p>';
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'Local service timeout', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="number" name="wpss_omr_timeout" value="' . esc_attr( $omr_timeout ) . '" class="small-text" min="5" max="300" step="1" /> ';
+	echo esc_html__( 'segundos', 'wp-song-study' );
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'External API URL', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="url" name="wpss_omr_external_api_url" value="' . esc_attr( $omr_external_api_url ) . '" class="regular-text code" placeholder="https://proveedor.example/omr" />';
+	echo '<p class="description">' . esc_html__( 'Debe aceptar el mismo payload y devolver ok, engine, musicxml, warnings y error.', 'wp-song-study' ) . '</p>';
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'External API key', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="password" name="wpss_omr_external_api_key" value="' . esc_attr( $omr_external_api_key ) . '" class="regular-text code" autocomplete="new-password" />';
+	echo '<p class="description">' . esc_html__( 'Se enviará como Authorization: Bearer y X-WPSS-OMR-Key.', 'wp-song-study' ) . '</p>';
+	echo '</td>';
+	echo '</tr>';
+
+	echo '<tr>';
+	echo '<th scope="row">' . esc_html__( 'External API timeout', 'wp-song-study' ) . '</th>';
+	echo '<td>';
+	echo '<input type="number" name="wpss_omr_external_api_timeout" value="' . esc_attr( $omr_external_api_timeout ) . '" class="small-text" min="5" max="300" step="1" /> ';
+	echo esc_html__( 'segundos', 'wp-song-study' );
+	echo '</td>';
+	echo '</tr>';
+
+	echo '</table>';
+
     submit_button();
     echo '</form>';
+
+    if ( function_exists( 'wpssb_find_project_rehearsal_unconfirmed_calendar_events' ) ) {
+        $orphan_events = wpssb_find_project_rehearsal_unconfirmed_calendar_events();
+
+        echo '<hr />';
+        echo '<h2>' . esc_html__( 'Limpieza de eventos de ensayos no confirmados', 'wp-song-study' ) . '</h2>';
+        echo '<p>' . esc_html__( 'Esta utilidad busca eventos de Google Calendar cuyo ID quedó guardado en WordPress, pero cuya sesión no está confirmada ni completada. Sirve para limpiar eventos creados por errores previos del flujo de consenso.', 'wp-song-study' ) . '</p>';
+        echo '<p class="description">' . esc_html__( 'Límite de seguridad: si el evento existe en Google pero WordPress ya no conserva su event_id, esta herramienta no puede localizarlo sin hacer una búsqueda amplia en Calendar.', 'wp-song-study' ) . '</p>';
+
+        if ( empty( $orphan_events ) ) {
+            echo '<div class="notice notice-success inline"><p>' . esc_html__( 'No se detectaron eventos huérfanos guardados en sesiones no confirmadas.', 'wp-song-study' ) . '</p></div>';
+        } else {
+            echo '<div class="notice notice-warning inline"><p>';
+            echo esc_html(
+                sprintf(
+                    __( 'Se detectaron %d eventos candidatos para borrar de Google Calendar.', 'wp-song-study' ),
+                    count( $orphan_events )
+                )
+            );
+            echo '</p></div>';
+            echo '<table class="widefat striped" style="max-width:1100px;">';
+            echo '<thead><tr>';
+            echo '<th>' . esc_html__( 'Proyecto', 'wp-song-study' ) . '</th>';
+            echo '<th>' . esc_html__( 'Sesión', 'wp-song-study' ) . '</th>';
+            echo '<th>' . esc_html__( 'Estado', 'wp-song-study' ) . '</th>';
+            echo '<th>' . esc_html__( 'Evento', 'wp-song-study' ) . '</th>';
+            echo '<th>' . esc_html__( 'Cuenta', 'wp-song-study' ) . '</th>';
+            echo '</tr></thead><tbody>';
+
+            foreach ( array_slice( $orphan_events, 0, 50 ) as $event ) {
+                $event_link = ! empty( $event['html_link'] )
+                    ? '<a href="' . esc_url( (string) $event['html_link'] ) . '" target="_blank" rel="noopener noreferrer">' . esc_html( (string) $event['event_id'] ) . '</a>'
+                    : '<code>' . esc_html( (string) $event['event_id'] ) . '</code>';
+
+                echo '<tr>';
+                echo '<td><strong>' . esc_html( (string) ( $event['project_title'] ?? '' ) ) . '</strong><br/><code>#' . esc_html( (string) ( $event['project_id'] ?? '' ) ) . '</code></td>';
+                echo '<td>' . esc_html( '' !== (string) ( $event['session_focus'] ?? '' ) ? (string) $event['session_focus'] : __( 'Sesión sin título', 'wp-song-study' ) ) . '<br/><small>' . esc_html( (string) ( $event['session_schedule'] ?? '' ) ) . '</small></td>';
+                echo '<td><code>' . esc_html( (string) ( $event['session_status'] ?? '' ) ) . '</code></td>';
+                echo '<td>' . $event_link . '</td>';
+                echo '<td>' . esc_html( '' !== (string) ( $event['synced_by_label'] ?? '' ) ? (string) $event['synced_by_label'] : __( 'Sin cuenta registrada', 'wp-song-study' ) ) . '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+            if ( count( $orphan_events ) > 50 ) {
+                echo '<p class="description">' . esc_html__( 'Se muestran solo los primeros 50 candidatos; el botón procesa todos los detectados.', 'wp-song-study' ) . '</p>';
+            }
+
+            echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" style="margin-top:1rem;">';
+            echo '<input type="hidden" name="action" value="wpssb_cleanup_rehearsal_calendar_orphans" />';
+            echo '<input type="hidden" name="project_id" value="0" />';
+            wp_nonce_field( 'wpssb_cleanup_rehearsal_calendar_orphans', 'wpssb_calendar_cleanup_nonce' );
+            submit_button( __( 'Borrar eventos huérfanos detectados', 'wp-song-study' ), 'delete', 'submit', false );
+            echo '</form>';
+        }
+    }
     echo '</div>';
 }
 
@@ -397,6 +661,7 @@ function wpss_get_admin_localized_data() {
         'adminUrls'    => [
             'drivePage'        => admin_url( 'admin.php?page=wpss-mi-drive' ),
             'groupsPage'       => admin_url( 'admin.php?page=wpss-agrupaciones' ),
+            'projectRehearsalsPage' => admin_url( 'admin.php?page=wpss-ensayos-proyecto' ),
             'importExportPage' => admin_url( 'admin.php?page=wpss-import-export' ),
             'profilePage'      => admin_url( 'profile.php' ),
         ],

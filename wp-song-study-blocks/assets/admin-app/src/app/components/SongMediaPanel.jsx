@@ -1,12 +1,70 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 import { getDriveWarningText, isDriveOperational } from '../driveStatus.js'
+import MidiClipList from './MidiClipList.jsx'
 
 function formatSeconds(value) {
   const total = Math.max(0, Math.round(Number(value) || 0))
   const minutes = Math.floor(total / 60)
   const seconds = total % 60
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+const SCORE_DEFAULTS = {
+  enabled: false,
+  status: 'none',
+  tempo: 100,
+  instrument: 'piano',
+  notes: '',
+}
+
+const SCORE_INSTRUMENTS = [
+  { id: 'piano', label: 'Piano' },
+  { id: 'guitar', label: 'Guitarra' },
+  { id: 'voice', label: 'Voz' },
+  { id: 'basic', label: 'Sintetizador simple' },
+]
+
+function normalizeScoreDraft(score) {
+  const source = score && typeof score === 'object' ? score : {}
+  const tempo = Math.min(240, Math.max(40, parseInt(source.tempo, 10) || SCORE_DEFAULTS.tempo))
+  const instrument = SCORE_INSTRUMENTS.some((item) => item.id === source.instrument)
+    ? source.instrument
+    : SCORE_DEFAULTS.instrument
+
+  return {
+    ...SCORE_DEFAULTS,
+    ...source,
+    enabled: !!source.enabled,
+    tempo,
+    instrument,
+    notes: source.notes || '',
+  }
+}
+
+function buildScorePayload(score, type = 'photo') {
+  const normalized = normalizeScoreDraft(score)
+  if (type !== 'photo' || !normalized.enabled) {
+    return { ...SCORE_DEFAULTS }
+  }
+
+  return {
+    enabled: true,
+    status: normalized.status && normalized.status !== 'none' ? normalized.status : 'draft',
+    tempo: normalized.tempo,
+    instrument: normalized.instrument,
+    notes: normalized.notes,
+    message: normalized.message || '',
+    midi_clips: Array.isArray(normalized.midi_clips) ? normalized.midi_clips : [],
+  }
+}
+
+function appendScoreFormData(formData, score, type = 'photo') {
+  const payload = buildScorePayload(score, type)
+  formData.append('score_enabled', payload.enabled ? '1' : '0')
+  formData.append('score_tempo', String(payload.tempo || SCORE_DEFAULTS.tempo))
+  formData.append('score_instrument', payload.instrument || SCORE_DEFAULTS.instrument)
+  formData.append('score_notes', payload.notes || '')
 }
 
 function normalizeAttachmentDraft(attachment) {
@@ -16,6 +74,7 @@ function normalizeAttachmentDraft(attachment) {
 
   return {
     ...attachment,
+    score: normalizeScoreDraft(attachment.score),
     visibility_group_ids: Array.isArray(attachment.visibility_group_ids)
       ? attachment.visibility_group_ids.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
       : [],
@@ -116,6 +175,7 @@ export default function SongMediaPanel({
     visibility_mode: 'private',
     visibility_group_ids: [],
     visibility_user_ids: [],
+    score: normalizeScoreDraft(),
   })
 
   useEffect(() => {
@@ -188,6 +248,7 @@ export default function SongMediaPanel({
       title: '',
       source_kind: 'import',
       type: requestedTarget.type === 'photo' ? 'photo' : 'audio',
+      score: normalizeScoreDraft(),
       ...createTargetDraftPatch(requestedTarget),
     }))
 
@@ -229,6 +290,8 @@ export default function SongMediaPanel({
     const currentUserId = Number(wpData?.currentUserId || 0)
     return colleagues.filter((user) => Number(user?.id) !== currentUserId)
   }, [colleagues, wpData])
+  const midiRangePresets = Array.isArray(wpData?.midiRanges) ? wpData.midiRanges : []
+  const midiRangeDefault = wpData?.midiRangeDefault ? String(wpData.midiRangeDefault) : ''
 
   const currentTarget = useMemo(
     () => ({
@@ -315,7 +378,7 @@ export default function SongMediaPanel({
     setSelectedFile(null)
     setRecordedBlob(null)
     setDurationSeconds(0)
-    setDraft((prev) => ({ ...prev, title: '', source_kind: 'import' }))
+    setDraft((prev) => ({ ...prev, title: '', source_kind: 'import', score: normalizeScoreDraft() }))
   }
 
   const startRecording = async () => {
@@ -408,6 +471,7 @@ export default function SongMediaPanel({
         visibility_group_ids: attachment.visibility_group_ids || [],
         visibility_user_ids: attachment.visibility_user_ids || [],
         duration_seconds: Number(attachment.duration_seconds) || 0,
+        score: buildScorePayload(attachment.score, attachment.type),
       })
       const attachments = Array.isArray(response?.data?.adjuntos) ? response.data.adjuntos : []
       onChangeSong({ ...song, adjuntos: attachments })
@@ -524,6 +588,7 @@ export default function SongMediaPanel({
       formData.append('visibility_group_ids', JSON.stringify(draft.visibility_group_ids || []))
       formData.append('visibility_user_ids', JSON.stringify(draft.visibility_user_ids || []))
       formData.append('duration_seconds', String(durationSeconds || 0))
+      appendScoreFormData(formData, draft.score, draft.type)
       formData.append('file', fileToUpload)
 
       const response = await api.uploadSongAttachment(formData)
@@ -612,7 +677,14 @@ export default function SongMediaPanel({
         </label>
         <label className="wpss-field">
           <span>Tipo</span>
-          <select value={draft.type} onChange={(event) => setDraft((prev) => ({ ...prev, type: event.target.value }))}>
+          <select
+            value={draft.type}
+            onChange={(event) => setDraft((prev) => ({
+              ...prev,
+              type: event.target.value,
+              score: event.target.value === 'photo' ? normalizeScoreDraft(prev.score) : normalizeScoreDraft(),
+            }))}
+          >
             <option value="audio">Audio</option>
             <option value="photo">Foto</option>
           </select>
@@ -704,6 +776,69 @@ export default function SongMediaPanel({
               </label>
             )
           }) : <span>No hay usuarios disponibles todavía.</span>}
+        </div>
+      ) : null}
+
+      {draft.type === 'photo' ? (
+        <div className="wpss-score-options">
+          <label className="wpss-score-options__toggle">
+            <input
+              type="checkbox"
+              checked={!!draft.score?.enabled}
+              onChange={(event) => setDraft((prev) => ({
+                ...prev,
+                score: {
+                  ...normalizeScoreDraft(prev.score),
+                  enabled: event.target.checked,
+                  status: event.target.checked ? 'draft' : 'none',
+                },
+              }))}
+            />
+            <span>Esta foto es una partitura para interpretar</span>
+          </label>
+          {draft.score?.enabled ? (
+            <div className="wpss-score-options__body">
+              <label className="wpss-field">
+                <span>Tempo sugerido</span>
+                <input
+                  type="number"
+                  min="40"
+                  max="240"
+                  value={draft.score?.tempo || SCORE_DEFAULTS.tempo}
+                  onChange={(event) => setDraft((prev) => ({
+                    ...prev,
+                    score: { ...normalizeScoreDraft(prev.score), tempo: event.target.value },
+                  }))}
+                />
+              </label>
+              <label className="wpss-field">
+                <span>Sonido</span>
+                <select
+                  value={draft.score?.instrument || SCORE_DEFAULTS.instrument}
+                  onChange={(event) => setDraft((prev) => ({
+                    ...prev,
+                    score: { ...normalizeScoreDraft(prev.score), instrument: event.target.value },
+                  }))}
+                >
+                  {SCORE_INSTRUMENTS.map((instrument) => (
+                    <option key={instrument.id} value={instrument.id}>{instrument.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="wpss-field wpss-score-options__notes">
+                <span>Información para interpretar</span>
+                <textarea
+                  rows="3"
+                  value={draft.score?.notes || ''}
+                  placeholder="Ej. clave de sol, tempo aproximado, instrumento, si la foto está cortada o si solo debe leerse un sistema."
+                  onChange={(event) => setDraft((prev) => ({
+                    ...prev,
+                    score: { ...normalizeScoreDraft(prev.score), notes: event.target.value },
+                  }))}
+                />
+              </label>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -926,6 +1061,98 @@ export default function SongMediaPanel({
                             </label>
                           )
                         })}
+                      </div>
+                    ) : null}
+                    {attachmentDraft.type === 'photo' ? (
+                      <div className="wpss-score-options is-saved">
+                        <label className="wpss-score-options__toggle">
+                          <input
+                            type="checkbox"
+                            checked={!!attachmentDraft.score?.enabled}
+                            disabled={!canManage}
+                            onChange={(event) => updateAttachmentDraft(attachment.id, {
+                              ...attachmentDraft,
+                              score: {
+                                ...normalizeScoreDraft(attachmentDraft.score),
+                                enabled: event.target.checked,
+                                status: event.target.checked ? 'draft' : 'none',
+                              },
+                            })}
+                          />
+                          <span>Esta foto es una partitura</span>
+                        </label>
+                        {attachmentDraft.score?.enabled ? (
+                          <div className="wpss-score-options__body">
+                            <label className="wpss-field">
+                              <span>Tempo</span>
+                              <input
+                                type="number"
+                                min="40"
+                                max="240"
+                                value={attachmentDraft.score?.tempo || SCORE_DEFAULTS.tempo}
+                                disabled={!canManage}
+                                onChange={(event) => updateAttachmentDraft(attachment.id, {
+                                  ...attachmentDraft,
+                                  score: { ...normalizeScoreDraft(attachmentDraft.score), tempo: event.target.value },
+                                })}
+                              />
+                            </label>
+                            <label className="wpss-field">
+                              <span>Sonido</span>
+                              <select
+                                value={attachmentDraft.score?.instrument || SCORE_DEFAULTS.instrument}
+                                disabled={!canManage}
+                                onChange={(event) => updateAttachmentDraft(attachment.id, {
+                                  ...attachmentDraft,
+                                  score: { ...normalizeScoreDraft(attachmentDraft.score), instrument: event.target.value },
+                                })}
+                              >
+                                {SCORE_INSTRUMENTS.map((instrument) => (
+                                  <option key={`${attachment.id}-${instrument.id}`} value={instrument.id}>{instrument.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="wpss-field wpss-score-options__notes">
+                              <span>Información</span>
+                              <textarea
+                                rows="3"
+                                value={attachmentDraft.score?.notes || ''}
+                                disabled={!canManage}
+                                onChange={(event) => updateAttachmentDraft(attachment.id, {
+                                  ...attachmentDraft,
+                                  score: { ...normalizeScoreDraft(attachmentDraft.score), notes: event.target.value },
+                                })}
+                              />
+                            </label>
+                            <div className="wpss-score-options__midi">
+                              <div className="wpss-score-options__midi-head">
+                                <strong>Reproducción de esta imagen</strong>
+                                <span>Edita aquí lo que deberá sonar en la vista de lectura.</span>
+                              </div>
+                              <MidiClipList
+                                clips={attachmentDraft.score?.midi_clips || []}
+                                onChange={(nextClips) => updateAttachmentDraft(attachment.id, {
+                                  ...attachmentDraft,
+                                  score: {
+                                    ...normalizeScoreDraft(attachmentDraft.score),
+                                    midi_clips: nextClips,
+                                    status: nextClips?.some((clip) => Array.isArray(clip?.midi?.notes) && clip.midi.notes.length)
+                                      ? 'ready'
+                                      : 'draft',
+                                  },
+                                })}
+                                defaultTempo={attachmentDraft.score?.tempo || song?.bpm || SCORE_DEFAULTS.tempo}
+                                rangePresets={midiRangePresets}
+                                defaultRange={midiRangeDefault}
+                                emptyLabel="Añadir reproducción"
+                              />
+                            </div>
+                            <p className="wpss-collections__hint">
+                              Estado: {attachmentDraft.score?.status || 'draft'}
+                              {attachmentDraft.score?.message ? ` · ${attachmentDraft.score.message}` : ''}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                     {attachmentDraft.type === 'photo' ? (

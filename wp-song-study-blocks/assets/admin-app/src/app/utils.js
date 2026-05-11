@@ -543,10 +543,127 @@ export function normalizeSectionsFromApi(secciones, defaultTempo = MIDI_DEFAULTS
     return {
       id,
       nombre: nombre.slice(0, 64),
+      youtube_start: normalizeYouTubeSeconds(seccion?.youtube_start),
+      youtube_end: normalizeYouTubeSeconds(seccion?.youtube_end),
       comentarios: Array.isArray(seccion?.comentarios) ? seccion.comentarios : [],
       midi_clips: normalizeMidiClips(seccion?.midi_clips, seccion?.midi, defaultTempo),
     }
   })
+}
+
+export function normalizeYouTubeSeconds(value) {
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return null
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null
+  }
+  return Math.floor(parsed)
+}
+
+export function parseTimecodeToSeconds(value) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return null
+  }
+
+  if (/^\d+$/.test(raw)) {
+    return normalizeYouTubeSeconds(raw)
+  }
+
+  const parts = raw.split(':').map((part) => part.trim())
+  if (!parts.length || parts.length > 3 || parts.some((part) => !/^\d+$/.test(part))) {
+    return null
+  }
+
+  const numbers = parts.map((part) => Number.parseInt(part, 10))
+  if (numbers.some((part) => !Number.isInteger(part) || part < 0)) {
+    return null
+  }
+
+  if (numbers.length === 1) {
+    return numbers[0]
+  }
+  if (numbers.length === 2) {
+    return (numbers[0] * 60) + numbers[1]
+  }
+  return (numbers[0] * 3600) + (numbers[1] * 60) + numbers[2]
+}
+
+export function formatSecondsAsTimecode(value) {
+  const seconds = normalizeYouTubeSeconds(value)
+  if (seconds === null) {
+    return ''
+  }
+
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainingSeconds = seconds % 60
+  const paddedSeconds = String(remainingSeconds).padStart(2, '0')
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${paddedSeconds}`
+  }
+  return `${minutes}:${paddedSeconds}`
+}
+
+export function extractYouTubeVideoId(value) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) {
+    return raw
+  }
+
+  try {
+    const url = new URL(raw)
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
+    if (hostname === 'youtu.be') {
+      return sanitizeYouTubeVideoId(url.pathname.split('/').filter(Boolean)[0] || '')
+    }
+    if (hostname.endsWith('youtube.com') || hostname.endsWith('youtube-nocookie.com')) {
+      const queryId = sanitizeYouTubeVideoId(url.searchParams.get('v') || '')
+      if (queryId) return queryId
+
+      const parts = url.pathname.split('/').filter(Boolean)
+      const embedIndex = parts.findIndex((part) => ['embed', 'shorts', 'live'].includes(part))
+      if (embedIndex >= 0) {
+        return sanitizeYouTubeVideoId(parts[embedIndex + 1] || '')
+      }
+    }
+  } catch {
+    return ''
+  }
+
+  return ''
+}
+
+function sanitizeYouTubeVideoId(value) {
+  const raw = String(value || '').trim()
+  return /^[a-zA-Z0-9_-]{11}$/.test(raw) ? raw : ''
+}
+
+export function getYouTubeEmbedUrl(videoId, startSeconds = 0) {
+  const id = extractYouTubeVideoId(videoId)
+  if (!id) {
+    return ''
+  }
+  const params = new URLSearchParams({
+    enablejsapi: '1',
+    playsinline: '1',
+    rel: '0',
+    modestbranding: '1',
+  })
+  const start = normalizeYouTubeSeconds(startSeconds)
+  if (start !== null && start > 0) {
+    params.set('start', String(start))
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    params.set('origin', window.location.origin)
+  }
+  return `https://www.youtube.com/embed/${id}?${params.toString()}`
 }
 
 export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.tempo) {
@@ -556,13 +673,15 @@ export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.temp
 
   return versos.map((verso, index) => {
     const segmentos = Array.isArray(verso.segmentos) && verso.segmentos.length
-      ? verso.segmentos.map((segmento) => ({
+        ? verso.segmentos.map((segmento) => ({
           texto: segmento && segmento.texto ? segmento.texto : '',
           acorde: segmento && segmento.acorde ? segmento.acorde : '',
+          youtube_start: normalizeYouTubeSeconds(segmento?.youtube_start),
+          youtube_end: normalizeYouTubeSeconds(segmento?.youtube_end),
           comentarios: Array.isArray(segmento?.comentarios) ? segmento.comentarios : [],
           midi_clips: normalizeMidiClips(segmento?.midi_clips, segmento?.midi, defaultTempo),
         }))
-      : [{ texto: '', acorde: '', comentarios: [], midi_clips: [] }]
+      : [{ texto: '', acorde: '', youtube_start: null, youtube_end: null, comentarios: [], midi_clips: [] }]
 
     const evento = normalizeEventoArmonico(verso.evento_armonico || null, segmentos.length)
 
@@ -572,6 +691,8 @@ export function normalizeVersesFromApi(versos, defaultTempo = MIDI_DEFAULTS.temp
       segmentos,
       comentario: verso.comentario || '',
       comentarios: Array.isArray(verso.comentarios) ? verso.comentarios : [],
+      youtube_start: normalizeYouTubeSeconds(verso?.youtube_start),
+      youtube_end: normalizeYouTubeSeconds(verso?.youtube_end),
       evento_armonico: evento,
       section_id: verso.section_id ? String(verso.section_id) : '',
       fin_de_estrofa: !!verso.fin_de_estrofa,
@@ -624,6 +745,19 @@ export function normalizeStructureFromApi(estructura, secciones) {
         const repeatRaw = parseInt(call.repeat, 10)
         const repeat = Number.isInteger(repeatRaw) && repeatRaw > 0 ? Math.min(repeatRaw, 16) : 1
         normalized.repeat = repeat
+      }
+      if (Object.prototype.hasOwnProperty.call(call, 'youtube_start')) {
+        normalized.youtube_start = normalizeYouTubeSeconds(call.youtube_start)
+      }
+      if (Object.prototype.hasOwnProperty.call(call, 'youtube_end')) {
+        normalized.youtube_end = normalizeYouTubeSeconds(call.youtube_end)
+      }
+      if (
+        normalized.youtube_start !== null
+        && normalized.youtube_end !== null
+        && normalized.youtube_end <= normalized.youtube_start
+      ) {
+        normalized.youtube_end = null
       }
       return normalized
     })

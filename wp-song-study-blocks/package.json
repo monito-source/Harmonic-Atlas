@@ -6,7 +6,8 @@
   "scripts": {
     "build": "wp-scripts build src/index.js --output-path=build",
     "start": "wp-scripts start src/index.js --output-path=build",
-    "lint:js": "wp-scripts lint-js src"
+    "lint:js": "wp-scripts lint-js src",
+    "package": "bash scripts/package-plugin.sh"
   },
   "devDependencies": {
     "@wordpress/scripts": "^30.27.0"

@@ -29,6 +29,36 @@ function buildCapturedFile(blob, mode) {
   return new File([blob], `${isPhoto ? 'foto' : 'audio'}-${stamp}.${extension}`, { type: mimeType })
 }
 
+function getPhotoScoreOptions(mode, fileName = '') {
+  if (mode !== 'importPhoto' && mode !== 'capturePhoto') {
+    return {}
+  }
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
+    return {}
+  }
+
+  const isScore = window.confirm(
+    `¿La foto${fileName ? ` "${fileName}"` : ''} es una partitura que quieres interpretar para reproducir en lectura?`,
+  )
+  if (!isScore) {
+    return {}
+  }
+
+  const notes = typeof window.prompt === 'function'
+    ? window.prompt('Información opcional para interpretar la partitura', 'Tempo aproximado 100 bpm, clave de sol')
+    : ''
+
+  return {
+    score: {
+      enabled: true,
+      status: 'draft',
+      tempo: 100,
+      instrument: 'piano',
+      notes: notes === null ? '' : notes,
+    },
+  }
+}
+
 export default function InlineMediaQuickActions({ target, onUpload, allowedModes = null }) {
   const { api, wpData, dispatch } = useAppState()
   const importAudioRef = useRef(null)
@@ -219,7 +249,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
 
     setUploadingMode(mode)
     try {
-      await onUpload(target, mode, file)
+      await onUpload(target, mode, file, getPhotoScoreOptions(mode, file.name || ''))
     } finally {
       setUploadingMode(null)
     }
@@ -264,7 +294,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
           const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
           const file = buildCapturedFile(blob, 'recordAudio')
           setUploadingMode('recordAudio')
-          await onUpload?.(target, 'recordAudio', file)
+          await onUpload?.(target, 'recordAudio', file, {})
           closeCapture()
         } catch (error) {
           setCaptureError(error?.message || 'No fue posible subir el audio grabado.')
@@ -305,7 +335,7 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
       }
       try {
         const file = buildCapturedFile(blob, 'capturePhoto')
-        await onUpload?.(target, 'capturePhoto', file)
+        await onUpload?.(target, 'capturePhoto', file, getPhotoScoreOptions('capturePhoto', file.name || ''))
         closeCapture()
       } catch (error) {
         setCaptureError(error?.message || 'No fue posible subir la fotografía.')

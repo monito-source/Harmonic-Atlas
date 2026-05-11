@@ -1460,6 +1460,9 @@ function wpss_restore_import_song_attachments( $song_id, array $song_entry, arra
             'mime_type'       => isset( $file_json['mimeType'] ) ? sanitize_text_field( (string) $file_json['mimeType'] ) : $mime_type,
             'size_bytes'      => isset( $file_json['size'] ) ? absint( $file_json['size'] ) : strlen( $binary ),
             'duration_seconds'=> isset( $source_attachment['duration_seconds'] ) ? (float) $source_attachment['duration_seconds'] : 0,
+            'score'           => isset( $source_attachment['score'] ) && function_exists( 'wpss_sanitize_song_media_score' )
+                ? wpss_sanitize_song_media_score( $source_attachment['score'] )
+                : [],
             'created_at'      => current_time( 'mysql' ),
             'updated_at'      => current_time( 'mysql' ),
         ];
