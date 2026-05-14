@@ -91,3 +91,25 @@ Use this precedence:
 - Extract the most reused primitives before page-specific styling.
 - Do not rename template classes and dynamic block wrappers in the same pass.
 - Avoid mixing editor-only styling with frontend component styling in the same file.
+
+## Interactive Dynamic Blocks
+
+Template shells must stay passive around dynamic, interactive blocks. A template
+wrapper can set width, margin, padding or theme tokens for its direct child, but
+it must not rewrite deep descendants owned by the block.
+
+For the rehearsal planner specifically, `.pd-rehearsal-page-content` exists only
+to place `wp-song-study/current-rehearsals` inside `templates/ensayos.html`.
+The previous `.pd-rehearsal-page-shell` wrapper must not be reintroduced. Do not
+add broad descendant selectors such as `.pd-rehearsal-page-content *`, layout
+overrides for `.pd-rehearsal-grid`, or scroll/visibility rules under the page
+container. Responsive exceptions are not exempt: mobile stacking and local
+overflow rules must target the specific planner component that owns that
+behavior.
+Avoid paint/load shortcuts in this planner. Do not use `content-visibility` on
+rehearsal cards or calendar containers, and do not stop document loading from
+frontend JavaScript. Those optimizations are fragile with hidden panels and
+collaborator-specific content.
+
+See `docs/rehearsal-planner-integration.md` for the incident notes and the
+diagnostic matrix used to verify this boundary.

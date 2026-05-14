@@ -1686,6 +1686,11 @@ function pd_render_block_music_access_gate( array $attributes = [] ): string {
             $protected_content = render_block( $protected_block );
 
             if ( '' !== trim( $protected_content ) ) {
+                if ( 'rehearsals' === $context ) {
+                    // The rehearsal planner owns its interactive layout; the theme gate must not wrap it.
+                    return $protected_content;
+                }
+
                 $wrapper_attributes = function_exists( 'get_block_wrapper_attributes' )
                     ? get_block_wrapper_attributes(
                         [

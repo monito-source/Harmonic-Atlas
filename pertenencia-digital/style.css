@@ -2143,7 +2143,7 @@ select,
   gap: 0.85rem;
 }
 
-.pd-rehearsal-page-shell {
+.pd-rehearsal-page-content {
   width: 100%;
 }
 
@@ -2153,7 +2153,7 @@ select,
 }
 
 .pd-rehearsal-template .pd-editorial-hero,
-.pd-rehearsal-template .pd-rehearsal-page-shell {
+.pd-rehearsal-template .pd-rehearsal-page-content {
   width: 100%;
   max-width: none;
 }
@@ -4281,209 +4281,22 @@ select,
   }
 }
 
-/* Rehearsal planner: keep the alignfull shell from exceeding padded mobile viewports. */
-.pd-rehearsal-template .pd-rehearsal-page-shell.alignfull {
+/*
+ * Rehearsal planner boundary:
+ * the template may place the interactive block, but it must not style the
+ * block internals from a page wrapper. Keep this container passive.
+ */
+.pd-rehearsal-template .pd-rehearsal-page-content.alignfull,
+.pd-rehearsal-page-content {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   margin-inline: 0;
-}
-
-.pd-rehearsal-page-shell,
-.pd-rehearsal-page-shell *,
-.pd-rehearsal-page-shell *::before,
-.pd-rehearsal-page-shell *::after {
   box-sizing: border-box;
 }
 
-.pd-rehearsal-page-shell :where(
-  .pd-rehearsal-block,
-  .pd-rehearsal-shell,
-  .pd-rehearsal-sections,
-  .pd-rehearsal-section,
-  .pd-rehearsal-grid,
-  .pd-rehearsal-panel,
-  .pd-rehearsal-form,
-  .pd-rehearsal-member-editor,
-  .pd-rehearsal-member-editor__nav-wrap,
-  .pd-rehearsal-member-editor__nav-shell,
-  .pd-rehearsal-member-editor__panels,
-  .pd-rehearsal-member-panel,
-  .pd-rehearsal-day-editor,
-  .pd-rehearsal-day-editor__nav-wrap,
-  .pd-rehearsal-day-editor__nav-shell,
-  .pd-rehearsal-day-editor__panels,
-  .pd-rehearsal-day-panel,
-  .pd-rehearsal-day-panel__sections,
-  .pd-rehearsal-slot-card,
-  .pd-rehearsal-slot-list,
-  .pd-rehearsal-slot-row,
-  .pd-rehearsal-slot-row__fields
-) {
+.pd-rehearsal-page-content > .pd-rehearsal-block {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-}
-
-.pd-rehearsal-page-shell :where(input, select, textarea, button, .wp-block-button__link) {
-  max-width: 100%;
-}
-
-.pd-rehearsal-page-shell .pd-rehearsal-section--availability,
-.pd-rehearsal-page-shell .pd-rehearsal-section--availability .pd-rehearsal-grid {
-  width: 100%;
-  max-width: 100%;
-}
-
-@media (max-width: 1200px) {
-  .pd-rehearsal-page-shell .pd-rehearsal-section--availability .pd-rehearsal-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 781px) {
-  .pd-rehearsal-template {
-    overflow-x: hidden;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-panel {
-    padding-inline: clamp(0.8rem, 4vw, 1rem);
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-member-panel__header,
-  .pd-rehearsal-page-shell .pd-rehearsal-day-panel__header,
-  .pd-rehearsal-page-shell .pd-rehearsal-slot-card__header {
-    grid-template-columns: minmax(0, 1fr);
-    flex-direction: column;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-day-block-toggle__switch {
-    width: 100%;
-    min-width: 0;
-  }
-}
-
-@media (max-width: 640px) {
-  .pd-rehearsal-page-shell .pd-rehearsal-member-editor__nav-wrap,
-  .pd-rehearsal-page-shell .pd-rehearsal-day-editor__nav-wrap {
-    grid-template-columns: 2.35rem minmax(0, 1fr) 2.35rem;
-    gap: 0.45rem;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-member-editor__arrow,
-  .pd-rehearsal-page-shell .pd-rehearsal-day-editor__arrow {
-    inline-size: 2.35rem;
-    block-size: 2.35rem;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-day-panel,
-  .pd-rehearsal-page-shell .pd-rehearsal-slot-card {
-    padding: 0.8rem;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-slot-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.65rem;
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-slot-row__fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .pd-rehearsal-page-shell .pd-rehearsal-slot-row__remove {
-    width: 100%;
-    inline-size: 100%;
-    border-radius: var(--pd-radius-md);
-  }
-}
-
-@media (max-width: 781px) {
-  .pd-rehearsal-block.has-panel-gradient .pd-rehearsal-shell,
-  .pd-rehearsal-block.has-panel-gradient .pd-rehearsal-shell__header {
-    --pd-rehearsal-card-background: var(--pd-rehearsal-card-background-solid);
-    --pd-rehearsal-header-background: var(--pd-rehearsal-resolved-header-background-solid);
-    --pd-rehearsal-card-confirmed: var(--pd-rehearsal-card-background-solid);
-    --pd-rehearsal-card-voting: var(--pd-rehearsal-card-background-solid);
-    --pd-rehearsal-card-completed: var(--pd-rehearsal-card-background-solid);
-  }
-
-  .pd-rehearsal-page-shell :where(
-    .pd-rehearsal-panel,
-    .pd-rehearsal-session-card,
-    .pd-rehearsal-panel--secondary,
-    .pd-rehearsal-member-editor__tab-avatar,
-    .pd-rehearsal-session-card.is-logbook-live,
-    .pd-rehearsal-proposal-form__status,
-    .pd-rehearsal-proposal-form__status[data-state='saved']
-  ) {
-    box-shadow: none;
-  }
-
-  .pd-rehearsal-page-shell :where(
-    .pd-rehearsal-panel,
-    .pd-rehearsal-session-card,
-    .pd-rehearsal-day-panel,
-    .pd-rehearsal-slot-card,
-    .pd-rehearsal-calendar-month,
-    .pd-rehearsal-calendar-modal__dialog
-  ) {
-    background-image: none;
-  }
-
-  .pd-rehearsal-page-shell :where(
-    .pd-rehearsal-member-editor__arrow,
-    .pd-rehearsal-day-editor__arrow,
-    .pd-rehearsal-member-editor__tab,
-    .pd-rehearsal-day-editor__tab,
-    .pd-rehearsal-day-block-toggle__ui,
-    .pd-rehearsal-day-block-toggle__switch-thumb,
-    .pd-rehearsal-slot-row__remove,
-    .pd-rehearsal-calendar-event,
-    .pd-rehearsal-card-carousel__button,
-    .pd-rehearsal-proposal-form__status
-  ) {
-    transition: none;
-  }
-
-  .pd-rehearsal-page-shell :where(
-    .pd-rehearsal-member-editor__arrow:hover,
-    .pd-rehearsal-member-editor__arrow:focus-visible,
-    .pd-rehearsal-day-editor__arrow:hover,
-    .pd-rehearsal-day-editor__arrow:focus-visible,
-    .pd-rehearsal-member-editor__tab:hover,
-    .pd-rehearsal-member-editor__tab:focus-visible,
-    .pd-rehearsal-day-editor__tab:hover,
-    .pd-rehearsal-day-editor__tab:focus-visible,
-    .pd-rehearsal-calendar-event:hover,
-    .pd-rehearsal-calendar-event:focus-visible,
-    .pd-rehearsal-card-carousel__button:hover:not(:disabled),
-    .pd-rehearsal-card-carousel__button:focus-visible
-  ) {
-    transform: none;
-  }
-
-  .pd-rehearsal-card-carousel__track {
-    transition: none;
-    will-change: auto;
-  }
-
-  .pd-rehearsal-member-editor__nav,
-  .pd-rehearsal-day-editor__nav {
-    scroll-behavior: auto;
-  }
-
-  .pd-rehearsal-calendar-event.is-cancelled,
-  .pd-rehearsal-calendar-event.is-expired,
-  .pd-rehearsal-session-card.status-cancelled,
-  .pd-rehearsal-session-card.status-expired {
-    filter: none;
-  }
-
-  .pd-rehearsal-calendar-modal__backdrop {
-    backdrop-filter: none;
-  }
-
-  .pd-rehearsal-session-card,
-  .pd-rehearsal-calendar-month {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 520px;
-  }
 }

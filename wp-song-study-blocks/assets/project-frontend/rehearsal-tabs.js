@@ -1,6 +1,62 @@
 (function () {
   const shells = Array.from(document.querySelectorAll('[data-rehearsal-shell]'))
 
+  const describeSnapshotElement = (element) => {
+    if (!(element instanceof Element)) {
+      return null
+    }
+
+    let style = null
+
+    try {
+      style = window.getComputedStyle(element)
+    } catch (error) {
+      style = null
+    }
+
+    const rect = element.getBoundingClientRect()
+
+    return {
+      tagName: element.tagName,
+      id: element.id || '',
+      className: typeof element.className === 'string' ? element.className : '',
+      hidden: Boolean(element.hidden),
+      display: style?.display || '',
+      visibility: style?.visibility || '',
+      opacity: style?.opacity || '',
+      position: style?.position || '',
+      zIndex: style?.zIndex || '',
+      rect: {
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        top: Math.round(rect.top),
+        left: Math.round(rect.left)
+      }
+    }
+  }
+
+  window.wpssbGetRehearsalSnapshot = () => {
+    const script = Array.from(document.scripts).find((item) => item.src && item.src.includes('rehearsal-tabs.js'))
+    const centerElement = document.elementFromPoint(
+      Math.max(0, Math.floor(window.innerWidth / 2)),
+      Math.max(0, Math.floor(window.innerHeight / 2))
+    )
+
+    return {
+      readyState: document.readyState,
+      scriptSrc: script?.src || '',
+      shellCount: document.querySelectorAll('[data-rehearsal-shell]').length,
+      shell: describeSnapshotElement(document.querySelector('[data-rehearsal-shell]')),
+      activePanel: describeSnapshotElement(document.querySelector('[data-rehearsal-panel]:not([hidden])')),
+      activeMemberPanel: describeSnapshotElement(document.querySelector('[data-rehearsal-member-panel]:not([hidden])')),
+      centerElement: describeSnapshotElement(centerElement),
+      html: describeSnapshotElement(document.documentElement),
+      body: describeSnapshotElement(document.body),
+      activeTab: document.querySelector('[data-rehearsal-tab].is-active')?.dataset?.rehearsalTab || '',
+      activeMember: document.querySelector('[data-rehearsal-member-tab].is-active')?.dataset?.rehearsalMemberTab || ''
+    }
+  }
+
   if (!shells.length) {
     return
   }
@@ -102,9 +158,9 @@
         tab.focus()
       }
 
-      if (isActive && typeof tab.scrollIntoView === 'function') {
-        tab.scrollIntoView({
-          behavior: shouldFocus ? 'smooth' : 'auto',
+      if (isActive && shouldFocus) {
+        safeScrollIntoView(tab, {
+          behavior: 'smooth',
           block: 'nearest',
           inline: 'nearest'
         })
@@ -124,9 +180,17 @@
   }
 
   const syncMemberEditorDay = (memberEditor, day, shouldFocus = false) => {
+    logFrontendDebug('sync_member_editor_day_start', {
+      requestedDay: day,
+      shouldFocus
+    })
+
     const activeDay = resolveMemberDay(memberEditor, day)
 
     if (!activeDay) {
+      logFrontendDebug('sync_member_editor_day_no_active_day', {
+        requestedDay: day
+      })
       return
     }
 
@@ -137,8 +201,16 @@
     const dayEditor = activePanel?.querySelector('[data-rehearsal-day-editor]')
 
     if (dayEditor) {
+      logFrontendDebug('sync_member_editor_day_before_panel_init', {
+        activeDay,
+        activePanel: activePanel?.dataset?.rehearsalMemberPanel || ''
+      })
       initMemberPanelContent(activePanel)
       activateDayPanel(dayEditor, activeDay, shouldFocus)
+      logFrontendDebug('sync_member_editor_day_complete', {
+        activeDay,
+        activePanel: activePanel?.dataset?.rehearsalMemberPanel || ''
+      })
     }
   }
 
@@ -146,15 +218,49 @@
     const tabs = Array.from(editor.querySelectorAll('[data-rehearsal-member-tab]'))
     const activeMemberId = resolveMemberId(editor, memberId)
 
+    logFrontendDebug('activate_member_panel_start', {
+      requestedMemberId: memberId,
+      resolvedMemberId: activeMemberId,
+      tabCount: tabs.length,
+      shouldFocus
+    })
+
     if (!activeMemberId) {
+      logFrontendDebug('activate_member_panel_no_member', {
+        requestedMemberId: memberId
+      })
       return
     }
 
     const activePanel = ensureMemberPanel(editor, activeMemberId)
+    logFrontendDebug('activate_member_panel_after_ensure', {
+      activeMemberId,
+      hasActivePanel: Boolean(activePanel)
+    })
     const panels = Array.from(editor.querySelectorAll('[data-rehearsal-member-panel]'))
     const currentPanel = panels.find((panel) => !panel.hidden)
     const currentDayEditor = currentPanel?.querySelector('[data-rehearsal-day-editor]')
     const activeDay = editor.dataset.rehearsalActiveDay || (currentDayEditor ? getActiveDay(currentDayEditor) : '')
+    const isAlreadyActive = currentPanel?.dataset?.rehearsalMemberPanel === activeMemberId
+      && tabs.some((tab) => tab.dataset.rehearsalMemberTab === activeMemberId && tab.classList.contains('is-active'))
+
+    logFrontendDebug('activate_member_panel_panel_state', {
+      activeMemberId,
+      panelCount: panels.length,
+      currentPanel: currentPanel?.dataset?.rehearsalMemberPanel || '',
+      activeDay,
+      isAlreadyActive
+    })
+
+    if (isAlreadyActive && !shouldFocus) {
+      initMemberPanelContent(activePanel)
+      writeShellState(editor.closest('[data-rehearsal-shell]'), 'member', activeMemberId)
+      logFrontendDebug('activate_member_panel_already_active', {
+        activeMemberId,
+        activeDay
+      })
+      return
+    }
 
     tabs.forEach((tab) => {
       const isActive = tab.dataset.rehearsalMemberTab === activeMemberId
@@ -166,26 +272,47 @@
         tab.focus()
       }
 
-      if (isActive && typeof tab.scrollIntoView === 'function') {
-        tab.scrollIntoView({
-          behavior: shouldFocus ? 'smooth' : 'auto',
+      if (isActive && shouldFocus) {
+        safeScrollIntoView(tab, {
+          behavior: 'smooth',
           block: 'nearest',
           inline: 'nearest'
         })
       }
     })
 
+    logFrontendDebug('activate_member_panel_after_tabs', {
+      activeMemberId
+    })
+
     panels.forEach((panel) => {
       panel.hidden = panel.dataset.rehearsalMemberPanel !== activeMemberId
     })
 
+    logFrontendDebug('activate_member_panel_after_panel_toggle', {
+      activeMemberId
+    })
+
     initMemberPanelContent(activePanel)
+
+    logFrontendDebug('activate_member_panel_after_content_init', {
+      activeMemberId
+    })
 
     writeShellState(editor.closest('[data-rehearsal-shell]'), 'member', activeMemberId)
 
     if (activeDay) {
+      logFrontendDebug('activate_member_panel_before_day_sync', {
+        activeMemberId,
+        activeDay
+      })
       syncMemberEditorDay(editor, activeDay, false)
     }
+
+    logFrontendDebug('activate_member_panel_complete', {
+      activeMemberId,
+      activeDay
+    })
   }
 
   const activateCalendarView = (shell, viewName, options = {}) => {
@@ -483,6 +610,151 @@
     }
 
     return window.wpssbRehearsalFrontend
+  }
+
+  const getFrontendDebug = () => {
+    const config = getFrontendConfig()
+    const debug = config?.debug
+
+    if (!debug || typeof debug !== 'object' || !debug.enabled) {
+      return null
+    }
+
+    return debug
+  }
+
+  const logFrontendDebug = (eventName, details = {}) => {
+    const debug = getFrontendDebug()
+
+    if (!debug) {
+      return
+    }
+
+    try {
+      console.log(
+        `[WPSS Rehearsals][${debug.requestId || 'frontend'}] ${eventName}`,
+        {
+          viewerId: debug.viewerId || 0,
+          ...details
+        }
+      )
+    } catch (error) {
+      // Ignore console serialization issues.
+    }
+  }
+
+  const getPageLoadDiagnostics = () => {
+    let resources = []
+
+    try {
+      resources = typeof window.performance?.getEntriesByType === 'function'
+        ? window.performance.getEntriesByType('resource')
+        : []
+    } catch (error) {
+      resources = []
+    }
+
+    const compactResources = resources.slice(-16).map((entry) => ({
+      name: typeof entry.name === 'string' ? entry.name.slice(0, 220) : '',
+      initiatorType: entry.initiatorType || '',
+      duration: Math.round(entry.duration || 0),
+      responseEnd: Math.round(entry.responseEnd || 0),
+      transferSize: Number.isFinite(entry.transferSize) ? entry.transferSize : 0
+    }))
+
+    return {
+      readyState: document.readyState,
+      visibilityState: document.visibilityState || '',
+      elapsedMs: Math.round(window.performance?.now?.() || 0),
+      resourceCount: resources.length,
+      recentResources: compactResources,
+      snapshot: typeof window.wpssbGetRehearsalSnapshot === 'function'
+        ? window.wpssbGetRehearsalSnapshot()
+        : null
+    }
+  }
+
+  let loadWatchdogStarted = false
+
+  const startLoadWatchdog = () => {
+    if (loadWatchdogStarted) {
+      return
+    }
+
+    loadWatchdogStarted = true
+
+    const config = getFrontendConfig()
+    const watchdogConfig = config?.loadWatchdog && typeof config.loadWatchdog === 'object'
+      ? config.loadWatchdog
+      : {}
+    const isEnabled = watchdogConfig.enabled === true
+    const stopAfterMs = Number.isFinite(Number.parseInt(watchdogConfig.stopAfterMs, 10))
+      ? Math.max(500, Number.parseInt(watchdogConfig.stopAfterMs, 10))
+      : 2400
+
+    document.documentElement.classList.add('wpssb-rehearsals-js-ready')
+    document.body?.classList?.add('wpssb-rehearsals-js-ready')
+
+    logFrontendDebug('page_load_watchdog_start', {
+      enabled: isEnabled,
+      stopAfterMs,
+      readyState: document.readyState
+    })
+
+    window.addEventListener(
+      'load',
+      () => {
+        document.documentElement.classList.add('wpssb-rehearsals-load-complete')
+        document.body?.classList?.add('wpssb-rehearsals-load-complete')
+        logFrontendDebug('page_load_event', getPageLoadDiagnostics())
+      },
+      { once: true }
+    )
+
+    if (!isEnabled) {
+      return
+    }
+
+    window.setTimeout(() => {
+      if (document.readyState === 'complete') {
+        logFrontendDebug('page_load_watchdog_complete', getPageLoadDiagnostics())
+        return
+      }
+
+      logFrontendDebug('page_load_watchdog_pending', getPageLoadDiagnostics())
+    }, stopAfterMs)
+  }
+
+  const safeScrollIntoView = (element, options = {}) => {
+    if (!(element instanceof HTMLElement) || typeof element.scrollIntoView !== 'function') {
+      return
+    }
+
+    try {
+      element.scrollIntoView(options)
+    } catch (error) {
+      logFrontendDebug('scroll_into_view_error', {
+        message: error?.message || '',
+        tagName: element.tagName || '',
+        className: element.className || ''
+      })
+    }
+  }
+
+  const describeDebugRoot = (root) => {
+    if (!(root instanceof HTMLElement)) {
+      return {
+        tagName: '',
+        className: '',
+        dataset: {}
+      }
+    }
+
+    return {
+      tagName: root.tagName || '',
+      className: root.className || '',
+      dataset: { ...root.dataset }
+    }
   }
 
   const getValidationMessages = () => {
@@ -837,6 +1109,11 @@
       return
     }
 
+    logFrontendDebug('init_availability_autosave_start', {
+      formAction: form.getAttribute('action') || '',
+      memberPanel: form.closest('[data-rehearsal-member-panel]')?.dataset?.rehearsalMemberPanel || ''
+    })
+
     const config = getFrontendConfig()
     const messages = config?.availabilityAutosaveMessages || {}
     const validationMessages = getValidationMessages()
@@ -850,10 +1127,19 @@
     const memberTabSummary = memberTab?.querySelector('[data-rehearsal-member-tab-summary]')
 
     if (!config?.ajaxUrl || !config?.availabilityAutosaveNonce) {
+      logFrontendDebug('init_availability_autosave_skipped', {
+        reason: 'missing_config',
+        hasAjaxUrl: Boolean(config?.ajaxUrl),
+        hasNonce: Boolean(config?.availabilityAutosaveNonce)
+      })
       return
     }
 
     form.dataset.rehearsalAvailabilityAutosaveInitialized = 'true'
+    logFrontendDebug('init_availability_autosave_ready', {
+      memberPanel: memberPanel?.dataset?.rehearsalMemberPanel || '',
+      memberId
+    })
     let saveTimer = null
     let isSaving = false
     let pendingSave = false
@@ -1286,7 +1572,11 @@
       : dayTabs.find((tab) => tab.classList.contains('is-active')) || dayTabs[0]
 
     if (initialActiveTab) {
-      setActiveDay(initialActiveTab.dataset.rehearsalDayTab, false)
+      if (memberEditor) {
+        memberEditor.dataset.rehearsalActiveDay = initialActiveTab.dataset.rehearsalDayTab || memberEditor.dataset.rehearsalActiveDay || ''
+      } else {
+        setActiveDay(initialActiveTab.dataset.rehearsalDayTab, false)
+      }
     }
 
     dayTabs.forEach((tab) => {
@@ -1509,11 +1799,41 @@
 
   const initMemberPanelContent = (panel) => {
     if (!(panel instanceof HTMLElement)) {
+      logFrontendDebug('init_member_panel_content_skipped', {
+        reason: 'invalid_panel'
+      })
       return
     }
 
-    Array.from(panel.querySelectorAll('[data-rehearsal-day-editor]')).forEach(initDayEditor)
-    Array.from(panel.querySelectorAll('[data-rehearsal-availability-autosave]')).forEach(initAvailabilityAutosave)
+    const dayEditors = Array.from(panel.querySelectorAll('[data-rehearsal-day-editor]'))
+    const availabilityForms = Array.from(panel.querySelectorAll('[data-rehearsal-availability-autosave]'))
+
+    logFrontendDebug('init_member_panel_content_start', {
+      memberPanel: panel.dataset?.rehearsalMemberPanel || '',
+      dayEditorCount: dayEditors.length,
+      availabilityFormCount: availabilityForms.length
+    })
+
+    dayEditors.forEach((element, index) => {
+      logFrontendDebug('init_member_panel_day_editor', {
+        memberPanel: panel.dataset?.rehearsalMemberPanel || '',
+        index,
+        dayTabCount: element.querySelectorAll('[data-rehearsal-day-tab]').length
+      })
+      initDayEditor(element)
+    })
+
+    availabilityForms.forEach((element, index) => {
+      logFrontendDebug('init_member_panel_availability_form', {
+        memberPanel: panel.dataset?.rehearsalMemberPanel || '',
+        index
+      })
+      initAvailabilityAutosave(element)
+    })
+
+    logFrontendDebug('init_member_panel_content_complete', {
+      memberPanel: panel.dataset?.rehearsalMemberPanel || ''
+    })
   }
 
   const findMemberTemplate = (editor, memberId) => Array.from(editor.querySelectorAll('template[data-rehearsal-member-template]'))
@@ -1524,6 +1844,9 @@
       .find((panel) => panel.dataset.rehearsalMemberPanel === String(memberId))
 
     if (existingPanel) {
+      logFrontendDebug('ensure_member_panel_existing', {
+        memberId
+      })
       return existingPanel
     }
 
@@ -1531,6 +1854,11 @@
     const panelsRoot = editor.querySelector('.pd-rehearsal-member-editor__panels')
 
     if (!(template instanceof HTMLTemplateElement) || !panelsRoot) {
+      logFrontendDebug('ensure_member_panel_missing_template', {
+        memberId,
+        hasTemplate: template instanceof HTMLTemplateElement,
+        hasPanelsRoot: Boolean(panelsRoot)
+      })
       return null
     }
 
@@ -1538,11 +1866,18 @@
     const panel = fragment.querySelector('[data-rehearsal-member-panel]')
 
     if (!(panel instanceof HTMLElement)) {
+      logFrontendDebug('ensure_member_panel_invalid_fragment', {
+        memberId
+      })
       return null
     }
 
     panelsRoot.insertBefore(fragment, template)
     template.remove()
+
+    logFrontendDebug('ensure_member_panel_created', {
+      memberId
+    })
 
     return panel
   }
@@ -1552,33 +1887,61 @@
       return
     }
 
-    Array.from(root.querySelectorAll('[data-rehearsal-member-editor]'))
+    const memberEditors = Array.from(root.querySelectorAll('[data-rehearsal-member-editor]'))
       .filter((element) => !isHiddenInside(element, root))
-      .forEach(initMemberEditor)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-day-editor]'))
+    const dayEditors = Array.from(root.querySelectorAll('[data-rehearsal-day-editor]'))
       .filter((element) => !element.closest('[data-rehearsal-member-editor]') && !isHiddenInside(element, root))
-      .forEach(initDayEditor)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-availability-autosave]'))
+    const availabilityForms = Array.from(root.querySelectorAll('[data-rehearsal-availability-autosave]'))
       .filter((element) => !element.closest('[data-rehearsal-member-editor]') && !isHiddenInside(element, root))
-      .forEach(initAvailabilityAutosave)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-logbook-autosave]'))
+    const logbookForms = Array.from(root.querySelectorAll('[data-rehearsal-logbook-autosave]'))
       .filter((element) => !isHiddenInside(element, root))
-      .forEach(initLogbookAutosave)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-proposal-autosave]'))
+    const proposalForms = Array.from(root.querySelectorAll('[data-rehearsal-proposal-autosave]'))
       .filter((element) => !isHiddenInside(element, root))
-      .forEach(initProposalAutosave)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-proposal-delete]'))
+    const deleteForms = Array.from(root.querySelectorAll('[data-rehearsal-proposal-delete]'))
       .filter((element) => !isHiddenInside(element, root))
-      .forEach(initProposalDeleteForm)
-
-    Array.from(root.querySelectorAll('[data-rehearsal-card-carousel]'))
+    const carousels = Array.from(root.querySelectorAll('[data-rehearsal-card-carousel]'))
       .filter((element) => !isHiddenInside(element, root))
-      .forEach(initCardCarousel)
+
+    logFrontendDebug('init_visible_panel_content_start', {
+      root: describeDebugRoot(root),
+      memberEditorCount: memberEditors.length,
+      dayEditorCount: dayEditors.length,
+      availabilityFormCount: availabilityForms.length,
+      logbookFormCount: logbookForms.length,
+      proposalFormCount: proposalForms.length,
+      deleteFormCount: deleteForms.length,
+      carouselCount: carousels.length
+    })
+
+    memberEditors.forEach((element, index) => {
+      logFrontendDebug('init_visible_panel_member_editor', {
+        index,
+        memberTabCount: element.querySelectorAll('[data-rehearsal-member-tab]').length
+      })
+      initMemberEditor(element)
+    })
+
+    dayEditors.forEach((element, index) => {
+      logFrontendDebug('init_visible_panel_day_editor', {
+        index,
+        dayTabCount: element.querySelectorAll('[data-rehearsal-day-tab]').length
+      })
+      initDayEditor(element)
+    })
+
+    availabilityForms.forEach((element, index) => {
+      logFrontendDebug('init_visible_panel_availability_form', { index })
+      initAvailabilityAutosave(element)
+    })
+
+    logbookForms.forEach(initLogbookAutosave)
+    proposalForms.forEach(initProposalAutosave)
+    deleteForms.forEach(initProposalDeleteForm)
+    carousels.forEach(initCardCarousel)
+
+    logFrontendDebug('init_visible_panel_content_complete', {
+      root: describeDebugRoot(root)
+    })
   }
 
   const initMemberEditor = (memberEditor) => {
@@ -1595,6 +1958,10 @@
       return
     }
 
+    logFrontendDebug('init_member_editor_start', {
+      memberTabCount: memberTabs.length
+    })
+
     memberEditor.dataset.rehearsalMemberEditorInitialized = 'true'
     const moveMember = (direction) => {
       const activeIndex = memberTabs.findIndex((tab) => tab.classList.contains('is-active'))
@@ -1609,20 +1976,59 @@
 
     const storedMemberId = readShellState(shell, 'member')
     const storedDay = readShellState(shell, 'day')
-    const initialActiveTab = memberTabs.find((tab) => tab.dataset.rehearsalMemberTab === storedMemberId) || memberTabs.find((tab) => tab.classList.contains('is-active')) || memberTabs[0]
+    const initialActiveTab = memberTabs.find((tab) => tab.classList.contains('is-active')) || memberTabs.find((tab) => tab.dataset.rehearsalMemberTab === storedMemberId) || memberTabs[0]
     const initialMemberId = initialActiveTab?.dataset.rehearsalMemberTab || ''
     const initialPanel = initialMemberId ? ensureMemberPanel(memberEditor, initialMemberId) : null
     const initialDayEditor = initialPanel?.querySelector('[data-rehearsal-day-editor]') || memberEditor.querySelector('[data-rehearsal-day-editor]')
 
     if (initialActiveTab) {
-      if (storedDay) {
-        memberEditor.dataset.rehearsalActiveDay = resolveMemberDay(memberEditor, storedDay)
-      } else if (initialDayEditor) {
+      logFrontendDebug('init_member_editor_initial_tab', {
+        memberId: initialActiveTab.dataset.rehearsalMemberTab || '',
+        storedMemberId,
+        storedDay
+      })
+
+      if (initialDayEditor) {
         memberEditor.dataset.rehearsalActiveDay = getActiveDay(initialDayEditor)
+      } else if (storedDay) {
+        memberEditor.dataset.rehearsalActiveDay = resolveMemberDay(memberEditor, storedDay)
       }
 
-      activateMemberPanel(memberEditor, initialActiveTab.dataset.rehearsalMemberTab, false)
+      if (initialPanel) {
+        writeShellState(shell, 'member', initialActiveTab.dataset.rehearsalMemberTab || '')
+      }
+
+      logFrontendDebug('init_member_editor_initial_panel_ready', {
+        memberId: initialActiveTab.dataset.rehearsalMemberTab || '',
+        activeDay: memberEditor.dataset.rehearsalActiveDay || ''
+      })
     }
+
+    logFrontendDebug('init_member_editor_complete', {
+      activeDay: memberEditor.dataset.rehearsalActiveDay || ''
+    })
+
+    const hydrateMemberPanelForTarget = (target) => {
+      const source = target instanceof Element ? target : null
+      const panel = source?.closest('[data-rehearsal-member-panel]')
+        || memberEditor.querySelector('[data-rehearsal-member-panel]:not([hidden])')
+
+      initMemberPanelContent(panel)
+    }
+
+    memberEditor.addEventListener('focusin', (event) => {
+      hydrateMemberPanelForTarget(event.target)
+    })
+
+    memberEditor.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null
+
+      if (target?.closest('[data-rehearsal-member-tab], [data-rehearsal-member-prev], [data-rehearsal-member-next]')) {
+        return
+      }
+
+      hydrateMemberPanelForTarget(target)
+    })
 
     memberTabs.forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -1659,125 +2065,203 @@
     }
   }
 
-  shells.forEach((shell) => {
-    const nav = shell.querySelector('[data-rehearsal-tabs]')
-    const panelsRoot = shell.querySelector('[data-rehearsal-panels]')
+  logFrontendDebug('bootstrap_start', {
+    shellCount: shells.length,
+    currentUrl: window.location.href
+  })
 
-    if (nav && panelsRoot) {
-      const tabs = Array.from(nav.querySelectorAll('[data-rehearsal-tab]'))
-      const panels = Array.from(panelsRoot.children).filter((panel) => panel.getAttribute('role') === 'tabpanel')
+  shells.forEach((shell, shellIndex) => {
+    const projectId = shell?.dataset?.rehearsalProjectId || ''
 
-      if (tabs.length && panels.length) {
-        const queryKey = nav.dataset.rehearsalQuery || 'rehearsal_tab'
-        const storedTab = readShellState(shell, 'tab')
+    try {
+      logFrontendDebug('shell_init_start', {
+        shellIndex,
+        projectId
+      })
 
-        const activateTab = (tabName, options = {}) => {
-          const { shouldFocus = false, syncUrl = true } = options
-          const activeTab = tabs.find((tab) => tab.dataset.rehearsalTab === tabName)?.dataset.rehearsalTab || tabs[0]?.dataset.rehearsalTab
+      const nav = shell.querySelector('[data-rehearsal-tabs]')
+      const panelsRoot = shell.querySelector('[data-rehearsal-panels]')
 
-          if (!activeTab) {
-            return
+      if (nav && panelsRoot) {
+        const tabs = Array.from(nav.querySelectorAll('[data-rehearsal-tab]'))
+        const panels = Array.from(panelsRoot.children).filter((panel) => panel.getAttribute('role') === 'tabpanel')
+
+        logFrontendDebug('shell_tabs_detected', {
+          shellIndex,
+          projectId,
+          tabCount: tabs.length,
+          panelCount: panels.length
+        })
+
+        if (tabs.length && panels.length) {
+          const queryKey = nav.dataset.rehearsalQuery || 'rehearsal_tab'
+          const storedTab = readShellState(shell, 'tab')
+
+          const activateTab = (tabName, options = {}) => {
+            const { shouldFocus = false, syncUrl = true } = options
+            const activeTab = tabs.find((tab) => tab.dataset.rehearsalTab === tabName)?.dataset.rehearsalTab || tabs[0]?.dataset.rehearsalTab
+
+            if (!activeTab) {
+              return
+            }
+
+            tabs.forEach((tab) => {
+              const isActive = tab.dataset.rehearsalTab === activeTab
+              tab.classList.toggle('is-active', isActive)
+              tab.setAttribute('aria-selected', isActive ? 'true' : 'false')
+              tab.setAttribute('tabindex', isActive ? '0' : '-1')
+
+              if (isActive && shouldFocus) {
+                tab.focus()
+              }
+            })
+
+            panels.forEach((panel) => {
+              panel.hidden = panel.dataset.rehearsalPanel !== activeTab
+            })
+
+            const activePanelElement = panels.find((panel) => panel.dataset.rehearsalPanel === activeTab)
+            logFrontendDebug('activate_tab_before_visible_content', {
+              projectId,
+              activeTab,
+              panelFound: Boolean(activePanelElement)
+            })
+            initVisiblePanelContent(activePanelElement)
+            logFrontendDebug('activate_tab_after_visible_content', {
+              projectId,
+              activeTab
+            })
+
+            writeShellState(shell, 'tab', activeTab)
+
+            if (syncUrl) {
+              updateUrl(queryKey, activeTab)
+            }
+          }
+
+          const initialTab = tabs.find((tab) => tab.classList.contains('is-active'))
+            || (!hasUrlParam(queryKey) && storedTab ? tabs.find((tab) => tab.dataset.rehearsalTab === storedTab) : null)
+            || tabs[0]
+
+          if (initialTab) {
+            const initialTabName = initialTab.dataset.rehearsalTab || ''
+            const initialPanelElement = panels.find((panel) => panel.dataset.rehearsalPanel === initialTabName)
+
+            logFrontendDebug('shell_initial_tab', {
+              shellIndex,
+              projectId,
+              tab: initialTabName,
+              panelFound: Boolean(initialPanelElement)
+            })
+
+            initVisiblePanelContent(initialPanelElement)
+            writeShellState(shell, 'tab', initialTabName)
           }
 
           tabs.forEach((tab) => {
-            const isActive = tab.dataset.rehearsalTab === activeTab
-            tab.classList.toggle('is-active', isActive)
-            tab.setAttribute('aria-selected', isActive ? 'true' : 'false')
-            tab.setAttribute('tabindex', isActive ? '0' : '-1')
+            tab.addEventListener('click', () => {
+              activateTab(tab.dataset.rehearsalTab, { shouldFocus: false })
+            })
 
-            if (isActive && shouldFocus) {
-              tab.focus()
-            }
+            tab.addEventListener('keydown', (event) => {
+              const currentIndex = tabs.indexOf(tab)
+
+              if (event.key === 'ArrowRight') {
+                event.preventDefault()
+                const nextIndex = (currentIndex + 1) % tabs.length
+                activateTab(tabs[nextIndex].dataset.rehearsalTab, { shouldFocus: true })
+              }
+
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault()
+                const nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+                activateTab(tabs[nextIndex].dataset.rehearsalTab, { shouldFocus: true })
+              }
+            })
           })
+        }
+      }
 
-          panels.forEach((panel) => {
-            panel.hidden = panel.dataset.rehearsalPanel !== activeTab
-          })
+      const calendarToggle = shell.querySelector('[data-rehearsal-calendar-view-tabs]')
 
-          const activePanelElement = panels.find((panel) => panel.dataset.rehearsalPanel === activeTab)
-          initVisiblePanelContent(activePanelElement)
+      if (calendarToggle) {
+        const calendarTabs = Array.from(calendarToggle.querySelectorAll('[data-rehearsal-calendar-view-tab]'))
+        const queryKey = calendarToggle.dataset.rehearsalQuery || 'rehearsal_calendar_view'
+        const storedCalendarView = readShellState(shell, 'calendar-view')
+        const initialCalendarTab = calendarTabs.find((tab) => tab.classList.contains('is-active'))
+          || (!hasUrlParam(queryKey) && storedCalendarView ? calendarTabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === storedCalendarView) : null)
+          || calendarTabs[0]
 
-          writeShellState(shell, 'tab', activeTab)
+        logFrontendDebug('shell_calendar_detected', {
+          shellIndex,
+          projectId,
+          calendarTabCount: calendarTabs.length,
+          initialCalendarView: initialCalendarTab?.dataset?.rehearsalCalendarViewTab || ''
+        })
 
-          if (syncUrl) {
-            updateUrl(queryKey, activeTab)
-          }
+        if (initialCalendarTab) {
+          const initialCalendarView = initialCalendarTab.dataset.rehearsalCalendarViewTab || ''
+          const activeCalendarPanel = shell.querySelector(`[data-rehearsal-calendar-view-panel="${initialCalendarView}"]`)
+
+          initVisiblePanelContent(activeCalendarPanel)
+          writeShellState(shell, 'calendar-view', initialCalendarView)
         }
 
-        const initialTab = (!hasUrlParam(queryKey) && storedTab)
-          ? tabs.find((tab) => tab.dataset.rehearsalTab === storedTab) || tabs.find((tab) => tab.classList.contains('is-active')) || tabs[0]
-          : tabs.find((tab) => tab.classList.contains('is-active')) || tabs[0]
-
-        if (initialTab) {
-          activateTab(initialTab.dataset.rehearsalTab, { syncUrl: false })
-        }
-
-        tabs.forEach((tab) => {
+        calendarTabs.forEach((tab) => {
           tab.addEventListener('click', () => {
-            activateTab(tab.dataset.rehearsalTab, { shouldFocus: false })
+            activateCalendarView(shell, tab.dataset.rehearsalCalendarViewTab)
           })
 
           tab.addEventListener('keydown', (event) => {
-            const currentIndex = tabs.indexOf(tab)
+            const currentIndex = calendarTabs.indexOf(tab)
 
             if (event.key === 'ArrowRight') {
               event.preventDefault()
-              const nextIndex = (currentIndex + 1) % tabs.length
-              activateTab(tabs[nextIndex].dataset.rehearsalTab, { shouldFocus: true })
+              const nextIndex = (currentIndex + 1) % calendarTabs.length
+              activateCalendarView(shell, calendarTabs[nextIndex].dataset.rehearsalCalendarViewTab, { shouldFocus: true })
             }
 
             if (event.key === 'ArrowLeft') {
               event.preventDefault()
-              const nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
-              activateTab(tabs[nextIndex].dataset.rehearsalTab, { shouldFocus: true })
+              const nextIndex = (currentIndex - 1 + calendarTabs.length) % calendarTabs.length
+              activateCalendarView(shell, calendarTabs[nextIndex].dataset.rehearsalCalendarViewTab, { shouldFocus: true })
             }
           })
         })
       }
-    }
 
-    const calendarToggle = shell.querySelector('[data-rehearsal-calendar-view-tabs]')
+      logFrontendDebug('shell_content_init_start', {
+        shellIndex,
+        projectId
+      })
 
-    if (calendarToggle) {
-      const calendarTabs = Array.from(calendarToggle.querySelectorAll('[data-rehearsal-calendar-view-tab]'))
-      const queryKey = calendarToggle.dataset.rehearsalQuery || 'rehearsal_calendar_view'
-      const storedCalendarView = readShellState(shell, 'calendar-view')
-      const activeCalendarTab = calendarTabs.find((tab) => tab.classList.contains('is-active')) || calendarTabs[0]
-      const initialCalendarTab = (!hasUrlParam(queryKey) && storedCalendarView)
-        && activeCalendarTab?.dataset.rehearsalCalendarViewTab !== 'overview'
-        ? calendarTabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === storedCalendarView) || activeCalendarTab
-        : activeCalendarTab
+      initVisiblePanelContent(shell)
+      initProjectSwitcher(shell)
+      initCalendarEventModal(shell)
+      focusProjectSelector(shell)
 
-      if (initialCalendarTab) {
-        activateCalendarView(shell, initialCalendarTab.dataset.rehearsalCalendarViewTab, { syncUrl: false })
-      }
-
-      calendarTabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          activateCalendarView(shell, tab.dataset.rehearsalCalendarViewTab)
-        })
-
-        tab.addEventListener('keydown', (event) => {
-          const currentIndex = calendarTabs.indexOf(tab)
-
-          if (event.key === 'ArrowRight') {
-            event.preventDefault()
-            const nextIndex = (currentIndex + 1) % calendarTabs.length
-            activateCalendarView(shell, calendarTabs[nextIndex].dataset.rehearsalCalendarViewTab, { shouldFocus: true })
-          }
-
-          if (event.key === 'ArrowLeft') {
-            event.preventDefault()
-            const nextIndex = (currentIndex - 1 + calendarTabs.length) % calendarTabs.length
-            activateCalendarView(shell, calendarTabs[nextIndex].dataset.rehearsalCalendarViewTab, { shouldFocus: true })
-          }
-        })
+      logFrontendDebug('shell_init_complete', {
+        shellIndex,
+        projectId
+      })
+    } catch (error) {
+      logFrontendDebug('shell_init_error', {
+        shellIndex,
+        projectId,
+        message: error?.message || '',
+        stack: error?.stack || ''
       })
     }
-
-    initVisiblePanelContent(shell)
-    initProjectSwitcher(shell)
-    initCalendarEventModal(shell)
-    focusProjectSelector(shell)
   })
+
+  window.requestAnimationFrame(() => {
+    logFrontendDebug('bootstrap_first_frame')
+    startLoadWatchdog()
+  })
+
+  window.setTimeout(() => {
+    logFrontendDebug('bootstrap_post_timeout', {
+      shellCount: shells.length
+    })
+  }, 1000)
 })()
