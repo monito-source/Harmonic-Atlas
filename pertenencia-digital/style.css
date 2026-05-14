@@ -2188,6 +2188,22 @@ select,
   color: var(--pd-membership-local-shell-text);
 }
 
+@media (max-width: 781px) {
+  .pd-rehearsal-block {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .pd-rehearsal-block > .pd-rehearsal-shell {
+    width: max(100%, 42rem);
+    max-width: none;
+  }
+}
+
 .pd-rehearsal-block.has-text-color {
   --pd-rehearsal-custom-panel-text: currentColor;
   --pd-rehearsal-custom-panel-title: currentColor;
