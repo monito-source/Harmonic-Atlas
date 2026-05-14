@@ -117,6 +117,57 @@
     }
   }
 
+  const getCompactCollapsibleMedia = () => {
+    if (!window.matchMedia) {
+      return null
+    }
+
+    try {
+      return window.matchMedia('(max-width: 1024px)')
+    } catch (error) {
+      return null
+    }
+  }
+
+  const isDetailsElement = (element) => element?.tagName?.toLowerCase() === 'details'
+
+  const initCollapsiblePanels = (shell) => {
+    if (!shell) {
+      return
+    }
+
+    const panels = Array.from(shell.querySelectorAll('[data-rehearsal-collapsible]'))
+
+    if (!panels.length) {
+      return
+    }
+
+    const compactMedia = getCompactCollapsibleMedia()
+    const isCompact = Boolean(compactMedia?.matches)
+
+    panels.forEach((panel, index) => {
+      if (!isDetailsElement(panel) || panel.dataset.rehearsalCollapsibleInitialized === 'true') {
+        return
+      }
+
+      panel.dataset.rehearsalCollapsibleInitialized = 'true'
+
+      const key = panel.dataset.rehearsalCollapseKey || `panel-${index}`
+      const storageScope = `collapse:${key}`
+      const storedState = readShellState(shell, storageScope)
+
+      if (storedState === 'open' || storedState === 'closed') {
+        panel.open = storedState === 'open'
+      } else if (isCompact && panel.dataset.rehearsalCollapseDefault === 'mobile-closed') {
+        panel.open = false
+      }
+
+      panel.addEventListener('toggle', () => {
+        writeShellState(shell, storageScope, panel.open ? 'open' : 'closed')
+      })
+    })
+  }
+
   const resolveDayForEditor = (editor, day = '') => {
     const tabs = Array.from(editor.querySelectorAll('[data-rehearsal-day-tab]'))
     const matchingTab = tabs.find((tab) => tab.dataset.rehearsalDayTab === day)
@@ -2236,6 +2287,7 @@
       })
 
       initVisiblePanelContent(shell)
+      initCollapsiblePanels(shell)
       initProjectSwitcher(shell)
       initCalendarEventModal(shell)
       focusProjectSelector(shell)

@@ -137,6 +137,134 @@ function wpssb_render_rehearsal_failure_markup( $message, array $debug = [] ) {
 }
 
 /**
+ * Abre un panel colapsable del Planificador de ensayos.
+ *
+ * @param string $title          Titulo visible.
+ * @param string $eyebrow        Etiqueta superior opcional.
+ * @param string $description    Descripcion opcional.
+ * @param string $classes        Clases extra para el panel.
+ * @param string $collapse_key   Clave estable para guardar estado.
+ * @param string $mobile_default Estado inicial en mobile/tablet: mobile-open o mobile-closed.
+ * @param string $title_tag      Etiqueta de titulo: h2, h3 o h4.
+ * @return string
+ */
+function wpssb_render_rehearsal_collapsible_panel_open( $title, $eyebrow = '', $description = '', $classes = '', $collapse_key = '', $mobile_default = 'mobile-closed', $title_tag = 'h3' ) {
+    $title          = sanitize_text_field( (string) $title );
+    $eyebrow        = sanitize_text_field( (string) $eyebrow );
+    $description    = sanitize_text_field( (string) $description );
+    $classes        = trim( (string) $classes );
+    $collapse_key   = sanitize_key( (string) $collapse_key );
+    $mobile_default = 'mobile-open' === $mobile_default ? 'mobile-open' : 'mobile-closed';
+    $title_tag      = in_array( $title_tag, [ 'h2', 'h3', 'h4' ], true ) ? $title_tag : 'h3';
+
+    $panel_classes = trim( 'pd-rehearsal-panel pd-rehearsal-collapsible ' . $classes );
+    $output        = '<details class="' . esc_attr( $panel_classes ) . '" data-rehearsal-collapsible data-rehearsal-collapse-default="' . esc_attr( $mobile_default ) . '"';
+
+    if ( '' !== $collapse_key ) {
+        $output .= ' data-rehearsal-collapse-key="' . esc_attr( $collapse_key ) . '"';
+    }
+
+    $output .= ' open>';
+    $output .= '<summary class="pd-rehearsal-collapsible__summary">';
+    $output .= '<div class="pd-rehearsal-collapsible__copy">';
+
+    if ( '' !== $eyebrow ) {
+        $output .= '<span class="pd-membership-shell__eyebrow">' . esc_html( $eyebrow ) . '</span>';
+    }
+
+    $output .= '<' . $title_tag . ' class="pd-rehearsal-collapsible__title">' . esc_html( $title ) . '</' . $title_tag . '>';
+
+    if ( '' !== $description ) {
+        $output .= '<span class="pd-rehearsal-collapsible__description">' . esc_html( $description ) . '</span>';
+    }
+
+    $output .= '</div>';
+    $output .= '<span class="pd-rehearsal-collapsible__indicator" aria-hidden="true"></span>';
+    $output .= '</summary>';
+    $output .= '<div class="pd-rehearsal-collapsible__body">';
+
+    return $output;
+}
+
+/**
+ * Cierra un panel colapsable del Planificador.
+ *
+ * @return string
+ */
+function wpssb_render_rehearsal_collapsible_panel_close() {
+    return '</div></details>';
+}
+
+/**
+ * Agrupa ventanas sugeridas por dia.
+ *
+ * @param array<int, array<string, mixed>> $recommendations Ventanas sugeridas.
+ * @return array<string, array<int, array<string, mixed>>>
+ */
+function wpssb_group_rehearsal_recommendations_by_day( $recommendations ) {
+    $groups = [];
+
+    foreach ( (array) $recommendations as $slot ) {
+        if ( ! is_array( $slot ) ) {
+            continue;
+        }
+
+        $day = sanitize_key( (string) ( $slot['day'] ?? '' ) );
+
+        if ( '' === $day ) {
+            continue;
+        }
+
+        if ( ! isset( $groups[ $day ] ) ) {
+            $groups[ $day ] = [];
+        }
+
+        $groups[ $day ][] = $slot;
+    }
+
+    foreach ( $groups as $day => $slots ) {
+        usort(
+            $slots,
+            static function ( $a, $b ) {
+                $start_a = is_array( $a ) ? sanitize_text_field( (string) ( $a['start'] ?? '' ) ) : '';
+                $start_b = is_array( $b ) ? sanitize_text_field( (string) ( $b['start'] ?? '' ) ) : '';
+
+                if ( $start_a === $start_b ) {
+                    $end_a = is_array( $a ) ? sanitize_text_field( (string) ( $a['end'] ?? '' ) ) : '';
+                    $end_b = is_array( $b ) ? sanitize_text_field( (string) ( $b['end'] ?? '' ) ) : '';
+
+                    return strcmp( $end_a, $end_b );
+                }
+
+                return strcmp( $start_a, $start_b );
+            }
+        );
+
+        $groups[ $day ] = $slots;
+    }
+
+    $day_order = array_keys( wpssb_get_project_rehearsal_day_labels() );
+    uksort(
+        $groups,
+        static function ( $day_a, $day_b ) use ( $day_order ) {
+            $index_a = array_search( $day_a, $day_order, true );
+            $index_b = array_search( $day_b, $day_order, true );
+
+            $index_a = false === $index_a ? PHP_INT_MAX : (int) $index_a;
+            $index_b = false === $index_b ? PHP_INT_MAX : (int) $index_b;
+
+            if ( $index_a === $index_b ) {
+                return strcmp( (string) $day_a, (string) $day_b );
+            }
+
+            return $index_a <=> $index_b;
+        }
+    );
+
+    return $groups;
+}
+
+/**
  * Sanitiza listas de IDs.
  *
  * @param mixed $value Valor crudo.
@@ -12733,13 +12861,15 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
 
     $output .= '<section class="pd-rehearsal-section pd-rehearsal-section--availability" id="pd-rehearsal-panel-availability" data-rehearsal-panel="availability" role="tabpanel" aria-labelledby="pd-rehearsal-tab-availability"' . ( 'availability' === $current_tab ? '' : ' hidden' ) . '>';
     $output .= '<div class="pd-rehearsal-grid">';
-    $output .= '<div class="pd-rehearsal-panel pd-rehearsal-panel--form pd-rehearsal-panel--secondary">';
-    $output .= '<header class="pd-membership-section__header">';
-    $output .= '<div class="pd-membership-section__intro">';
-    $output .= '<p class="pd-membership-shell__eyebrow">' . esc_html__( 'Ventanas base', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '<h2>' . esc_html__( 'Disponibilidad semanal del grupo', 'wp-song-study-blocks' ) . '</h2>';
-    $output .= '<p>' . esc_html__( 'Navega integrante por integrante en el mismo lugar. Cada persona edita solo su propia disponibilidad, pero el grupo completo puede revisar los horarios cargados.', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '</div></header>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_open(
+        __( 'Disponibilidad semanal del grupo', 'wp-song-study-blocks' ),
+        __( 'Ventanas base', 'wp-song-study-blocks' ),
+        __( 'Navega integrante por integrante. Cada persona edita su disponibilidad y el grupo revisa los horarios cargados.', 'wp-song-study-blocks' ),
+        'pd-rehearsal-panel--form pd-rehearsal-panel--secondary',
+        'availability-editor',
+        'mobile-open',
+        'h2'
+    );
     $output .= '<div class="pd-rehearsal-member-editor" data-rehearsal-member-editor>';
     $output .= '<div class="pd-rehearsal-member-editor__nav-wrap">';
     $output .= '<button type="button" class="pd-rehearsal-member-editor__arrow" data-rehearsal-member-prev aria-label="' . esc_attr__( 'Ir al integrante anterior', 'wp-song-study-blocks' ) . '"><span aria-hidden="true">&#x2039;</span></button>';
@@ -12805,11 +12935,18 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
     }
     $output .= '</div>';
     $output .= '</div>';
-    $output .= '</div>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_close();
 
     $output .= '<aside class="pd-rehearsal-sidebar">';
-    $output .= '<div class="pd-rehearsal-panel">';
-    $output .= '<h3>' . esc_html__( 'Resumen del proyecto', 'wp-song-study-blocks' ) . '</h3>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_open(
+        __( 'Resumen del proyecto', 'wp-song-study-blocks' ),
+        '',
+        __( 'Indicadores rápidos de disponibilidad, propuestas y ensayos registrados.', 'wp-song-study-blocks' ),
+        '',
+        'project-summary',
+        'mobile-closed',
+        'h3'
+    );
     $output .= '<dl class="pd-rehearsal-summary">';
     $output .= '<div><dt>' . esc_html__( 'Integrantes', 'wp-song-study-blocks' ) . '</dt><dd>' . (int) ( $summary['total_members'] ?? 0 ) . '</dd></div>';
     $output .= '<div><dt>' . esc_html__( 'Con disponibilidad cargada', 'wp-song-study-blocks' ) . '</dt><dd>' . (int) ( $summary['members_with_availability'] ?? 0 ) . '</dd></div>';
@@ -12822,55 +12959,82 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
             $output .= '<p class="pd-rehearsal-panel__meta">' . esc_html( sprintf( __( 'Última actualización personal: %s', 'wp-song-study-blocks' ), wp_date( 'j M Y · H:i', $updated_timestamp ) ) ) . '</p>';
         }
     }
-    $output .= '</div>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_close();
 
-    $output .= '<div class="pd-rehearsal-panel">';
-    $output .= '<h3>' . esc_html__( 'Ventanas sugeridas', 'wp-song-study-blocks' ) . '</h3>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_open(
+        __( 'Ventanas sugeridas', 'wp-song-study-blocks' ),
+        '',
+        __( 'Cruces de horario agrupados por día para levantar propuestas con menos ruido.', 'wp-song-study-blocks' ),
+        '',
+        'recommended-windows',
+        'mobile-open',
+        'h3'
+    );
     if ( empty( $recommendations ) ) {
         $output .= '<p>' . esc_html__( 'Todavía no hay suficientes cruces de horario para sugerir una ventana común.', 'wp-song-study-blocks' ) . '</p>';
     } else {
-        $output .= '<ul class="pd-rehearsal-recommendations">';
-        foreach ( $recommendations as $slot ) {
-            if ( ! is_array( $slot ) ) {
-                continue;
-            }
-            $labels = wpssb_get_project_rehearsal_day_labels();
-            $slot_day = sanitize_key( (string) ( $slot['day'] ?? '' ) );
+        $labels = wpssb_get_project_rehearsal_day_labels();
+        $groups = wpssb_group_rehearsal_recommendations_by_day( $recommendations );
+        $output .= '<div class="pd-rehearsal-recommendation-groups">';
+
+        foreach ( $groups as $slot_day => $day_slots ) {
             $slot_label = isset( $labels[ $slot_day ] ) ? $labels[ $slot_day ] : ucfirst( $slot_day );
-            $output .= '<li>';
-            $output .= '<strong>' . esc_html( $slot_label . ' · ' . sanitize_text_field( (string) ( $slot['start'] ?? '' ) ) . ' - ' . sanitize_text_field( (string) ( $slot['end'] ?? '' ) ) ) . '</strong>';
-            $output .= '<span>' . esc_html( sprintf( __( '%1$s integrantes · %2$s min', 'wp-song-study-blocks' ), (int) ( $slot['member_count'] ?? 0 ), (int) ( $slot['duration_minutes'] ?? 0 ) ) ) . '</span>';
-            if ( ! empty( $slot['member_names'] ) && is_array( $slot['member_names'] ) ) {
-                $output .= '<small>' . esc_html( implode( ', ', array_map( 'sanitize_text_field', $slot['member_names'] ) ) ) . '</small>';
+            $output .= '<details class="pd-rehearsal-recommendation-day pd-rehearsal-collapsible" data-rehearsal-collapsible data-rehearsal-collapse-default="mobile-open" data-rehearsal-collapse-key="' . esc_attr( 'recommended-' . $slot_day ) . '" open>';
+            $output .= '<summary class="pd-rehearsal-collapsible__summary pd-rehearsal-recommendation-day__summary">';
+            $output .= '<div class="pd-rehearsal-collapsible__copy">';
+            $output .= '<span class="pd-rehearsal-collapsible__title">' . esc_html( $slot_label ) . '</span>';
+            $output .= '<span class="pd-rehearsal-collapsible__description">' . esc_html( sprintf( _n( '%d ventana sugerida', '%d ventanas sugeridas', count( $day_slots ), 'wp-song-study-blocks' ), count( $day_slots ) ) ) . '</span>';
+            $output .= '</div><span class="pd-rehearsal-collapsible__indicator" aria-hidden="true"></span>';
+            $output .= '</summary>';
+            $output .= '<div class="pd-rehearsal-collapsible__body">';
+            $output .= '<ul class="pd-rehearsal-recommendations">';
+
+            foreach ( $day_slots as $slot ) {
+                if ( ! is_array( $slot ) ) {
+                    continue;
+                }
+
+                $output .= '<li>';
+                $output .= '<strong>' . esc_html( sanitize_text_field( (string) ( $slot['start'] ?? '' ) ) . ' - ' . sanitize_text_field( (string) ( $slot['end'] ?? '' ) ) ) . '</strong>';
+                $output .= '<span>' . esc_html( sprintf( __( '%1$s integrantes · %2$s min', 'wp-song-study-blocks' ), (int) ( $slot['member_count'] ?? 0 ), (int) ( $slot['duration_minutes'] ?? 0 ) ) ) . '</span>';
+                if ( ! empty( $slot['member_names'] ) && is_array( $slot['member_names'] ) ) {
+                    $output .= '<small>' . esc_html( implode( ', ', array_map( 'sanitize_text_field', $slot['member_names'] ) ) ) . '</small>';
+                }
+                $output .= '<form class="pd-rehearsal-recommendation-form" method="post" action="' . esc_url( $action_url ) . '">';
+                $output .= '<input type="hidden" name="action" value="wpssb_create_frontend_rehearsal_proposal" />';
+                $output .= '<input type="hidden" name="project_id" value="' . (int) $project_id . '" />';
+                $output .= '<input type="hidden" name="redirect_to" value="' . esc_url( $calendar_proposals_url ) . '" />';
+                $output .= '<input type="hidden" name="slot_day" value="' . esc_attr( $slot_day ) . '" />';
+                $output .= '<input type="hidden" name="slot_start" value="' . esc_attr( sanitize_text_field( (string) ( $slot['start'] ?? '' ) ) ) . '" />';
+                $output .= '<input type="hidden" name="slot_end" value="' . esc_attr( sanitize_text_field( (string) ( $slot['end'] ?? '' ) ) ) . '" />';
+                $output .= '<input type="hidden" name="scheduled_for" value="' . esc_attr( wpssb_get_frontend_rehearsal_default_date_for_day( $slot_day ) ) . '" />';
+                $output .= wp_nonce_field( 'wpssb_create_rehearsal_proposal', 'wpssb_rehearsal_proposal_nonce', true, false );
+                $output .= '<button type="submit" class="wp-block-button__link wp-element-button is-style-outline pd-rehearsal-recommendation-form__button">' . esc_html__( 'Convertir en propuesta', 'wp-song-study-blocks' ) . '</button>';
+                $output .= '</form>';
+                $output .= '</li>';
             }
-            $output .= '<form class="pd-rehearsal-recommendation-form" method="post" action="' . esc_url( $action_url ) . '">';
-            $output .= '<input type="hidden" name="action" value="wpssb_create_frontend_rehearsal_proposal" />';
-            $output .= '<input type="hidden" name="project_id" value="' . (int) $project_id . '" />';
-            $output .= '<input type="hidden" name="redirect_to" value="' . esc_url( $calendar_proposals_url ) . '" />';
-            $output .= '<input type="hidden" name="slot_day" value="' . esc_attr( $slot_day ) . '" />';
-            $output .= '<input type="hidden" name="slot_start" value="' . esc_attr( sanitize_text_field( (string) ( $slot['start'] ?? '' ) ) ) . '" />';
-            $output .= '<input type="hidden" name="slot_end" value="' . esc_attr( sanitize_text_field( (string) ( $slot['end'] ?? '' ) ) ) . '" />';
-            $output .= '<input type="hidden" name="scheduled_for" value="' . esc_attr( wpssb_get_frontend_rehearsal_default_date_for_day( $slot_day ) ) . '" />';
-            $output .= wp_nonce_field( 'wpssb_create_rehearsal_proposal', 'wpssb_rehearsal_proposal_nonce', true, false );
-            $output .= '<button type="submit" class="wp-block-button__link wp-element-button is-style-outline pd-rehearsal-recommendation-form__button">' . esc_html__( 'Convertir en propuesta', 'wp-song-study-blocks' ) . '</button>';
-            $output .= '</form>';
-            $output .= '</li>';
+
+            $output .= '</ul>';
+            $output .= '</div></details>';
         }
-        $output .= '</ul>';
+
+        $output .= '</div>';
     }
-    $output .= '</div>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_close();
     $output .= '</aside>';
     $output .= '</div>';
     $output .= '</section>';
 
     $output .= '<section class="pd-rehearsal-section" id="pd-rehearsal-panel-calendar" data-rehearsal-panel="calendar" role="tabpanel" aria-labelledby="pd-rehearsal-tab-calendar"' . ( 'calendar' === $current_tab ? '' : ' hidden' ) . '>';
-    $output .= '<div class="pd-rehearsal-panel">';
-    $output .= '<header class="pd-membership-section__header">';
-    $output .= '<div class="pd-membership-section__intro">';
-    $output .= '<p class="pd-membership-shell__eyebrow">' . esc_html__( 'Calendario del proyecto', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '<h2>' . esc_html__( 'Propuestas de ensayo y ensayos agendados', 'wp-song-study-blocks' ) . '</h2>';
-    $output .= '<p>' . esc_html__( 'Aquí puedes levantar propuestas desde las ventanas sugeridas, votar opciones abiertas y revisar lo que ya quedó confirmado. Si una sesión debe oficializarse por excepción, también puedes forzar su confirmación.', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '</div></header>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_open(
+        __( 'Propuestas de ensayo y ensayos agendados', 'wp-song-study-blocks' ),
+        __( 'Calendario del proyecto', 'wp-song-study-blocks' ),
+        __( 'Levanta propuestas, vota opciones abiertas y revisa lo que ya quedó confirmado.', 'wp-song-study-blocks' ),
+        '',
+        'calendar-panel',
+        'mobile-open',
+        'h2'
+    );
     $calendar_status_class = ! empty( $google_calendar['ready'] ) ? 'is-ready' : 'is-warning';
     $calendar_status_message = sanitize_text_field( (string) ( $google_calendar['status_message'] ?? '' ) );
     if ( '' === $calendar_status_message ) {
@@ -13386,16 +13550,19 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
     }
     $output .= '</div>';
     $output .= '</div>';
-    $output .= '</div></section>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_close();
+    $output .= '</section>';
 
     $output .= '<section class="pd-rehearsal-section" id="pd-rehearsal-panel-logbook" data-rehearsal-panel="logbook" role="tabpanel" aria-labelledby="pd-rehearsal-tab-logbook"' . ( 'logbook' === $current_tab ? '' : ' hidden' ) . '>';
-    $output .= '<div class="pd-rehearsal-panel">';
-    $output .= '<header class="pd-membership-section__header">';
-    $output .= '<div class="pd-membership-section__intro">';
-    $output .= '<p class="pd-membership-shell__eyebrow">' . esc_html__( 'Historial', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '<h2>' . esc_html__( 'Bitácora del proyecto', 'wp-song-study-blocks' ) . '</h2>';
-    $output .= '<p>' . esc_html__( 'Aquí quedan visibles los ensayos ya realizados y también se abre automáticamente cada sesión confirmada cuando llega su horario, para registrar observaciones y asistencia mientras ocurre o después.', 'wp-song-study-blocks' ) . '</p>';
-    $output .= '</div></header>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_open(
+        __( 'Bitácora del proyecto', 'wp-song-study-blocks' ),
+        __( 'Historial', 'wp-song-study-blocks' ),
+        __( 'Consulta ensayos realizados y registra observaciones o asistencia cuando una sesión queda abierta.', 'wp-song-study-blocks' ),
+        '',
+        'logbook-panel',
+        'mobile-open',
+        'h2'
+    );
     if ( empty( $logbook_sessions ) ) {
         $output .= '<p>' . esc_html__( 'Todavía no hay ensayos habilitados dentro de la bitácora.', 'wp-song-study-blocks' ) . '</p>';
     } else {
@@ -13539,7 +13706,8 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
         }
         $output .= wpssb_render_frontend_rehearsal_card_carousel_close();
     }
-    $output .= '</div></section>';
+    $output .= wpssb_render_rehearsal_collapsible_panel_close();
+    $output .= '</section>';
 
     $output .= '</div>';
     $output .= '</section>';

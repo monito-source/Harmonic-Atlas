@@ -62,6 +62,18 @@ view did not have that template wrapper, so it kept working.
   log a pending page state, but they must never abort document loading for real
   users.
 
+## Mobile Interaction Contract
+
+- The rehearsal planner can use native `<details>` panels for mobile/tablet
+  density, but the markup and state handling must belong to
+  `wp-song-study-blocks`, not to the theme template wrapper.
+- The theme may style `.pd-rehearsal-collapsible*` component classes because
+  those classes are owned by the planner. It must not style them through
+  `.pd-rehearsal-page-content` or another page-level descendant selector.
+- Suggested rehearsal windows are grouped by day in PHP before rendering. Keep
+  the day grouping server-side so no collaborator depends on client-side JS to
+  understand or submit a proposed time slot.
+
 ## Regression Checks
 
 After changing rehearsal template, gate or CSS rules, test with a collaborator
