@@ -218,6 +218,18 @@ function wpss_register_settings() {
                 : [],
         ]
     );
+
+    register_setting(
+        'wpss_rehearsal_notification_settings_group',
+        'wpss_rehearsal_web_push_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'wpssb_sanitize_rehearsal_web_push_settings',
+            'default'           => function_exists( 'wpssb_get_default_rehearsal_web_push_settings' )
+                ? wpssb_get_default_rehearsal_web_push_settings()
+                : [],
+        ]
+    );
 }
 
 /**
@@ -288,10 +300,30 @@ function wpss_render_rehearsal_notification_settings_page() {
             'from_email' => '',
             'reply_to'   => '',
         ];
+    $web_push_settings = function_exists( 'wpssb_get_rehearsal_web_push_settings' )
+        ? wpssb_get_rehearsal_web_push_settings()
+        : [
+            'enabled'     => 0,
+            'subject'     => '',
+            'public_key'  => '',
+            'private_key' => '',
+        ];
+    $web_push_ready = function_exists( 'wpssb_rehearsal_web_push_is_configured' )
+        ? wpssb_rehearsal_web_push_is_configured( $web_push_settings )
+        : false;
+    $push_key_state = isset( $_GET['wpssb_push_keys'] ) ? sanitize_key( wp_unslash( $_GET['wpssb_push_keys'] ) ) : '';
+    $push_key_error = isset( $_GET['wpssb_push_keys_message'] ) ? sanitize_text_field( wp_unslash( $_GET['wpssb_push_keys_message'] ) ) : '';
 
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Notificaciones de ensayos', 'wp-song-study' ) . '</h1>';
     echo '<p>' . esc_html__( 'Configura aquí el remitente usado por el Planificador de ensayos cuando avisa al grupo sobre propuestas, votos y confirmaciones.', 'wp-song-study' ) . '</p>';
+
+    if ( 'generated' === $push_key_state ) {
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Se generaron nuevas llaves VAPID para Web Push.', 'wp-song-study-blocks' ) . '</p></div>';
+    } elseif ( 'error' === $push_key_state ) {
+        echo '<div class="notice notice-error"><p>' . esc_html( '' !== $push_key_error ? $push_key_error : __( 'No se pudieron generar las llaves VAPID.', 'wp-song-study-blocks' ) ) . '</p></div>';
+    }
+
     echo '<form method="post" action="options.php">';
     settings_fields( 'wpss_rehearsal_notification_settings_group' );
 
@@ -327,6 +359,60 @@ function wpss_render_rehearsal_notification_settings_page() {
     echo '<td>';
     echo '<input type="email" class="regular-text" name="wpss_rehearsal_notification_settings[reply_to]" value="' . esc_attr( (string) ( $settings['reply_to'] ?? '' ) ) . '" />';
     echo '<p class="description">' . esc_html__( 'Opcional. Si alguien responde el correo, llegará a esta dirección.', 'wp-song-study' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+    echo '</table>';
+
+    echo '<h2>' . esc_html__( 'Web Push de navegador', 'wp-song-study-blocks' ) . '</h2>';
+    echo '<p>' . esc_html__( 'Esta capa permite notificaciones aunque la persona cierre la pestaña del Planificador. Requiere HTTPS, un service worker y un par de llaves VAPID.', 'wp-song-study-blocks' ) . '</p>';
+    echo '<table class="form-table" role="presentation">';
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Activar Web Push', 'wp-song-study-blocks' ) . '</th>';
+    echo '<td>';
+    echo '<label>';
+    echo '<input type="checkbox" name="wpss_rehearsal_web_push_settings[enabled]" value="1" ' . checked( ! empty( $web_push_settings['enabled'] ), true, false ) . ' />';
+    echo ' ' . esc_html__( 'Enviar notificaciones push reales a navegadores suscritos.', 'wp-song-study-blocks' );
+    echo '</label>';
+    echo '<p class="description">' . esc_html__( 'Si se activa y el navegador acepta permisos, las alertas seguirán llegando aunque la página ya no esté abierta.', 'wp-song-study-blocks' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Subject VAPID', 'wp-song-study-blocks' ) . '</th>';
+    echo '<td>';
+    echo '<input type="text" class="regular-text" name="wpss_rehearsal_web_push_settings[subject]" value="' . esc_attr( (string) ( $web_push_settings['subject'] ?? '' ) ) . '" />';
+    echo '<p class="description">' . esc_html__( 'Usa un mailto: o una URL, por ejemplo mailto:ensayos@tudominio.com.', 'wp-song-study-blocks' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Llave publica VAPID', 'wp-song-study-blocks' ) . '</th>';
+    echo '<td>';
+    echo '<textarea class="large-text code" rows="3" name="wpss_rehearsal_web_push_settings[public_key]">' . esc_textarea( (string) ( $web_push_settings['public_key'] ?? '' ) ) . '</textarea>';
+    echo '<p class="description">' . esc_html__( 'Esta llave viaja al navegador para crear la suscripción PushManager.', 'wp-song-study-blocks' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Llave privada VAPID', 'wp-song-study-blocks' ) . '</th>';
+    echo '<td>';
+    echo '<textarea class="large-text code" rows="3" name="wpss_rehearsal_web_push_settings[private_key]">' . esc_textarea( (string) ( $web_push_settings['private_key'] ?? '' ) ) . '</textarea>';
+    echo '<p class="description">' . esc_html__( 'Se usa en servidor para firmar los envíos. No la compartas fuera del administrador.', 'wp-song-study-blocks' ) . '</p>';
+    echo '</td>';
+    echo '</tr>';
+
+    echo '<tr>';
+    echo '<th scope="row">' . esc_html__( 'Estado actual', 'wp-song-study-blocks' ) . '</th>';
+    echo '<td>';
+    echo '<strong>' . esc_html( $web_push_ready ? __( 'Listo para enviar', 'wp-song-study-blocks' ) : __( 'Incompleto', 'wp-song-study-blocks' ) ) . '</strong>';
+    echo '<p class="description">' . esc_html__( 'Necesitas subject, llave pública y llave privada válidas para que el backend pueda hablar con los servicios Push de cada navegador.', 'wp-song-study-blocks' ) . '</p>';
+    echo '<p><a class="button button-secondary" href="' . esc_url(
+        wp_nonce_url(
+            admin_url( 'admin-post.php?action=wpssb_generate_rehearsal_web_push_keys' ),
+            'wpssb_generate_rehearsal_web_push_keys',
+            'wpssb_generate_rehearsal_web_push_keys_nonce'
+        )
+    ) . '">' . esc_html__( 'Generar / regenerar llaves VAPID', 'wp-song-study-blocks' ) . '</a></p>';
     echo '</td>';
     echo '</tr>';
     echo '</table>';
@@ -666,6 +752,8 @@ function wpss_get_admin_localized_data() {
             'profilePage'      => admin_url( 'profile.php' ),
         ],
         'adminPostUrl' => admin_url( 'admin-post.php' ),
+        'adminAjaxUrl' => admin_url( 'admin-ajax.php' ),
+        'browserNotificationsNonce' => wp_create_nonce( 'wpssb_rehearsal_browser_notifications' ),
         'songExportNonce' => wp_create_nonce( 'wpss_song_export' ),
         'midiRanges'   => wpss_get_midi_range_presets(),
         'midiRangeDefault' => wpss_get_midi_range_default(),

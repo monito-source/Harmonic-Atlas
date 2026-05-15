@@ -690,7 +690,6 @@
   width: 100%;
   min-width: 0;
   overflow-x: hidden;
-  overflow-x: clip;
   background:
     radial-gradient(circle at top right, rgba(254, 240, 138, 0.22), transparent 30%),
     linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
@@ -711,7 +710,6 @@
   width: 100%;
   min-width: 0;
   overflow-x: hidden;
-  overflow-x: clip;
 }
 
 .wpss-project-rehearsals :where(input, select, textarea) {
@@ -1233,18 +1231,15 @@
   }
 
   .wpss-project-rehearsals__sessions-list {
-    display: flex;
-    gap: 0.75rem;
+    display: grid;
+    gap: 0.7rem;
     max-height: none;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 0 0 0.45rem;
-    scroll-snap-type: x proximity;
+    overflow: visible;
+    padding: 0;
   }
 
   .wpss-project-rehearsals__session-card {
-    flex: 0 0 min(82vw, 21rem);
-    scroll-snap-align: start;
+    width: 100%;
   }
 
   .wpss-project-rehearsals__metrics {
@@ -1353,7 +1348,7 @@
   }
 
   .wpss-project-rehearsals__session-card {
-    flex-basis: min(88vw, 19rem);
+    min-width: 0;
   }
 
   .wpss-project-rehearsals__attendance {

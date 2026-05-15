@@ -240,8 +240,15 @@ export function createApi(wpData) {
     deleteGroup(id) {
       return request(`agrupacion-musical/${id}`, { method: 'DELETE' })
     },
-    getGoogleDriveStatus() {
-      return request('mi/google-drive')
+    getGoogleDriveStatus(options = {}) {
+      const params = new URLSearchParams()
+
+      if (options?.forceRefresh) {
+        params.set('refresh', '1')
+      }
+
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      return request(`mi/google-drive${suffix}`)
     },
     saveGoogleDriveSettings(payload) {
       return request('mi/google-drive', { method: 'POST', body: payload })

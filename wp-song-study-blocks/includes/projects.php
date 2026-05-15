@@ -164,7 +164,11 @@ function wpssb_render_rehearsal_collapsible_panel_open( $title, $eyebrow = '', $
         $output .= ' data-rehearsal-collapse-key="' . esc_attr( $collapse_key ) . '"';
     }
 
-    $output .= ' open>';
+    if ( 'mobile-open' === $mobile_default ) {
+        $output .= ' open';
+    }
+
+    $output .= '>';
     $output .= '<summary class="pd-rehearsal-collapsible__summary">';
     $output .= '<div class="pd-rehearsal-collapsible__copy">';
 
@@ -5886,28 +5890,24 @@ function wpssb_get_project_rehearsal_recommendations( $availability ) {
         }
     );
 
-    return array_slice(
-        array_map(
-            static function ( $item ) {
-                $start_hours   = floor( $item['start_minutes'] / 60 );
-                $start_minutes = $item['start_minutes'] % 60;
-                $end_hours     = floor( $item['end_minutes'] / 60 );
-                $end_minutes   = $item['end_minutes'] % 60;
+    return array_map(
+        static function ( $item ) {
+            $start_hours   = floor( $item['start_minutes'] / 60 );
+            $start_minutes = $item['start_minutes'] % 60;
+            $end_hours     = floor( $item['end_minutes'] / 60 );
+            $end_minutes   = $item['end_minutes'] % 60;
 
-                return [
-                    'day'              => $item['day'],
-                    'start'            => sprintf( '%02d:%02d', $start_hours, $start_minutes ),
-                    'end'              => sprintf( '%02d:%02d', $end_hours, $end_minutes ),
-                    'duration_minutes' => (int) $item['duration_minutes'],
-                    'member_count'     => (int) $item['member_count'],
-                    'member_ids'       => array_map( 'intval', $item['member_ids'] ),
-                    'member_names'     => array_values( $item['member_names'] ),
-                ];
-            },
-            $recommendations
-        ),
-        0,
-        8
+            return [
+                'day'              => $item['day'],
+                'start'            => sprintf( '%02d:%02d', $start_hours, $start_minutes ),
+                'end'              => sprintf( '%02d:%02d', $end_hours, $end_minutes ),
+                'duration_minutes' => (int) $item['duration_minutes'],
+                'member_count'     => (int) $item['member_count'],
+                'member_ids'       => array_map( 'intval', $item['member_ids'] ),
+                'member_names'     => array_values( $item['member_names'] ),
+            ];
+        },
+        $recommendations
     );
 }
 
@@ -6603,6 +6603,565 @@ function wpssb_get_project_rehearsal_notification_user_email( $user_id ) {
 }
 
 /**
+ * Devuelve una marca UTC con microsegundos para cursores de notificaciones.
+ *
+ * @return string
+ */
+function wpssb_get_project_rehearsal_browser_notification_now_gmt() {
+    try {
+        $now = new DateTimeImmutable( 'now', new DateTimeZone( 'UTC' ) );
+    } catch ( Exception $exception ) {
+        return gmdate( 'Y-m-d\TH:i:s.000000\Z' );
+    }
+
+    return $now->format( 'Y-m-d\TH:i:s.u\Z' );
+}
+
+/**
+ * Normaliza un cursor/timestamp ISO de notificaciones a UTC con microsegundos.
+ *
+ * @param string $value    Valor crudo.
+ * @param string $fallback Respaldo si no es parseable.
+ * @return string
+ */
+function wpssb_normalize_project_rehearsal_browser_notification_cursor( $value, $fallback = '' ) {
+    $value    = sanitize_text_field( (string) $value );
+    $fallback = sanitize_text_field( (string) $fallback );
+
+    if ( '' === $value ) {
+        return $fallback;
+    }
+
+    try {
+        $timestamp = new DateTimeImmutable( $value );
+    } catch ( Exception $exception ) {
+        return $fallback;
+    }
+
+    return $timestamp->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d\TH:i:s.u\Z' );
+}
+
+/**
+ * Sanitiza un evento de notificacion de navegador del planificador.
+ *
+ * @param mixed $event Evento crudo.
+ * @return array<string, mixed>
+ */
+function wpssb_sanitize_project_rehearsal_browser_notification_event( $event ) {
+    $event          = is_array( $event ) ? $event : [];
+    $created_at_gmt = wpssb_normalize_project_rehearsal_browser_notification_cursor(
+        $event['created_at_gmt'] ?? '',
+        wpssb_get_project_rehearsal_browser_notification_now_gmt()
+    );
+
+    $id = sanitize_key( (string) ( $event['id'] ?? '' ) );
+    if ( '' === $id ) {
+        $id = sanitize_key( wp_generate_uuid4() );
+    }
+
+    return [
+        'id'             => $id,
+        'type'           => sanitize_key( (string) ( $event['type'] ?? '' ) ),
+        'project_id'     => absint( $event['project_id'] ?? 0 ),
+        'session_id'     => sanitize_key( (string) ( $event['session_id'] ?? '' ) ),
+        'actor_id'       => absint( $event['actor_id'] ?? 0 ),
+        'actor_name'     => sanitize_text_field( (string) ( $event['actor_name'] ?? '' ) ),
+        'title'          => sanitize_text_field( (string) ( $event['title'] ?? '' ) ),
+        'body'           => sanitize_text_field( (string) ( $event['body'] ?? '' ) ),
+        'url'            => esc_url_raw( (string) ( $event['url'] ?? '' ) ),
+        'created_at_gmt' => $created_at_gmt,
+    ];
+}
+
+/**
+ * Sanitiza una lista de eventos de navegador del planificador.
+ *
+ * @param mixed $events Lista cruda.
+ * @return array<int, array<string, mixed>>
+ */
+function wpssb_sanitize_project_rehearsal_browser_notification_events( $events ) {
+    $events = is_array( $events ) ? $events : [];
+
+    return array_values(
+        array_filter(
+            array_map(
+                static function ( $event ) {
+                    $sanitized = wpssb_sanitize_project_rehearsal_browser_notification_event( $event );
+
+                    if ( '' === $sanitized['title'] || '' === $sanitized['body'] ) {
+                        return null;
+                    }
+
+                    return $sanitized;
+                },
+                $events
+            )
+        )
+    );
+}
+
+/**
+ * Devuelve el historial corto de notificaciones de navegador de un proyecto.
+ *
+ * @param int $post_id Proyecto actual.
+ * @return array<int, array<string, mixed>>
+ */
+function wpssb_get_project_rehearsal_browser_notification_log( $post_id ) {
+    $post_id = absint( $post_id );
+    if ( $post_id <= 0 ) {
+        return [];
+    }
+
+    $stored = get_post_meta( $post_id, 'pd_proyecto_ensayos_browser_notifications', true );
+    $events = wpssb_sanitize_project_rehearsal_browser_notification_events( $stored );
+
+    usort(
+        $events,
+        static function ( $left, $right ) {
+            return strcmp(
+                sanitize_text_field( (string) ( $left['created_at_gmt'] ?? '' ) ),
+                sanitize_text_field( (string) ( $right['created_at_gmt'] ?? '' ) )
+            );
+        }
+    );
+
+    return $events;
+}
+
+/**
+ * Guarda un evento nuevo dentro del historial corto de navegador.
+ *
+ * @param int                  $post_id Proyecto actual.
+ * @param array<string, mixed> $event   Evento saneable.
+ * @return void
+ */
+function wpssb_add_project_rehearsal_browser_notification( $post_id, $event ) {
+    $post_id = absint( $post_id );
+    if ( $post_id <= 0 ) {
+        return;
+    }
+
+    $sanitized = wpssb_sanitize_project_rehearsal_browser_notification_event( $event );
+    if ( '' === $sanitized['title'] || '' === $sanitized['body'] ) {
+        return;
+    }
+
+    $events = wpssb_get_project_rehearsal_browser_notification_log( $post_id );
+
+    if ( 'proposal_updated' === $sanitized['type'] && '' !== $sanitized['session_id'] ) {
+        $replacement_index = -1;
+        $replacement_age   = 121;
+
+        foreach ( $events as $index => $stored_event ) {
+            if ( ! is_array( $stored_event ) ) {
+                continue;
+            }
+
+            if ( 'proposal_updated' !== sanitize_key( (string) ( $stored_event['type'] ?? '' ) ) ) {
+                continue;
+            }
+
+            if ( $sanitized['session_id'] !== sanitize_key( (string) ( $stored_event['session_id'] ?? '' ) ) ) {
+                continue;
+            }
+
+            if ( $sanitized['actor_id'] !== absint( $stored_event['actor_id'] ?? 0 ) ) {
+                continue;
+            }
+
+            $stored_ts = strtotime( (string) ( $stored_event['created_at_gmt'] ?? '' ) );
+            $current_ts = strtotime( (string) $sanitized['created_at_gmt'] );
+
+            if ( false === $stored_ts || false === $current_ts ) {
+                continue;
+            }
+
+            $age = absint( $current_ts - $stored_ts );
+
+            if ( $age <= 120 && $age < $replacement_age ) {
+                $replacement_index = (int) $index;
+                $replacement_age   = $age;
+            }
+        }
+
+        if ( $replacement_index >= 0 ) {
+            $events[ $replacement_index ] = $sanitized;
+        } else {
+            $events[] = $sanitized;
+        }
+    } else {
+        $events[] = $sanitized;
+    }
+
+    usort(
+        $events,
+        static function ( $left, $right ) {
+            return strcmp(
+                sanitize_text_field( (string) ( $left['created_at_gmt'] ?? '' ) ),
+                sanitize_text_field( (string) ( $right['created_at_gmt'] ?? '' ) )
+            );
+        }
+    );
+
+    if ( count( $events ) > 40 ) {
+        $events = array_slice( $events, -40 );
+    }
+
+    update_post_meta( $post_id, 'pd_proyecto_ensayos_browser_notifications', array_values( $events ) );
+}
+
+/**
+ * Registra una notificacion de navegador ligada a un proyecto musical.
+ *
+ * @param int                  $post_id Proyecto actual.
+ * @param string               $type    Tipo tecnico del evento.
+ * @param string               $title   Titulo breve.
+ * @param string               $body    Cuerpo breve.
+ * @param array<string, mixed> $args    Datos extra.
+ * @return void
+ */
+function wpssb_record_project_rehearsal_browser_notification( $post_id, $type, $title, $body, $args = [] ) {
+    $post_id = absint( $post_id );
+    $type    = sanitize_key( (string) $type );
+    $title   = sanitize_text_field( (string) $title );
+    $body    = sanitize_text_field( (string) $body );
+    $args    = is_array( $args ) ? $args : [];
+
+    if ( $post_id <= 0 || '' === $type || '' === $title || '' === $body ) {
+        return;
+    }
+
+    $event = [
+        'type'           => $type,
+        'project_id'     => $post_id,
+        'session_id'     => sanitize_key( (string) ( $args['session_id'] ?? '' ) ),
+        'actor_id'       => absint( $args['actor_id'] ?? 0 ),
+        'actor_name'     => sanitize_text_field( (string) ( $args['actor_name'] ?? '' ) ),
+        'title'          => $title,
+        'body'           => $body,
+        'url'            => esc_url_raw( (string) ( $args['url'] ?? '' ) ),
+        'created_at_gmt' => wpssb_get_project_rehearsal_browser_notification_now_gmt(),
+    ];
+
+    wpssb_add_project_rehearsal_browser_notification( $post_id, $event );
+
+    if ( function_exists( 'wpssb_dispatch_project_rehearsal_web_push_notification' ) ) {
+        wpssb_dispatch_project_rehearsal_web_push_notification( $post_id, $event );
+    }
+}
+
+/**
+ * Devuelve eventos nuevos de notificacion para un integrante concreto.
+ *
+ * @param int    $post_id   Proyecto actual.
+ * @param string $after_gmt Cursor ISO previo.
+ * @param int    $viewer_id Integrante actual.
+ * @param int    $limit     Maximo de eventos.
+ * @return array<string, mixed>
+ */
+function wpssb_get_project_rehearsal_browser_notifications_since( $post_id, $after_gmt = '', $viewer_id = 0, $limit = 10 ) {
+    $events    = wpssb_get_project_rehearsal_browser_notification_log( $post_id );
+    $viewer_id = absint( $viewer_id );
+    $limit     = max( 1, absint( $limit ) );
+    $after_gmt = wpssb_normalize_project_rehearsal_browser_notification_cursor( $after_gmt, '' );
+    $visible   = [];
+    $latest    = '';
+
+    foreach ( $events as $event ) {
+        if ( ! is_array( $event ) ) {
+            continue;
+        }
+
+        $event_created_at = wpssb_normalize_project_rehearsal_browser_notification_cursor(
+            $event['created_at_gmt'] ?? '',
+            ''
+        );
+
+        if ( '' !== $event_created_at ) {
+            $latest = $event_created_at;
+        }
+
+        if ( '' !== $after_gmt && ( '' === $event_created_at || strcmp( $event_created_at, $after_gmt ) <= 0 ) ) {
+            continue;
+        }
+
+        if ( $viewer_id > 0 && $viewer_id === absint( $event['actor_id'] ?? 0 ) ) {
+            continue;
+        }
+
+        $visible[] = $event;
+    }
+
+    if ( count( $visible ) > $limit ) {
+        $visible = array_slice( $visible, -$limit );
+    }
+
+    return [
+        'events'              => array_values( $visible ),
+        'latest_cursor_gmt'   => $latest,
+        'total_events'        => count( $events ),
+        'visible_event_count' => count( $visible ),
+        'after_cursor_gmt'    => $after_gmt,
+    ];
+}
+
+/**
+ * Registra eventos de navegador a partir de un diff de sesiones.
+ *
+ * @param int                                        $post_id         Proyecto actual.
+ * @param array<int, array<string, mixed>>           $before_sessions  Sesiones previas saneadas.
+ * @param array<int, array<string, mixed>>           $after_sessions   Sesiones nuevas saneadas.
+ * @param int                                        $actor_id        Usuario actor.
+ * @return void
+ */
+function wpssb_record_project_rehearsal_browser_notifications_from_diff( $post_id, $before_sessions, $after_sessions, $actor_id = 0 ) {
+    $post_id         = absint( $post_id );
+    $actor_id        = absint( $actor_id );
+    $before_sessions = is_array( $before_sessions ) ? $before_sessions : [];
+    $after_sessions  = is_array( $after_sessions ) ? $after_sessions : [];
+
+    if ( $post_id <= 0 ) {
+        return;
+    }
+
+    $actor_name = wpssb_get_project_rehearsal_notification_actor_name( $actor_id );
+    $before_map = [];
+    $after_map  = [];
+
+    foreach ( $before_sessions as $session ) {
+        if ( ! is_array( $session ) ) {
+            continue;
+        }
+
+        $session_id = sanitize_key( (string) ( $session['id'] ?? '' ) );
+        if ( '' === $session_id ) {
+            continue;
+        }
+
+        $before_map[ $session_id ] = $session;
+    }
+
+    foreach ( $after_sessions as $session ) {
+        if ( ! is_array( $session ) ) {
+            continue;
+        }
+
+        $session_id = sanitize_key( (string) ( $session['id'] ?? '' ) );
+        if ( '' === $session_id ) {
+            continue;
+        }
+
+        $after_map[ $session_id ] = $session;
+    }
+
+    foreach ( $after_map as $session_id => $session ) {
+        if ( ! isset( $before_map[ $session_id ] ) ) {
+            $status   = sanitize_key( (string) ( $session['status'] ?? 'proposed' ) );
+            $focus    = wpssb_get_project_rehearsal_notification_focus( $session );
+            $schedule = wpssb_format_project_rehearsal_schedule( $session );
+            $context  = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
+            $actor_label = wpssb_get_project_rehearsal_notification_actor_label( $actor_name );
+            $type     = in_array( $status, [ 'confirmed', 'completed' ], true )
+                ? ( wpssb_project_rehearsal_is_forced_confirmed( $session ) ? 'force_confirmed' : 'confirmed' )
+                : 'proposal_created';
+            $title    = wpssb_get_project_rehearsal_notification_project_name( $post_id );
+            $body     = 'proposal_created' === $type
+                ? sprintf( __( '%1$s propuso %2$s.', 'wp-song-study-blocks' ), $actor_label, $context )
+                : sprintf( __( '%1$s dejó confirmado %2$s.', 'wp-song-study-blocks' ), $actor_label, $context );
+
+            wpssb_record_project_rehearsal_browser_notification(
+                $post_id,
+                $type,
+                $title,
+                $body,
+                [
+                    'session_id' => $session_id,
+                    'actor_id'   => $actor_id,
+                    'actor_name' => $actor_name,
+                    'url'        => wpssb_get_frontend_rehearsal_calendar_url(
+                        $post_id,
+                        in_array( $status, [ 'confirmed', 'completed', 'cancelled' ], true ) ? 'confirmed' : 'proposals'
+                    ),
+                ]
+            );
+
+            continue;
+        }
+
+        $before_session = $before_map[ $session_id ];
+        $before_status  = sanitize_key( (string) ( $before_session['status'] ?? 'proposed' ) );
+        $after_status   = sanitize_key( (string) ( $session['status'] ?? $before_status ) );
+        $focus          = wpssb_get_project_rehearsal_notification_focus( $session );
+        $schedule       = wpssb_format_project_rehearsal_schedule( $session );
+        $context        = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
+        $actor_label    = wpssb_get_project_rehearsal_notification_actor_label( $actor_name );
+        $significant    = false;
+
+        if ( 'cancelled' !== $before_status && 'cancelled' === $after_status ) {
+            wpssb_record_project_rehearsal_browser_notification(
+                $post_id,
+                'cancelled',
+                wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+                sprintf( __( '%1$s canceló %2$s.', 'wp-song-study-blocks' ), $actor_label, $context ),
+                [
+                    'session_id' => $session_id,
+                    'actor_id'   => $actor_id,
+                    'actor_name' => $actor_name,
+                    'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'confirmed' ),
+                ]
+            );
+            $significant = true;
+        } elseif ( ! in_array( $before_status, [ 'confirmed', 'completed' ], true ) && in_array( $after_status, [ 'confirmed', 'completed' ], true ) ) {
+            $type  = wpssb_project_rehearsal_is_forced_confirmed( $session ) ? 'force_confirmed' : 'confirmed';
+            $title = wpssb_get_project_rehearsal_notification_project_name( $post_id );
+            $body  = 'force_confirmed' === $type
+                ? sprintf( __( '%1$s confirmó por excepción %2$s.', 'wp-song-study-blocks' ), $actor_label, $context )
+                : sprintf( __( '%1$s dejó confirmado %2$s.', 'wp-song-study-blocks' ), $actor_label, $context );
+
+            wpssb_record_project_rehearsal_browser_notification(
+                $post_id,
+                $type,
+                $title,
+                $body,
+                [
+                    'session_id' => $session_id,
+                    'actor_id'   => $actor_id,
+                    'actor_name' => $actor_name,
+                    'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'confirmed' ),
+                ]
+            );
+            $significant = true;
+        }
+
+        if ( $significant ) {
+            continue;
+        }
+
+        $before_schedule_bits = [
+            'focus'         => sanitize_text_field( (string) ( $before_session['focus'] ?? '' ) ),
+            'scheduled_for' => sanitize_text_field( (string) ( $before_session['scheduled_for'] ?? '' ) ),
+            'start_time'    => sanitize_text_field( (string) ( $before_session['start_time'] ?? '' ) ),
+            'end_time'      => sanitize_text_field( (string) ( $before_session['end_time'] ?? '' ) ),
+            'location'      => sanitize_text_field( (string) ( $before_session['location'] ?? '' ) ),
+        ];
+        $after_schedule_bits = [
+            'focus'         => sanitize_text_field( (string) ( $session['focus'] ?? '' ) ),
+            'scheduled_for' => sanitize_text_field( (string) ( $session['scheduled_for'] ?? '' ) ),
+            'start_time'    => sanitize_text_field( (string) ( $session['start_time'] ?? '' ) ),
+            'end_time'      => sanitize_text_field( (string) ( $session['end_time'] ?? '' ) ),
+            'location'      => sanitize_text_field( (string) ( $session['location'] ?? '' ) ),
+        ];
+
+        if (
+            in_array( $before_status, [ 'proposed', 'voting' ], true )
+            && in_array( $after_status, [ 'proposed', 'voting' ], true )
+            && $before_schedule_bits !== $after_schedule_bits
+        ) {
+            wpssb_record_project_rehearsal_browser_notification(
+                $post_id,
+                'proposal_updated',
+                wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+                sprintf( __( '%1$s actualizó %2$s.', 'wp-song-study-blocks' ), $actor_label, $context ),
+                [
+                    'session_id' => $session_id,
+                    'actor_id'   => $actor_id,
+                    'actor_name' => $actor_name,
+                    'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'proposals' ),
+                ]
+            );
+
+            continue;
+        }
+
+        $before_votes = is_array( $before_session['votes'] ?? null ) ? $before_session['votes'] : [];
+        $after_votes  = is_array( $session['votes'] ?? null ) ? $session['votes'] : [];
+        $before_votes_map = [];
+        $after_votes_map  = [];
+
+        foreach ( $before_votes as $vote_entry ) {
+            if ( ! is_array( $vote_entry ) || empty( $vote_entry['user_id'] ) ) {
+                continue;
+            }
+
+            $before_votes_map[ absint( $vote_entry['user_id'] ) ] = $vote_entry;
+        }
+
+        foreach ( $after_votes as $vote_entry ) {
+            if ( ! is_array( $vote_entry ) || empty( $vote_entry['user_id'] ) ) {
+                continue;
+            }
+
+            $after_votes_map[ absint( $vote_entry['user_id'] ) ] = $vote_entry;
+        }
+
+        foreach ( $after_votes_map as $vote_user_id => $after_vote ) {
+            $before_vote         = isset( $before_votes_map[ $vote_user_id ] ) ? $before_votes_map[ $vote_user_id ] : [];
+            $before_vote_value   = sanitize_key( (string) ( $before_vote['vote'] ?? 'pending' ) );
+            $after_vote_value    = sanitize_key( (string) ( $after_vote['vote'] ?? 'pending' ) );
+            $before_vote_comment = sanitize_text_field( (string) ( $before_vote['comment'] ?? '' ) );
+            $after_vote_comment  = sanitize_text_field( (string) ( $after_vote['comment'] ?? '' ) );
+
+            if ( $before_vote_value === $after_vote_value && $before_vote_comment === $after_vote_comment ) {
+                continue;
+            }
+
+            $vote_actor_id   = absint( $after_vote['user_id'] ?? 0 );
+            $vote_actor_name = sanitize_text_field( (string) ( $after_vote['nombre'] ?? '' ) );
+
+            wpssb_record_project_rehearsal_browser_notification(
+                $post_id,
+                'vote_changed',
+                wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+                sprintf(
+                    __( '%1$s cambió su voto en %2$s: %3$s -> %4$s.', 'wp-song-study-blocks' ),
+                    '' !== $vote_actor_name ? $vote_actor_name : $actor_label,
+                    $context,
+                    wpssb_get_project_rehearsal_vote_label( $before_vote_value ),
+                    wpssb_get_project_rehearsal_vote_label( $after_vote_value )
+                ),
+                [
+                    'session_id' => $session_id,
+                    'actor_id'   => $vote_actor_id > 0 ? $vote_actor_id : $actor_id,
+                    'actor_name' => '' !== $vote_actor_name ? $vote_actor_name : $actor_name,
+                    'url'        => wpssb_get_frontend_rehearsal_calendar_url(
+                        $post_id,
+                        in_array( $after_status, [ 'confirmed', 'completed' ], true ) ? 'confirmed' : 'proposals'
+                    ),
+                ]
+            );
+
+            break;
+        }
+    }
+
+    foreach ( $before_map as $session_id => $session ) {
+        if ( isset( $after_map[ $session_id ] ) ) {
+            continue;
+        }
+
+        $focus    = wpssb_get_project_rehearsal_notification_focus( $session );
+        $schedule = wpssb_format_project_rehearsal_schedule( $session );
+
+        wpssb_record_project_rehearsal_browser_notification(
+            $post_id,
+            'proposal_deleted',
+            wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+            sprintf(
+                __( '%1$s eliminó %2$s.', 'wp-song-study-blocks' ),
+                wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+                wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule )
+            ),
+            [
+                'session_id' => $session_id,
+                'actor_id'   => $actor_id,
+                'actor_name' => $actor_name,
+                'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'proposals' ),
+            ]
+        );
+    }
+}
+
+/**
  * Devuelve el objetivo legible de una sesión para correos.
  *
  * @param array<string, mixed> $session Sesión actual.
@@ -6612,6 +7171,57 @@ function wpssb_get_project_rehearsal_notification_focus( $session ) {
     return ! empty( $session['focus'] )
         ? sanitize_text_field( (string) $session['focus'] )
         : __( 'Sesión general', 'wp-song-study-blocks' );
+}
+
+/**
+ * Devuelve el nombre legible del proyecto para avisos cortos.
+ *
+ * @param int $post_id Proyecto actual.
+ * @return string
+ */
+function wpssb_get_project_rehearsal_notification_project_name( $post_id ) {
+    $project_name = get_the_title( absint( $post_id ) );
+
+    return '' !== trim( (string) $project_name )
+        ? sanitize_text_field( (string) $project_name )
+        : __( 'Planificador de ensayos', 'wp-song-study-blocks' );
+}
+
+/**
+ * Devuelve el nombre legible del actor para avisos cortos.
+ *
+ * @param string $actor_name Nombre crudo o fallback.
+ * @return string
+ */
+function wpssb_get_project_rehearsal_notification_actor_label( $actor_name = '' ) {
+    $actor_name = sanitize_text_field( (string) $actor_name );
+
+    return '' !== $actor_name
+        ? $actor_name
+        : __( 'Un integrante', 'wp-song-study-blocks' );
+}
+
+/**
+ * Devuelve el contexto breve de una sesión para avisos cortos.
+ *
+ * @param string $focus    Objetivo/sesión.
+ * @param string $schedule Fecha y hora ya formateadas.
+ * @return string
+ */
+function wpssb_get_project_rehearsal_notification_short_context( $focus = '', $schedule = '' ) {
+    $focus    = sanitize_text_field( (string) $focus );
+    $schedule = sanitize_text_field( (string) $schedule );
+    $parts    = [];
+
+    if ( '' !== $focus ) {
+        $parts[] = '"' . $focus . '"';
+    }
+
+    if ( '' !== $schedule ) {
+        $parts[] = $schedule;
+    }
+
+    return implode( ' · ', $parts );
 }
 
 /**
@@ -6658,6 +7268,7 @@ function wpssb_notify_project_rehearsal_proposal_created( $post_id, $session, $a
     $project_name = get_the_title( $post_id );
     $focus        = wpssb_get_project_rehearsal_notification_focus( $session );
     $schedule     = wpssb_format_project_rehearsal_schedule( $session );
+    $context      = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
     $location     = sanitize_text_field( (string) ( $session['location'] ?? '' ) );
     $notes        = sanitize_textarea_field( (string) ( $session['notes'] ?? '' ) );
 
@@ -6696,6 +7307,23 @@ function wpssb_notify_project_rehearsal_proposal_created( $post_id, $session, $a
         $message_lines,
         [
             'exclude_user_ids' => [ $actor_id ],
+        ]
+    );
+
+    wpssb_record_project_rehearsal_browser_notification(
+        $post_id,
+        'proposal_created',
+        wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+        sprintf(
+            __( '%1$s propuso %2$s.', 'wp-song-study-blocks' ),
+            wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+            $context
+        ),
+        [
+            'session_id' => sanitize_key( (string) ( $session['id'] ?? '' ) ),
+            'actor_id'   => $actor_id,
+            'actor_name' => $actor_name,
+            'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'proposals' ),
         ]
     );
 
@@ -6759,6 +7387,7 @@ function wpssb_notify_project_rehearsal_proposal_deleted( $post_id, $session, $a
     $project_name = get_the_title( $post_id );
     $focus        = wpssb_get_project_rehearsal_notification_focus( $session );
     $schedule     = wpssb_format_project_rehearsal_schedule( $session );
+    $context      = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
 
     $message_lines = [
         sprintf(
@@ -6787,6 +7416,23 @@ function wpssb_notify_project_rehearsal_proposal_deleted( $post_id, $session, $a
         $message_lines,
         [
             'exclude_user_ids' => [ $actor_id ],
+        ]
+    );
+
+    wpssb_record_project_rehearsal_browser_notification(
+        $post_id,
+        'proposal_deleted',
+        wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+        sprintf(
+            __( '%1$s eliminó %2$s.', 'wp-song-study-blocks' ),
+            wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+            $context
+        ),
+        [
+            'session_id' => sanitize_key( (string) ( $session['id'] ?? '' ) ),
+            'actor_id'   => $actor_id,
+            'actor_name' => $actor_name,
+            'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'proposals' ),
         ]
     );
 }
@@ -6836,6 +7482,7 @@ function wpssb_notify_project_rehearsal_vote_change( $post_id, $before_session, 
 
     $focus        = wpssb_get_project_rehearsal_notification_focus( $latest_session );
     $schedule     = wpssb_format_project_rehearsal_schedule( $latest_session );
+    $context      = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
     $comment      = sanitize_text_field( (string) ( $after_vote['comment'] ?? '' ) );
     $just_confirmed = ! in_array( $before_status, [ 'confirmed', 'completed' ], true ) && in_array( $after_status, [ 'confirmed', 'completed' ], true );
 
@@ -6883,6 +7530,23 @@ function wpssb_notify_project_rehearsal_vote_change( $post_id, $before_session, 
                 $focus
             ),
             $message_lines
+        );
+
+        wpssb_record_project_rehearsal_browser_notification(
+            $post_id,
+            'confirmed',
+            wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+            sprintf(
+                __( '%1$s dejó confirmado %2$s.', 'wp-song-study-blocks' ),
+                wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+                $context
+            ),
+            [
+                'session_id' => $session_id,
+                'actor_id'   => $actor_id,
+                'actor_name' => $actor_name,
+                'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'confirmed' ),
+            ]
         );
 
         return;
@@ -6949,6 +7613,28 @@ function wpssb_notify_project_rehearsal_vote_change( $post_id, $before_session, 
         $message_lines,
         [
             'exclude_user_ids' => [ $actor_id ],
+        ]
+    );
+
+    wpssb_record_project_rehearsal_browser_notification(
+        $post_id,
+        'vote_changed',
+        wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+        sprintf(
+            __( '%1$s cambió su voto en %2$s: %3$s -> %4$s.', 'wp-song-study-blocks' ),
+            wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+            $context,
+            wpssb_get_project_rehearsal_vote_label( $before_vote_value ),
+            wpssb_get_project_rehearsal_vote_label( $after_vote_value )
+        ),
+        [
+            'session_id' => $session_id,
+            'actor_id'   => $actor_id,
+            'actor_name' => $actor_name,
+            'url'        => wpssb_get_frontend_rehearsal_calendar_url(
+                $post_id,
+                in_array( $after_status, [ 'confirmed', 'completed' ], true ) ? 'confirmed' : 'proposals'
+            ),
         ]
     );
 
@@ -7019,6 +7705,7 @@ function wpssb_notify_project_rehearsal_force_confirmed( $post_id, $before_sessi
     $project_name = get_the_title( $post_id );
     $focus        = wpssb_get_project_rehearsal_notification_focus( $after_session );
     $schedule     = wpssb_format_project_rehearsal_schedule( $after_session );
+    $context      = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
     $location     = sanitize_text_field( (string) ( $after_session['location'] ?? '' ) );
     $was_confirmed = is_array( $before_session ) && in_array( sanitize_key( (string) ( $before_session['status'] ?? '' ) ), [ 'confirmed', 'completed' ], true );
 
@@ -7057,6 +7744,23 @@ function wpssb_notify_project_rehearsal_force_confirmed( $post_id, $before_sessi
             'exclude_user_ids' => [ $actor_id ],
         ]
     );
+
+    wpssb_record_project_rehearsal_browser_notification(
+        $post_id,
+        'force_confirmed',
+        wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+        sprintf(
+            __( '%1$s confirmó por excepción %2$s.', 'wp-song-study-blocks' ),
+            wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+            $context
+        ),
+        [
+            'session_id' => sanitize_key( (string) ( $after_session['id'] ?? '' ) ),
+            'actor_id'   => $actor_id,
+            'actor_name' => $actor_name,
+            'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'confirmed' ),
+        ]
+    );
 }
 
 /**
@@ -7077,6 +7781,7 @@ function wpssb_notify_project_rehearsal_cancelled( $post_id, $before_session, $a
     $project_name = get_the_title( $post_id );
     $focus        = wpssb_get_project_rehearsal_notification_focus( $after_session );
     $schedule     = wpssb_format_project_rehearsal_schedule( $before_session );
+    $context      = wpssb_get_project_rehearsal_notification_short_context( $focus, $schedule );
     $reason       = sanitize_textarea_field( (string) ( $after_session['cancellation_reason'] ?? '' ) );
 
     $message_lines = [
@@ -7111,6 +7816,23 @@ function wpssb_notify_project_rehearsal_cancelled( $post_id, $before_session, $a
         $message_lines,
         [
             'exclude_user_ids' => [ $actor_id ],
+        ]
+    );
+
+    wpssb_record_project_rehearsal_browser_notification(
+        $post_id,
+        'cancelled',
+        wpssb_get_project_rehearsal_notification_project_name( $post_id ),
+        sprintf(
+            __( '%1$s canceló %2$s.', 'wp-song-study-blocks' ),
+            wpssb_get_project_rehearsal_notification_actor_label( $actor_name ),
+            $context
+        ),
+        [
+            'session_id' => sanitize_key( (string) ( $after_session['id'] ?? '' ) ),
+            'actor_id'   => $actor_id,
+            'actor_name' => $actor_name,
+            'url'        => wpssb_get_frontend_rehearsal_calendar_url( $post_id, 'confirmed' ),
         ]
     );
 }
@@ -9673,6 +10395,112 @@ function wpssb_get_frontend_rehearsal_feedback() {
 }
 
 /**
+ * Construye el payload del manifest web app para el planificador de ensayos.
+ *
+ * @return array<string, mixed>
+ */
+function wpssb_get_frontend_rehearsal_web_app_manifest() {
+    $title       = wp_get_document_title();
+    $title       = is_string( $title ) && '' !== trim( $title ) ? trim( $title ) : __( 'Planificador de ensayos', 'wp-song-study-blocks' );
+    $start_url   = wpssb_get_frontend_rehearsal_url( 0, 'calendar' );
+    $scope       = trailingslashit( strtok( $start_url, '?' ) ?: $start_url );
+    $site_icon_192 = get_site_icon_url( 192 );
+    $site_icon_512 = get_site_icon_url( 512 );
+    $icons       = [];
+
+    if ( $site_icon_192 ) {
+        $icons[] = [
+            'src'   => esc_url_raw( $site_icon_192 ),
+            'sizes' => '192x192',
+            'type'  => 'image/png',
+        ];
+    }
+
+    if ( $site_icon_512 ) {
+        $icons[] = [
+            'src'   => esc_url_raw( $site_icon_512 ),
+            'sizes' => '512x512',
+            'type'  => 'image/png',
+        ];
+    }
+
+    return [
+        'id'               => esc_url_raw( $start_url ),
+        'name'             => $title,
+        'short_name'       => __( 'Ensayos', 'wp-song-study-blocks' ),
+        'description'      => __( 'Planificador de ensayos del proyecto musical.', 'wp-song-study-blocks' ),
+        'start_url'        => esc_url_raw( $start_url ),
+        'scope'            => esc_url_raw( $scope ),
+        'display'          => 'standalone',
+        'orientation'      => 'portrait',
+        'background_color' => '#0f172a',
+        'theme_color'      => '#0f172a',
+        'lang'             => determine_locale(),
+        'icons'            => $icons,
+    ];
+}
+
+/**
+ * Expone el manifest JSON del planificador de ensayos.
+ *
+ * @return void
+ */
+function wpssb_render_frontend_rehearsal_web_app_manifest() {
+    nocache_headers();
+    header( 'Content-Type: application/manifest+json; charset=UTF-8' );
+    echo wp_json_encode(
+        wpssb_get_frontend_rehearsal_web_app_manifest(),
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+    exit;
+}
+add_action(
+    'wp_ajax_wpssb_rehearsal_web_app_manifest',
+    'wpssb_render_frontend_rehearsal_web_app_manifest'
+);
+add_action(
+    'wp_ajax_nopriv_wpssb_rehearsal_web_app_manifest',
+    'wpssb_render_frontend_rehearsal_web_app_manifest'
+);
+
+/**
+ * Devuelve la URL pública del manifest del planificador de ensayos.
+ *
+ * @return string
+ */
+function wpssb_get_frontend_rehearsal_web_app_manifest_url() {
+    return add_query_arg( 'action', 'wpssb_rehearsal_web_app_manifest', admin_url( 'admin-ajax.php' ) );
+}
+
+/**
+ * Inyecta metas y manifest PWA para mejorar el soporte en iPhone/iPad.
+ *
+ * @return void
+ */
+function wpssb_output_frontend_rehearsal_web_app_meta() {
+    if ( ! wpssb_is_frontend_rehearsals_page_request() ) {
+        return;
+    }
+
+    $manifest_url = wpssb_get_frontend_rehearsal_web_app_manifest_url();
+    $app_title    = __( 'Planificador de ensayos', 'wp-song-study-blocks' );
+    $theme_color  = '#0f172a';
+    $site_icon_180 = get_site_icon_url( 180 );
+
+    echo '<link rel="manifest" href="' . esc_url( $manifest_url ) . '">' . "\n";
+    echo '<meta name="theme-color" content="' . esc_attr( $theme_color ) . '">' . "\n";
+    echo '<meta name="mobile-web-app-capable" content="yes">' . "\n";
+    echo '<meta name="apple-mobile-web-app-capable" content="yes">' . "\n";
+    echo '<meta name="apple-mobile-web-app-status-bar-style" content="default">' . "\n";
+    echo '<meta name="apple-mobile-web-app-title" content="' . esc_attr( $app_title ) . '">' . "\n";
+
+    if ( $site_icon_180 ) {
+        echo '<link rel="apple-touch-icon" href="' . esc_url( $site_icon_180 ) . '">' . "\n";
+    }
+}
+add_action( 'wp_head', 'wpssb_output_frontend_rehearsal_web_app_meta', 1 );
+
+/**
  * Encola assets del frontend de ensayos.
  *
  * @return void
@@ -9680,6 +10508,12 @@ function wpssb_get_frontend_rehearsal_feedback() {
 function wpssb_enqueue_frontend_rehearsal_assets() {
     $script_path = WPSSB_PATH . 'assets/project-frontend/rehearsal-tabs.js';
     $debug_enabled = wpssb_rehearsal_debug_enabled();
+    $web_push_settings = function_exists( 'wpssb_get_rehearsal_web_push_settings' )
+        ? wpssb_get_rehearsal_web_push_settings()
+        : [];
+    $web_push_enabled = function_exists( 'wpssb_rehearsal_web_push_is_configured' )
+        ? wpssb_rehearsal_web_push_is_configured( $web_push_settings )
+        : false;
 
     if ( file_exists( $script_path ) ) {
         wp_enqueue_script(
@@ -9698,6 +10532,7 @@ function wpssb_enqueue_frontend_rehearsal_assets() {
                 'autosaveNonce'    => wp_create_nonce( 'wpssb_autosave_rehearsal_proposal' ),
                 'availabilityAutosaveNonce' => wp_create_nonce( 'wpssb_autosave_rehearsal_availability' ),
                 'logbookAutosaveNonce' => wp_create_nonce( 'wpssb_autosave_rehearsal_logbook' ),
+                'browserNotificationsNonce' => wp_create_nonce( 'wpssb_rehearsal_browser_notifications' ),
                 'autosaveMessages' => [
                     'saving'  => __( 'Guardando cambios...', 'wp-song-study-blocks' ),
                     'saved'   => __( 'Cambios guardados.', 'wp-song-study-blocks' ),
@@ -9728,6 +10563,50 @@ function wpssb_enqueue_frontend_rehearsal_assets() {
                     'invalidSubmit'  => __( 'Corrige los horarios marcados antes de guardar tu disponibilidad.', 'wp-song-study-blocks' ),
                     'invalidDisabled'=> __( 'El botón se habilitará cuando todos los horarios queden completos y coherentes.', 'wp-song-study-blocks' ),
                 ],
+                'browserNotifications' => [
+                    'pollIntervalMs' => 5000,
+                    'messages'       => [
+                        'prompt'      => __( 'Activa las notificaciones del navegador para enterarte de nuevas propuestas, confirmaciones, cancelaciones y cambios de voto mientras esta pagina siga abierta.', 'wp-song-study-blocks' ),
+                        'enabled'     => __( 'Notificaciones activadas para este proyecto en este navegador. Recibiras avisos mientras esta pagina permanezca abierta.', 'wp-song-study-blocks' ),
+                        'disabled'    => __( 'Las notificaciones de este proyecto quedaron desactivadas en este navegador. Puedes volver a activarlas cuando quieras.', 'wp-song-study-blocks' ),
+                        'denied'      => __( 'El navegador bloqueo este permiso. Si cambias de idea, habilitalo desde la configuracion del sitio y vuelve a activar esta opcion.', 'wp-song-study-blocks' ),
+                        'unsupported' => __( 'Este navegador no ofrece la API de notificaciones necesaria para este planificador.', 'wp-song-study-blocks' ),
+                        'iosHomeScreenOnly' => __( 'En iPhone o iPad, las notificaciones push de este planificador solo funcionan si agregas este sitio a la pantalla de inicio y lo abres como app web.', 'wp-song-study-blocks' ),
+                        'secureContextRequired' => __( 'Este navegador necesita HTTPS para service worker, push y notificaciones del planificador.', 'wp-song-study-blocks' ),
+                        'embeddedBrowserUnsupported' => __( 'Este contexto movil parece un navegador embebido. Abre el enlace directamente en Safari o Chrome para activar notificaciones.', 'wp-song-study-blocks' ),
+                        'error'       => __( 'No fue posible revisar las notificaciones nuevas del proyecto.', 'wp-song-study-blocks' ),
+                        'testSent'    => __( 'Prueba local enviada al navegador.', 'wp-song-study-blocks' ),
+                        'checkIdle'   => __( 'Aun no se ha hecho una revision manual en esta pagina.', 'wp-song-study-blocks' ),
+                        'checkEmpty'  => __( 'Revision manual completada: no hay cambios nuevos pendientes.', 'wp-song-study-blocks' ),
+                        'checkOne'    => __( 'Revision manual completada: se detecto 1 cambio nuevo.', 'wp-song-study-blocks' ),
+                        'checkMany'   => __( 'Revision manual completada: se detectaron %d cambios nuevos.', 'wp-song-study-blocks' ),
+                        'checkError'  => __( 'La revision manual fallo. Revisa la consola del navegador si vuelve a ocurrir.', 'wp-song-study-blocks' ),
+                        'checkDebug'  => __( 'Backend: total=%1$d, visibles=%2$d, cursor=%3$s, ultimo=%4$s.', 'wp-song-study-blocks' ),
+                    ],
+                    'test'           => [
+                        'title' => __( 'Notificaciones activadas', 'wp-song-study-blocks' ),
+                        'body'  => __( 'Te avisaremos aqui cuando el grupo mueva propuestas o ensayos de este proyecto.', 'wp-song-study-blocks' ),
+                    ],
+                ],
+                'webPush' => [
+                    'enabled'            => $web_push_enabled,
+                    'publicKey'          => $web_push_enabled ? sanitize_text_field( (string) ( $web_push_settings['public_key'] ?? '' ) ) : '',
+                    'serviceWorkerUrl'   => $web_push_enabled && function_exists( 'wpssb_get_rehearsal_push_service_worker_url' )
+                        ? esc_url_raw( wpssb_get_rehearsal_push_service_worker_url() )
+                        : '',
+                    'subscriptionNonce'  => wp_create_nonce( 'wpssb_rehearsal_push_subscription' ),
+                    'unsubscribeNonce'   => wp_create_nonce( 'wpssb_rehearsal_push_unsubscribe' ),
+                    'messages'           => [
+                        'prompt'        => __( 'Activa las notificaciones push para recibir avisos aunque cierres esta pagina.', 'wp-song-study-blocks' ),
+                        'enabled'       => __( 'Push activado para este proyecto en este navegador. Recibiras avisos incluso con la pagina cerrada.', 'wp-song-study-blocks' ),
+                        'unsupported'   => __( 'Este navegador no soporta Web Push completo en segundo plano para este sitio.', 'wp-song-study-blocks' ),
+                        'iosHomeScreenOnly' => __( 'En iPhone o iPad, Web Push solo funciona desde la app web agregada a pantalla de inicio.', 'wp-song-study-blocks' ),
+                        'secureContextRequired' => __( 'Web Push necesita HTTPS para funcionar en este navegador.', 'wp-song-study-blocks' ),
+                        'embeddedBrowserUnsupported' => __( 'Este navegador embebido no expone Web Push completo. Abre el planificador en Safari o Chrome.', 'wp-song-study-blocks' ),
+                        'saveError'     => __( 'No se pudo registrar la suscripcion push del navegador.', 'wp-song-study-blocks' ),
+                        'removeError'   => __( 'No se pudo desactivar la suscripcion push para este proyecto.', 'wp-song-study-blocks' ),
+                    ],
+                ],
                 'debug' => [
                     'enabled'   => $debug_enabled,
                     'requestId' => wpssb_rehearsal_debug_request_id(),
@@ -9737,6 +10616,47 @@ function wpssb_enqueue_frontend_rehearsal_assets() {
         );
     }
 }
+
+/**
+ * Devuelve eventos nuevos para notificaciones de navegador del frontend.
+ *
+ * @return void
+ */
+function wpssb_handle_frontend_rehearsal_browser_notifications() {
+    if ( ! is_user_logged_in() ) {
+        wp_send_json_error( [ 'message' => __( 'Necesitas iniciar sesion para recibir notificaciones de este proyecto.', 'wp-song-study-blocks' ) ], 401 );
+    }
+
+    check_ajax_referer( 'wpssb_rehearsal_browser_notifications', 'nonce' );
+
+    $project_id = isset( $_POST['project_id'] ) ? absint( wp_unslash( $_POST['project_id'] ) ) : 0;
+    $after_gmt  = isset( $_POST['after'] ) ? sanitize_text_field( wp_unslash( $_POST['after'] ) ) : '';
+    $prime      = ! empty( $_POST['prime'] );
+    $viewer_id  = get_current_user_id();
+
+    if ( $project_id <= 0 || ! wpssb_user_can_access_project_rehearsals( $project_id, $viewer_id ) ) {
+        wp_send_json_error( [ 'message' => __( 'No tienes permiso para revisar las notificaciones de este proyecto.', 'wp-song-study-blocks' ) ], 403 );
+    }
+
+    $result = wpssb_get_project_rehearsal_browser_notifications_since( $project_id, $prime ? '' : $after_gmt, $viewer_id, 12 );
+
+    wp_send_json_success(
+        [
+            'events'              => $prime ? [] : array_values( $result['events'] ?? [] ),
+            'latest_cursor_gmt'   => sanitize_text_field( (string) ( $result['latest_cursor_gmt'] ?? '' ) ),
+            'total_events'        => absint( $result['total_events'] ?? 0 ),
+            'visible_event_count' => absint( $result['visible_event_count'] ?? 0 ),
+            'after_cursor_gmt'    => sanitize_text_field( (string) ( $result['after_cursor_gmt'] ?? '' ) ),
+        ]
+    );
+}
+add_action( 'wp_ajax_wpssb_get_rehearsal_browser_notifications', 'wpssb_handle_frontend_rehearsal_browser_notifications' );
+add_action(
+    'wp_ajax_nopriv_wpssb_get_rehearsal_browser_notifications',
+    static function () {
+        wp_send_json_error( [ 'message' => __( 'Necesitas iniciar sesion para recibir notificaciones de este proyecto.', 'wp-song-study-blocks' ) ], 401 );
+    }
+);
 
 /**
  * Devuelve los proyectos disponibles para el frontend de ensayos.
@@ -11002,8 +11922,9 @@ function wpssb_handle_frontend_rehearsal_proposal_update() {
         wpssb_redirect_frontend_rehearsal( 'invalid_session', $project_id, 'calendar' );
     }
 
-    $meta     = wpssb_get_project_rehearsal_meta( $project_id );
-    $sessions = wpssb_sanitize_project_rehearsal_sessions( $meta['sessions'] ?? [], $project_id );
+    $meta              = wpssb_get_project_rehearsal_meta( $project_id );
+    $sessions          = wpssb_sanitize_project_rehearsal_sessions( $meta['sessions'] ?? [], $project_id );
+    $previous_sessions = $sessions;
     $updated  = false;
     $synced_session_id = '';
 
@@ -11044,6 +11965,10 @@ function wpssb_handle_frontend_rehearsal_proposal_update() {
             'sessions'     => $sessions,
         ]
     );
+
+    if ( function_exists( 'wpssb_record_project_rehearsal_browser_notifications_from_diff' ) ) {
+        wpssb_record_project_rehearsal_browser_notifications_from_diff( $project_id, $previous_sessions, $sessions, $user_id );
+    }
 
     if (
         '' !== $synced_session_id
@@ -11314,8 +12239,9 @@ function wpssb_handle_frontend_rehearsal_proposal_autosave() {
         wp_send_json_error( [ 'message' => __( 'Completa una fecha y un rango horario válidos.', 'wp-song-study-blocks' ) ], 422 );
     }
 
-    $meta     = wpssb_get_project_rehearsal_meta( $project_id );
-    $sessions = wpssb_sanitize_project_rehearsal_sessions( $meta['sessions'] ?? [], $project_id );
+    $meta              = wpssb_get_project_rehearsal_meta( $project_id );
+    $sessions          = wpssb_sanitize_project_rehearsal_sessions( $meta['sessions'] ?? [], $project_id );
+    $previous_sessions = $sessions;
     $updated  = false;
     $synced_session_id = '';
 
@@ -11352,6 +12278,10 @@ function wpssb_handle_frontend_rehearsal_proposal_autosave() {
             'sessions'     => $sessions,
         ]
     );
+
+    if ( function_exists( 'wpssb_record_project_rehearsal_browser_notifications_from_diff' ) ) {
+        wpssb_record_project_rehearsal_browser_notifications_from_diff( $project_id, $previous_sessions, $sessions, $user_id );
+    }
 
     if (
         '' !== $synced_session_id
@@ -12457,7 +13387,7 @@ function wpssb_render_frontend_rehearsal_integrated_calendar( $sessions, $now_ti
         }
     );
 
-    $output  = '<div class="pd-rehearsal-integrated-calendar">';
+    $output  = '<div class="pd-rehearsal-integrated-calendar" data-rehearsal-integrated-calendar>';
     $output .= '<div class="pd-rehearsal-session-group__header">';
     $output .= '<h3>' . esc_html__( 'Calendario integral', 'wp-song-study-blocks' ) . '</h3>';
     $output .= '<p>' . esc_html__( 'Una sola vista para ubicar propuestas, ensayos confirmados y sesiones que ya viven en la bitácora.', 'wp-song-study-blocks' ) . '</p>';
@@ -12501,6 +13431,8 @@ function wpssb_render_frontend_rehearsal_integrated_calendar( $sessions, $now_ti
         __( 'Dom', 'wp-song-study-blocks' ),
     ];
 
+    $calendar_months = [];
+
     foreach ( $events_by_month as $month_key => $month_events ) {
         try {
             $month_start = new DateTimeImmutable( $month_key . '-01 00:00:00', wp_timezone() );
@@ -12508,6 +13440,66 @@ function wpssb_render_frontend_rehearsal_integrated_calendar( $sessions, $now_ti
             continue;
         }
 
+        $calendar_months[ $month_key ] = [
+            'start'  => $month_start,
+            'events' => $month_events,
+            'label'  => wp_date( 'F Y', $month_start->getTimestamp() ),
+        ];
+    }
+
+    if ( empty( $calendar_months ) ) {
+        $output .= '<p>' . esc_html__( 'Todavía no hay meses válidos para mostrar en el calendario integral.', 'wp-song-study-blocks' ) . '</p>';
+        $output .= '</div>';
+
+        return $output;
+    }
+
+    $active_month_key = '';
+    $month_keys       = array_keys( $calendar_months );
+    $current_month_key = wp_date( 'Y-m', $now_timestamp );
+
+    if ( isset( $calendar_months[ $current_month_key ] ) ) {
+        $active_month_key = $current_month_key;
+    } else {
+        try {
+            $current_month_start = new DateTimeImmutable( $current_month_key . '-01 00:00:00', wp_timezone() );
+        } catch ( Exception $exception ) {
+            $current_month_start = null;
+        }
+
+        if ( $current_month_start instanceof DateTimeImmutable ) {
+            foreach ( $calendar_months as $month_key => $month_data ) {
+                $month_start = $month_data['start'] ?? null;
+                if ( $month_start instanceof DateTimeImmutable && $month_start->getTimestamp() >= $current_month_start->getTimestamp() ) {
+                    $active_month_key = (string) $month_key;
+                    break;
+                }
+            }
+        }
+    }
+
+    if ( '' === $active_month_key ) {
+        $active_month_key = (string) end( $month_keys );
+    }
+
+    if ( count( $calendar_months ) > 1 ) {
+        $output .= '<div class="pd-rehearsal-calendar-month-switcher" data-rehearsal-calendar-month-switcher data-rehearsal-calendar-initial-month="' . esc_attr( $active_month_key ) . '">';
+        $output .= '<button type="button" class="pd-rehearsal-calendar-month-switcher__button" data-rehearsal-calendar-month-prev aria-label="' . esc_attr__( 'Ver mes anterior', 'wp-song-study-blocks' ) . '"><span aria-hidden="true">&#x2039;</span></button>';
+        $output .= '<label class="pd-rehearsal-calendar-month-switcher__select"><span>' . esc_html__( 'Mes', 'wp-song-study-blocks' ) . '</span><select data-rehearsal-calendar-month-select>';
+
+        foreach ( $calendar_months as $month_key => $month_data ) {
+            $output .= '<option value="' . esc_attr( (string) $month_key ) . '" ' . selected( $active_month_key, (string) $month_key, false ) . '>' . esc_html( (string) ( $month_data['label'] ?? $month_key ) ) . '</option>';
+        }
+
+        $output .= '</select></label>';
+        $output .= '<button type="button" class="pd-rehearsal-calendar-month-switcher__button" data-rehearsal-calendar-month-next aria-label="' . esc_attr__( 'Ver mes siguiente', 'wp-song-study-blocks' ) . '"><span aria-hidden="true">&#x203A;</span></button>';
+        $output .= '<span class="pd-rehearsal-calendar-month-switcher__status" data-rehearsal-calendar-month-status aria-live="polite"></span>';
+        $output .= '</div>';
+    }
+
+    foreach ( $calendar_months as $month_key => $month_data ) {
+        $month_start  = $month_data['start'];
+        $month_events = is_array( $month_data['events'] ?? null ) ? $month_data['events'] : [];
         $days_in_month = (int) $month_start->format( 't' );
         $first_weekday = (int) $month_start->format( 'N' );
         $events_by_day = [];
@@ -12525,8 +13517,8 @@ function wpssb_render_frontend_rehearsal_integrated_calendar( $sessions, $now_ti
             $events_by_day[ $day ][] = $event;
         }
 
-        $output .= '<section class="pd-rehearsal-calendar-month">';
-        $output .= '<h4>' . esc_html( wp_date( 'F Y', $month_start->getTimestamp() ) ) . '</h4>';
+        $output .= '<section class="pd-rehearsal-calendar-month" data-rehearsal-calendar-month="' . esc_attr( (string) $month_key ) . '"' . ( $active_month_key === (string) $month_key ? '' : ' hidden' ) . '>';
+        $output .= '<h4>' . esc_html( (string) ( $month_data['label'] ?? wp_date( 'F Y', $month_start->getTimestamp() ) ) ) . '</h4>';
         $output .= '<div class="pd-rehearsal-calendar-month__weekdays" aria-hidden="true">';
         foreach ( $weekday_labels as $weekday_label ) {
             $output .= '<span>' . esc_html( $weekday_label ) . '</span>';
@@ -12827,6 +13819,22 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
     $output .= '</div>';
     $output .= '</header>';
 
+    $output .= '<section class="pd-rehearsal-panel" data-rehearsal-browser-notifications hidden>';
+    $output .= '<div>';
+    $output .= '<p class="pd-membership-shell__eyebrow">' . esc_html__( 'Notificaciones', 'wp-song-study-blocks' ) . '</p>';
+    $output .= '<h2>' . esc_html__( 'Notificaciones del navegador', 'wp-song-study-blocks' ) . '</h2>';
+    $output .= '<p class="pd-rehearsal-panel__meta" data-rehearsal-browser-notification-message>' . esc_html__( 'Activa este permiso para enterarte de cambios del grupo sin depender solo del correo.', 'wp-song-study-blocks' ) . '</p>';
+    $output .= '<p class="pd-rehearsal-panel__meta" data-rehearsal-browser-notification-status hidden></p>';
+    $output .= '</div>';
+    $output .= '<div class="pd-membership-shell__actions">';
+    $output .= '<button type="button" class="wp-block-button__link wp-element-button" data-rehearsal-browser-enable>' . esc_html__( 'Activar notificaciones', 'wp-song-study-blocks' ) . '</button>';
+    $output .= '<button type="button" class="wp-block-button__link wp-element-button is-style-outline" data-rehearsal-browser-dismiss>' . esc_html__( 'No por ahora', 'wp-song-study-blocks' ) . '</button>';
+    $output .= '<button type="button" class="wp-block-button__link wp-element-button is-style-outline" data-rehearsal-browser-test hidden>' . esc_html__( 'Probar navegador', 'wp-song-study-blocks' ) . '</button>';
+    $output .= '<button type="button" class="wp-block-button__link wp-element-button is-style-outline" data-rehearsal-browser-check hidden>' . esc_html__( 'Revisar ahora', 'wp-song-study-blocks' ) . '</button>';
+    $output .= '<button type="button" class="wp-block-button__link wp-element-button is-style-outline" data-rehearsal-browser-disable hidden>' . esc_html__( 'Desactivar', 'wp-song-study-blocks' ) . '</button>';
+    $output .= '</div>';
+    $output .= '</section>';
+
     $output .= '<div class="pd-rehearsal-panel pd-rehearsal-panel--switcher">';
     if ( count( $projects ) > 1 ) {
         $output .= '<form class="pd-membership-switcher pd-rehearsal-project-switcher" method="get" action="' . esc_url( $current_url ) . '" data-rehearsal-project-switcher>';
@@ -12867,7 +13875,7 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
         __( 'Navega integrante por integrante. Cada persona edita su disponibilidad y el grupo revisa los horarios cargados.', 'wp-song-study-blocks' ),
         'pd-rehearsal-panel--form pd-rehearsal-panel--secondary',
         'availability-editor',
-        'mobile-open',
+        'mobile-closed',
         'h2'
     );
     $output .= '<div class="pd-rehearsal-member-editor" data-rehearsal-member-editor>';
@@ -12967,7 +13975,7 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
         __( 'Cruces de horario agrupados por día para levantar propuestas con menos ruido.', 'wp-song-study-blocks' ),
         '',
         'recommended-windows',
-        'mobile-open',
+        'mobile-closed',
         'h3'
     );
     if ( empty( $recommendations ) ) {
@@ -12979,7 +13987,7 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
 
         foreach ( $groups as $slot_day => $day_slots ) {
             $slot_label = isset( $labels[ $slot_day ] ) ? $labels[ $slot_day ] : ucfirst( $slot_day );
-            $output .= '<details class="pd-rehearsal-recommendation-day pd-rehearsal-collapsible" data-rehearsal-collapsible data-rehearsal-collapse-default="mobile-open" data-rehearsal-collapse-key="' . esc_attr( 'recommended-' . $slot_day ) . '" open>';
+            $output .= '<details class="pd-rehearsal-recommendation-day pd-rehearsal-collapsible" data-rehearsal-collapsible data-rehearsal-collapse-default="mobile-closed" data-rehearsal-collapse-key="' . esc_attr( 'recommended-' . $slot_day ) . '">';
             $output .= '<summary class="pd-rehearsal-collapsible__summary pd-rehearsal-recommendation-day__summary">';
             $output .= '<div class="pd-rehearsal-collapsible__copy">';
             $output .= '<span class="pd-rehearsal-collapsible__title">' . esc_html( $slot_label ) . '</span>';
@@ -13064,12 +14072,25 @@ function wpssb_render_current_rehearsals_markup( $settings = [] ) {
         $output .= '</div>';
     }
     $output .= '</div>';
+    $calendar_view_options = [
+        'overview'  => __( 'Vista integral', 'wp-song-study-blocks' ),
+        'proposals' => __( 'Propuestas de ensayo', 'wp-song-study-blocks' ),
+        'confirmed' => __( 'Ensayos agendados', 'wp-song-study-blocks' ),
+        'logbook'   => __( 'Bitácora', 'wp-song-study-blocks' ),
+    ];
+
+    $output .= '<div class="pd-rehearsal-calendar-view-switcher">';
+    $output .= '<label class="pd-rehearsal-calendar-view-select"><span>' . esc_html__( 'Vista del calendario', 'wp-song-study-blocks' ) . '</span><select data-rehearsal-calendar-view-select data-rehearsal-query="rehearsal_calendar_view">';
+    foreach ( $calendar_view_options as $view_key => $view_label ) {
+        $output .= '<option value="' . esc_attr( $view_key ) . '" ' . selected( $calendar_view, $view_key, false ) . '>' . esc_html( $view_label ) . '</option>';
+    }
+    $output .= '</select></label>';
     $output .= '<nav class="pd-membership-tabs pd-rehearsal-calendar-toggle" aria-label="' . esc_attr__( 'Vista del calendario de ensayos', 'wp-song-study-blocks' ) . '" data-rehearsal-calendar-view-tabs data-rehearsal-query="rehearsal_calendar_view">';
-    $output .= '<button type="button" class="pd-membership-tabs__tab' . ( 'overview' === $calendar_view ? ' is-active' : '' ) . '" aria-selected="' . ( 'overview' === $calendar_view ? 'true' : 'false' ) . '" data-rehearsal-calendar-view-tab="overview">' . esc_html__( 'Vista integral', 'wp-song-study-blocks' ) . '</button>';
-    $output .= '<button type="button" class="pd-membership-tabs__tab' . ( 'proposals' === $calendar_view ? ' is-active' : '' ) . '" aria-selected="' . ( 'proposals' === $calendar_view ? 'true' : 'false' ) . '" data-rehearsal-calendar-view-tab="proposals">' . esc_html__( 'Propuestas de ensayo', 'wp-song-study-blocks' ) . '</button>';
-    $output .= '<button type="button" class="pd-membership-tabs__tab' . ( 'confirmed' === $calendar_view ? ' is-active' : '' ) . '" aria-selected="' . ( 'confirmed' === $calendar_view ? 'true' : 'false' ) . '" data-rehearsal-calendar-view-tab="confirmed">' . esc_html__( 'Ensayos agendados', 'wp-song-study-blocks' ) . '</button>';
-    $output .= '<button type="button" class="pd-membership-tabs__tab' . ( 'logbook' === $calendar_view ? ' is-active' : '' ) . '" aria-selected="' . ( 'logbook' === $calendar_view ? 'true' : 'false' ) . '" data-rehearsal-calendar-view-tab="logbook">' . esc_html__( 'Bitácora', 'wp-song-study-blocks' ) . '</button>';
+    foreach ( $calendar_view_options as $view_key => $view_label ) {
+        $output .= '<button type="button" class="pd-membership-tabs__tab' . ( $view_key === $calendar_view ? ' is-active' : '' ) . '" aria-selected="' . ( $view_key === $calendar_view ? 'true' : 'false' ) . '" data-rehearsal-calendar-view-tab="' . esc_attr( $view_key ) . '">' . esc_html( $view_label ) . '</button>';
+    }
     $output .= '</nav>';
+    $output .= '</div>';
     $output .= '<div class="pd-rehearsal-calendar-views">';
     $output .= '<div class="pd-rehearsal-session-group" data-rehearsal-calendar-view-panel="overview"' . ( 'overview' === $calendar_view ? '' : ' hidden' ) . '>';
     $output .= wpssb_render_frontend_rehearsal_integrated_calendar( $sessions, $now_timestamp, $project_id, $viewer_id, $action_url, $calendar_overview_url );

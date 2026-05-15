@@ -112,7 +112,7 @@ export default function DriveSettings() {
     setRefreshing(true)
     setError(null)
     api
-      .getGoogleDriveStatus()
+      .getGoogleDriveStatus({ forceRefresh: true })
       .then((response) => {
         applyStatus(response?.data)
       })

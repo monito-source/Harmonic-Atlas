@@ -1406,6 +1406,7 @@ function wpss_rest_get_project_rehearsals( WP_REST_Request $request ) {
  */
 function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
     $project_id = absint( $request['id'] ?? 0 );
+    $user_id    = get_current_user_id();
 
     if ( $project_id <= 0 || 'proyecto' !== get_post_type( $project_id ) ) {
         return new WP_Error( 'wpss_project_not_found', __( 'El proyecto solicitado no existe.', 'wp-song-study' ), [ 'status' => 404 ] );
@@ -1433,7 +1434,11 @@ function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
         }
     }
 
-    wpssb_update_project_rehearsal_meta(
+    $previous_meta     = function_exists( 'wpssb_get_project_rehearsal_meta' ) ? wpssb_get_project_rehearsal_meta( $project_id ) : [];
+    $previous_sessions = function_exists( 'wpssb_sanitize_project_rehearsal_sessions' )
+        ? wpssb_sanitize_project_rehearsal_sessions( $previous_meta['sessions'] ?? [], $project_id )
+        : [];
+    $saved_meta        = wpssb_update_project_rehearsal_meta(
         $project_id,
         [
             'project_id'    => $project_id,
@@ -1441,6 +1446,13 @@ function wpss_rest_save_project_rehearsals( WP_REST_Request $request ) {
             'sessions'      => $sessions,
         ]
     );
+    $saved_sessions    = function_exists( 'wpssb_sanitize_project_rehearsal_sessions' )
+        ? wpssb_sanitize_project_rehearsal_sessions( $saved_meta['sessions'] ?? [], $project_id )
+        : [];
+
+    if ( function_exists( 'wpssb_record_project_rehearsal_browser_notifications_from_diff' ) ) {
+        wpssb_record_project_rehearsal_browser_notifications_from_diff( $project_id, $previous_sessions, $saved_sessions, $user_id );
+    }
 
     $auto_sync_results = function_exists( 'wpssb_auto_sync_project_rehearsal_google_calendar' )
         ? wpssb_auto_sync_project_rehearsal_google_calendar( $project_id )

@@ -3,7 +3,7 @@
  * Plugin Name: WP Song Study Blocks
  * Plugin URI:  https://example.com/wp-song-study-blocks
  * Description: Versión basada en bloques de WP Song Study con bloques dinámicos SSR para listado y lector de canciones.
- * Version:     1.4.0
+ * Version:     1.5.0
  * Author:      Sergio Mendoza
  * Text Domain: wp-song-study-blocks
  * Domain Path: /languages
@@ -22,7 +22,7 @@ if ( ! defined( 'WPSSB_URL' ) ) {
 }
 
 if ( ! defined( 'WPSSB_VERSION' ) ) {
-    define( 'WPSSB_VERSION', '1.4.0' );
+    define( 'WPSSB_VERSION', '1.5.0' );
 }
 
 // Compatibilidad con funciones heredadas que todavía esperan las constantes antiguas.
@@ -36,6 +36,11 @@ if ( ! defined( 'WPSS_URL' ) ) {
 
 if ( ! defined( 'WPSS_VERSION' ) ) {
     define( 'WPSS_VERSION', WPSSB_VERSION );
+}
+
+$wpssb_vendor_autoload = WPSSB_PATH . 'vendor/autoload.php';
+if ( file_exists( $wpssb_vendor_autoload ) ) {
+    require_once $wpssb_vendor_autoload;
 }
 
 require_once WPSSB_PATH . 'includes/songbook-access.php';
@@ -75,6 +80,7 @@ function wpssb_load_legacy_backend() {
 wpssb_load_legacy_backend();
 
 require_once WPSSB_PATH . 'includes/projects.php';
+require_once WPSSB_PATH . 'includes/rehearsal-web-push.php';
 require_once WPSSB_PATH . 'includes/shared-render.php';
 require_once WPSSB_PATH . 'includes/blocks.php';
 

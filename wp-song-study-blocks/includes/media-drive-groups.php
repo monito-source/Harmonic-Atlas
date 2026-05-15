@@ -1061,6 +1061,7 @@ function wpss_set_google_drive_user_config( $user_id, array $config ) {
     }
 
     update_user_meta( $user_id, '_wpss_google_drive_config', $config );
+    wpss_delete_google_status_snapshot_payload( 'drive', $user_id );
 }
 
 /**
@@ -1077,6 +1078,7 @@ function wpss_delete_google_drive_user_config( $user_id ) {
 
     delete_user_meta( $user_id, '_wpss_google_drive_config' );
     delete_user_meta( $user_id, '_wpss_google_drive_oauth_state' );
+    wpss_delete_google_status_snapshot_payload( 'drive', $user_id );
 }
 
 /**
@@ -1178,6 +1180,7 @@ function wpss_set_google_calendar_user_config( $user_id, array $config ) {
     }
 
     update_user_meta( $user_id, '_wpss_google_calendar_config', $config );
+    wpss_delete_google_status_snapshot_payload( 'calendar', $user_id );
 }
 
 /**
@@ -1194,6 +1197,7 @@ function wpss_delete_google_calendar_user_config( $user_id ) {
 
     delete_user_meta( $user_id, '_wpss_google_calendar_config' );
     delete_user_meta( $user_id, '_wpss_google_calendar_oauth_state' );
+    wpss_delete_google_status_snapshot_payload( 'calendar', $user_id );
 }
 
 /**
@@ -3805,12 +3809,216 @@ function wpss_rest_delete_agrupacion_musical( WP_REST_Request $request ) {
 }
 
 /**
+ * Devuelve la clave meta usada para snapshots seguros de integraciones Google.
+ *
+ * @param string $provider Proveedor: drive|calendar.
+ * @param string $kind     Tipo de snapshot.
+ * @return string
+ */
+function wpss_get_google_status_snapshot_meta_key( $provider, $kind = 'status' ) {
+    $provider = 'calendar' === sanitize_key( (string) $provider ) ? 'calendar' : 'drive';
+    $kind     = 'health' === sanitize_key( (string) $kind ) ? 'health' : 'status';
+
+    return sprintf( '_wpss_google_%1$s_%2$s_snapshot', $provider, $kind );
+}
+
+/**
+ * Anota metadatos de snapshot sobre un payload de estado.
+ *
+ * @param array  $payload         Payload base.
+ * @param string $source         live|cache|fallback.
+ * @param string $captured_at_gmt Fecha GMT ISO8601.
+ * @param bool   $is_stale       Si el snapshot está vencido.
+ * @param string $fallback_reason Motivo del fallback.
+ * @return array
+ */
+function wpss_prepare_google_status_snapshot_payload( array $payload, $source = 'live', $captured_at_gmt = '', $is_stale = false, $fallback_reason = '' ) {
+    unset( $payload['snapshot'] );
+
+    $captured_at_gmt = sanitize_text_field( (string) $captured_at_gmt );
+    if ( '' === $captured_at_gmt ) {
+        $captured_at_gmt = gmdate( 'c' );
+    }
+
+    $captured_timestamp = strtotime( $captured_at_gmt );
+    $payload['snapshot'] = [
+        'source'          => sanitize_key( (string) $source ),
+        'captured_at_gmt' => $captured_at_gmt,
+        'captured_at'     => false !== $captured_timestamp ? wp_date( 'Y-m-d H:i:s', $captured_timestamp ) : '',
+        'age_seconds'     => false !== $captured_timestamp ? max( 0, time() - $captured_timestamp ) : null,
+        'is_stale'        => (bool) $is_stale,
+        'fallback_reason' => sanitize_key( (string) $fallback_reason ),
+    ];
+
+    return $payload;
+}
+
+/**
+ * Lee un snapshot de estado guardado y lo marca si ya está vencido.
+ *
+ * @param string $provider Proveedor: drive|calendar.
+ * @param int    $user_id  Usuario.
+ * @param string $kind     Tipo de snapshot.
+ * @param int    $max_age  Edad máxima en segundos. 0 para no vencerlo.
+ * @return array
+ */
+function wpss_read_google_status_snapshot_payload( $provider, $user_id, $kind = 'status', $max_age = 0 ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return [];
+    }
+
+    $stored = get_user_meta( $user_id, wpss_get_google_status_snapshot_meta_key( $provider, $kind ), true );
+    if ( ! is_array( $stored ) || ! isset( $stored['payload'] ) || ! is_array( $stored['payload'] ) ) {
+        return [];
+    }
+
+    $captured_at_gmt = sanitize_text_field( (string) ( $stored['captured_at_gmt'] ?? '' ) );
+    $captured_ts     = '' !== $captured_at_gmt ? strtotime( $captured_at_gmt ) : false;
+    $max_age         = max( 0, absint( $max_age ) );
+    $is_stale        = $max_age > 0 && ( false === $captured_ts || ( time() - $captured_ts ) > $max_age );
+
+    return wpss_prepare_google_status_snapshot_payload(
+        $stored['payload'],
+        'cache',
+        $captured_at_gmt,
+        $is_stale,
+        $is_stale ? 'expired' : ''
+    );
+}
+
+/**
+ * Persiste un snapshot seguro de estado.
+ *
+ * @param string $provider Proveedor: drive|calendar.
+ * @param int    $user_id  Usuario.
+ * @param array  $payload  Payload base.
+ * @param string $kind     Tipo de snapshot.
+ * @return array
+ */
+function wpss_write_google_status_snapshot_payload( $provider, $user_id, array $payload, $kind = 'status' ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return wpss_prepare_google_status_snapshot_payload( $payload, 'live' );
+    }
+
+    $captured_at_gmt = gmdate( 'c' );
+    $payload_to_store = $payload;
+    unset( $payload_to_store['snapshot'] );
+
+    update_user_meta(
+        $user_id,
+        wpss_get_google_status_snapshot_meta_key( $provider, $kind ),
+        [
+            'captured_at_gmt' => $captured_at_gmt,
+            'payload'         => $payload_to_store,
+        ]
+    );
+
+    return wpss_prepare_google_status_snapshot_payload( $payload_to_store, 'live', $captured_at_gmt );
+}
+
+/**
+ * Borra snapshots seguros de estado.
+ *
+ * @param string $provider Proveedor: drive|calendar.
+ * @param int    $user_id  Usuario.
+ * @param string $kind     Tipo de snapshot. Vacío = todos.
+ * @return void
+ */
+function wpss_delete_google_status_snapshot_payload( $provider, $user_id, $kind = '' ) {
+    $user_id = absint( $user_id );
+    if ( $user_id <= 0 ) {
+        return;
+    }
+
+    $kind = sanitize_key( (string) $kind );
+    $keys = [];
+
+    if ( in_array( $kind, [ 'status', 'health' ], true ) ) {
+        $keys[] = wpss_get_google_status_snapshot_meta_key( $provider, $kind );
+    } else {
+        $keys[] = wpss_get_google_status_snapshot_meta_key( $provider, 'status' );
+        if ( 'drive' === sanitize_key( (string) $provider ) ) {
+            $keys[] = wpss_get_google_status_snapshot_meta_key( $provider, 'health' );
+        }
+    }
+
+    foreach ( array_unique( $keys ) as $meta_key ) {
+        delete_user_meta( $user_id, $meta_key );
+    }
+}
+
+/**
+ * Devuelve un fallback mínimo para Drive cuando ni el cálculo ni el snapshot están disponibles.
+ *
+ * @return array
+ */
+function wpss_get_default_google_drive_status_payload() {
+    return [
+        'configured'             => false,
+        'connected'              => false,
+        'has_access_token'       => false,
+        'has_refresh_token'      => false,
+        'account_email'          => '',
+        'folder_id'              => '',
+        'folder_name'            => '',
+        'folder_url'             => '',
+        'connected_at'           => '',
+        'credentials_source'     => '',
+        'has_user_client_id'     => false,
+        'has_user_client_secret' => false,
+        'last_error'             => [
+            'code'        => 'status_unavailable',
+            'message'     => __( 'No fue posible resolver con seguridad el estado de Google Drive.', 'wp-song-study' ),
+            'recorded_at' => current_time( 'mysql' ),
+        ],
+        'granted_scopes'         => [],
+        'required_scopes'        => function_exists( 'wpss_get_google_drive_oauth_scopes' ) ? array_values( wpss_get_google_drive_oauth_scopes() ) : [],
+        'has_required_scope'     => false,
+        'authorized_origin'      => '',
+        'connect_url'            => '',
+        'redirect_uri'           => '',
+    ];
+}
+
+/**
+ * Devuelve un fallback mínimo para Calendar cuando ni el cálculo ni el snapshot están disponibles.
+ *
+ * @return array
+ */
+function wpss_get_default_google_calendar_status_payload() {
+    return [
+        'configured'             => false,
+        'connected'              => false,
+        'has_access_token'       => false,
+        'has_refresh_token'      => false,
+        'account_email'          => '',
+        'connected_at'           => '',
+        'credentials_source'     => '',
+        'has_user_client_id'     => false,
+        'has_user_client_secret' => false,
+        'last_error'             => [
+            'code'        => 'status_unavailable',
+            'message'     => __( 'No fue posible resolver con seguridad el estado de Google Calendar.', 'wp-song-study' ),
+            'recorded_at' => current_time( 'mysql' ),
+        ],
+        'granted_scopes'         => [],
+        'required_scopes'        => function_exists( 'wpss_get_google_calendar_oauth_scopes' ) ? array_values( wpss_get_google_calendar_oauth_scopes() ) : [],
+        'has_required_scope'     => false,
+        'authorized_origin'      => '',
+        'connect_url'            => '',
+        'redirect_uri'           => '',
+    ];
+}
+
+/**
  * Genera payload de estado Drive para la UI.
  *
  * @param int $user_id ID usuario.
  * @return array
  */
-function wpss_get_google_drive_status_payload( $user_id, $include_health = false ) {
+function wpss_build_google_drive_status_payload( $user_id, $include_health = false ) {
     $config       = wpss_get_google_drive_user_config( $user_id );
     $credentials  = wpss_get_google_drive_oauth_credentials( $user_id );
     $last_error   = wpss_get_google_drive_last_error( $user_id );
@@ -3862,7 +4070,7 @@ function wpss_get_google_drive_status_payload( $user_id, $include_health = false
  * @param int $user_id ID usuario.
  * @return array
  */
-function wpss_get_google_calendar_status_payload( $user_id ) {
+function wpss_build_google_calendar_status_payload( $user_id ) {
     $config             = wpss_get_google_calendar_user_config( $user_id );
     $credentials        = wpss_get_google_drive_oauth_credentials( $user_id );
     $last_error         = wpss_get_google_calendar_last_error( $user_id );
@@ -3900,12 +4108,134 @@ function wpss_get_google_calendar_status_payload( $user_id ) {
 }
 
 /**
+ * Devuelve un payload seguro de estado Drive y reutiliza snapshots cuando conviene.
+ *
+ * @param int  $user_id       ID usuario.
+ * @param bool $include_health Si debe incluir diagnóstico operativo.
+ * @param bool $force_refresh Si debe recalcular el diagnóstico pesado.
+ * @return array
+ */
+function wpss_get_google_drive_status_payload( $user_id, $include_health = false, $force_refresh = false ) {
+    $user_id        = absint( $user_id );
+    $include_health = (bool) $include_health;
+    $force_refresh  = (bool) $force_refresh;
+
+    try {
+        $payload = wpss_write_google_status_snapshot_payload(
+            'drive',
+            $user_id,
+            wpss_build_google_drive_status_payload( $user_id, false ),
+            'status'
+        );
+    } catch ( Throwable $exception ) {
+        $payload = wpss_read_google_status_snapshot_payload( 'drive', $user_id, 'status' );
+
+        if ( ! empty( $payload ) ) {
+            $payload = wpss_prepare_google_status_snapshot_payload(
+                $payload,
+                'fallback',
+                $payload['snapshot']['captured_at_gmt'] ?? '',
+                true,
+                'builder_failed'
+            );
+        } else {
+            $payload = wpss_prepare_google_status_snapshot_payload(
+                wpss_get_default_google_drive_status_payload(),
+                'fallback',
+                gmdate( 'c' ),
+                true,
+                'snapshot_unavailable'
+            );
+        }
+    }
+
+    if ( ! $include_health ) {
+        return $payload;
+    }
+
+    $health_ttl = 5 * MINUTE_IN_SECONDS;
+    $health     = ! $force_refresh ? wpss_read_google_status_snapshot_payload( 'drive', $user_id, 'health', $health_ttl ) : [];
+
+    if ( empty( $health ) || ! empty( $health['snapshot']['is_stale'] ) ) {
+        try {
+            $health = wpss_write_google_status_snapshot_payload(
+                'drive',
+                $user_id,
+                wpss_get_google_drive_health_payload( $user_id ),
+                'health'
+            );
+        } catch ( Throwable $exception ) {
+            $fallback_health = wpss_read_google_status_snapshot_payload( 'drive', $user_id, 'health' );
+            if ( ! empty( $fallback_health ) ) {
+                $health = wpss_prepare_google_status_snapshot_payload(
+                    $fallback_health,
+                    'fallback',
+                    $fallback_health['snapshot']['captured_at_gmt'] ?? '',
+                    true,
+                    'builder_failed'
+                );
+            } else {
+                $health = [];
+            }
+        }
+    }
+
+    if ( ! empty( $health ) ) {
+        $payload['health'] = $health;
+    }
+
+    return $payload;
+}
+
+/**
+ * Devuelve un payload seguro de estado Calendar y reutiliza snapshots si algo falla.
+ *
+ * @param int $user_id ID usuario.
+ * @return array
+ */
+function wpss_get_google_calendar_status_payload( $user_id ) {
+    $user_id = absint( $user_id );
+
+    try {
+        return wpss_write_google_status_snapshot_payload(
+            'calendar',
+            $user_id,
+            wpss_build_google_calendar_status_payload( $user_id ),
+            'status'
+        );
+    } catch ( Throwable $exception ) {
+        $payload = wpss_read_google_status_snapshot_payload( 'calendar', $user_id, 'status' );
+
+        if ( ! empty( $payload ) ) {
+            return wpss_prepare_google_status_snapshot_payload(
+                $payload,
+                'fallback',
+                $payload['snapshot']['captured_at_gmt'] ?? '',
+                true,
+                'builder_failed'
+            );
+        }
+
+        return wpss_prepare_google_status_snapshot_payload(
+            wpss_get_default_google_calendar_status_payload(),
+            'fallback',
+            gmdate( 'c' ),
+            true,
+            'snapshot_unavailable'
+        );
+    }
+}
+
+/**
  * Devuelve el estado Drive del usuario actual.
  *
+ * @param WP_REST_Request $request Solicitud.
  * @return WP_REST_Response
  */
-function wpss_rest_get_google_drive_status() {
-    return rest_ensure_response( wpss_get_google_drive_status_payload( get_current_user_id(), true ) );
+function wpss_rest_get_google_drive_status( WP_REST_Request $request ) {
+    $force_refresh = rest_sanitize_boolean( $request->get_param( 'refresh' ) );
+
+    return rest_ensure_response( wpss_get_google_drive_status_payload( get_current_user_id(), true, $force_refresh ) );
 }
 
 /**

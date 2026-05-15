@@ -153,7 +153,7 @@
       panel.dataset.rehearsalCollapsibleInitialized = 'true'
 
       const key = panel.dataset.rehearsalCollapseKey || `panel-${index}`
-      const storageScope = `collapse:${key}`
+      const storageScope = `collapse:v3:${key}`
       const storedState = readShellState(shell, storageScope)
 
       if (storedState === 'open' || storedState === 'closed') {
@@ -369,9 +369,16 @@
   const activateCalendarView = (shell, viewName, options = {}) => {
     const { shouldFocus = false, syncUrl = true } = options
     const nav = shell.querySelector('[data-rehearsal-calendar-view-tabs]')
+    const select = shell.querySelector('[data-rehearsal-calendar-view-select]')
     const tabs = Array.from(shell.querySelectorAll('[data-rehearsal-calendar-view-tab]'))
     const panels = Array.from(shell.querySelectorAll('[data-rehearsal-calendar-view-panel]'))
-    const activeView = tabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === viewName)?.dataset.rehearsalCalendarViewTab || tabs[0]?.dataset.rehearsalCalendarViewTab
+    const selectOptions = select instanceof HTMLSelectElement ? Array.from(select.options) : []
+    const activeView = tabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === viewName)?.dataset.rehearsalCalendarViewTab
+      || selectOptions.find((option) => option.value === viewName)?.value
+      || panels.find((panel) => panel.dataset.rehearsalCalendarViewPanel === viewName)?.dataset.rehearsalCalendarViewPanel
+      || tabs[0]?.dataset.rehearsalCalendarViewTab
+      || selectOptions[0]?.value
+      || panels[0]?.dataset.rehearsalCalendarViewPanel
 
     if (!activeView) {
       return
@@ -388,6 +395,10 @@
       }
     })
 
+    if (select instanceof HTMLSelectElement && select.value !== activeView) {
+      select.value = activeView
+    }
+
     panels.forEach((panel) => {
       panel.hidden = panel.dataset.rehearsalCalendarViewPanel !== activeView
     })
@@ -399,8 +410,8 @@
 
     writeShellState(shell, 'calendar-view', activeView)
 
-    if (nav && syncUrl) {
-      updateUrl(nav.dataset.rehearsalQuery || 'rehearsal_calendar_view', activeView)
+    if (syncUrl) {
+      updateUrl(nav?.dataset?.rehearsalQuery || select?.dataset?.rehearsalQuery || 'rehearsal_calendar_view', activeView)
     }
   }
 
@@ -437,6 +448,7 @@
     selector.addEventListener('change', () => {
       const activeTab = shell.querySelector('[data-rehearsal-tab].is-active')
       const activeCalendarView = shell.querySelector('[data-rehearsal-calendar-view-tab].is-active')
+      const activeCalendarViewSelect = shell.querySelector('[data-rehearsal-calendar-view-select]')
       const tabInput = form.querySelector('input[name="rehearsal_tab"]')
       const calendarViewInput = form.querySelector('input[name="rehearsal_calendar_view"]')
 
@@ -444,8 +456,12 @@
         tabInput.value = activeTab.dataset.rehearsalTab || tabInput.value
       }
 
-      if (calendarViewInput instanceof HTMLInputElement && activeCalendarView instanceof HTMLElement) {
-        calendarViewInput.value = activeCalendarView.dataset.rehearsalCalendarViewTab || calendarViewInput.value
+      if (calendarViewInput instanceof HTMLInputElement) {
+        if (activeCalendarViewSelect instanceof HTMLSelectElement && activeCalendarViewSelect.value) {
+          calendarViewInput.value = activeCalendarViewSelect.value
+        } else if (activeCalendarView instanceof HTMLElement) {
+          calendarViewInput.value = activeCalendarView.dataset.rehearsalCalendarViewTab || calendarViewInput.value
+        }
       }
 
       if (typeof form.requestSubmit === 'function') {
@@ -532,6 +548,94 @@
         closeModal()
       }
     })
+  }
+
+  const initIntegratedCalendar = (calendar) => {
+    if (calendar.dataset.rehearsalIntegratedCalendarInitialized === 'true') {
+      return
+    }
+
+    const months = Array.from(calendar.querySelectorAll('[data-rehearsal-calendar-month]'))
+    const switcher = calendar.querySelector('[data-rehearsal-calendar-month-switcher]')
+    const select = calendar.querySelector('[data-rehearsal-calendar-month-select]')
+    const prevButton = calendar.querySelector('[data-rehearsal-calendar-month-prev]')
+    const nextButton = calendar.querySelector('[data-rehearsal-calendar-month-next]')
+    const status = calendar.querySelector('[data-rehearsal-calendar-month-status]')
+    const shell = calendar.closest('[data-rehearsal-shell]')
+    let activeIndex = 0
+
+    if (!months.length) {
+      return
+    }
+
+    calendar.dataset.rehearsalIntegratedCalendarInitialized = 'true'
+
+    const resolveMonthIndex = (monthKey) => {
+      if (!monthKey) {
+        return -1
+      }
+
+      return months.findIndex((month) => month.dataset.rehearsalCalendarMonth === monthKey)
+    }
+
+    const setActiveMonth = (nextIndex) => {
+      activeIndex = Math.max(0, Math.min(months.length - 1, nextIndex))
+
+      months.forEach((month, index) => {
+        month.hidden = index !== activeIndex
+      })
+
+      const activeMonth = months[activeIndex]
+      const activeMonthKey = activeMonth?.dataset?.rehearsalCalendarMonth || ''
+
+      if (select instanceof HTMLSelectElement && activeMonthKey) {
+        select.value = activeMonthKey
+      }
+
+      if (prevButton instanceof HTMLButtonElement) {
+        prevButton.disabled = activeIndex <= 0
+      }
+
+      if (nextButton instanceof HTMLButtonElement) {
+        nextButton.disabled = activeIndex >= months.length - 1
+      }
+
+      if (status instanceof HTMLElement) {
+        status.textContent = `${activeIndex + 1} / ${months.length}`
+      }
+
+      if (activeMonthKey) {
+        writeShellState(shell, 'integrated-calendar-month', activeMonthKey)
+      }
+    }
+
+    const storedMonth = readShellState(shell, 'integrated-calendar-month')
+    const visibleMonth = months.find((month) => !month.hidden)?.dataset?.rehearsalCalendarMonth || ''
+    const initialMonth = storedMonth || switcher?.dataset?.rehearsalCalendarInitialMonth || visibleMonth || select?.value || months[0]?.dataset?.rehearsalCalendarMonth || ''
+    const initialIndex = resolveMonthIndex(initialMonth)
+
+    setActiveMonth(initialIndex >= 0 ? initialIndex : 0)
+
+    if (prevButton instanceof HTMLButtonElement) {
+      prevButton.addEventListener('click', () => {
+        setActiveMonth(activeIndex - 1)
+      })
+    }
+
+    if (nextButton instanceof HTMLButtonElement) {
+      nextButton.addEventListener('click', () => {
+        setActiveMonth(activeIndex + 1)
+      })
+    }
+
+    if (select instanceof HTMLSelectElement) {
+      select.addEventListener('change', () => {
+        const nextIndex = resolveMonthIndex(select.value)
+        if (nextIndex >= 0) {
+          setActiveMonth(nextIndex)
+        }
+      })
+    }
   }
 
   const initCardCarousel = (carousel) => {
@@ -691,6 +795,728 @@
       )
     } catch (error) {
       // Ignore console serialization issues.
+    }
+  }
+
+  const supportsBrowserNotifications = () => typeof window !== 'undefined' && 'Notification' in window
+
+  const getBrowserNotificationPreference = (shell) => readShellState(shell, 'browser-notifications')
+
+  const setBrowserNotificationPreference = (shell, value) => {
+    writeShellState(shell, 'browser-notifications', value || '')
+  }
+
+  const getBrowserNotificationCursor = (shell) => readShellState(shell, 'browser-notifications-cursor')
+
+  const setBrowserNotificationCursor = (shell, value) => {
+    writeShellState(shell, 'browser-notifications-cursor', value || '')
+  }
+
+  const clearBrowserNotificationTimer = (shell) => {
+    if (!shell?._wpssbBrowserNotificationTimerId) {
+      return
+    }
+
+    window.clearTimeout(shell._wpssbBrowserNotificationTimerId)
+    shell._wpssbBrowserNotificationTimerId = null
+  }
+
+  const getBrowserNotificationConfig = () => {
+    const config = getFrontendConfig()
+    return config?.browserNotifications && typeof config.browserNotifications === 'object'
+      ? config.browserNotifications
+      : {}
+  }
+
+  const getBrowserNotificationMessages = () => {
+    const config = getBrowserNotificationConfig()
+    return config?.messages && typeof config.messages === 'object'
+      ? config.messages
+      : {}
+  }
+
+  const getWebPushConfig = () => {
+    const config = getFrontendConfig()
+    return config?.webPush && typeof config.webPush === 'object'
+      ? config.webPush
+      : {}
+  }
+
+  const getWebPushMessages = () => {
+    const config = getWebPushConfig()
+    return config?.messages && typeof config.messages === 'object'
+      ? config.messages
+      : {}
+  }
+
+  const isSecureContextAvailable = () => typeof window !== 'undefined' && window.isSecureContext === true
+
+  const isIosMobile = () => {
+    if (typeof navigator === 'undefined') {
+      return false
+    }
+
+    const userAgent = String(navigator.userAgent || '')
+    const platform = String(navigator.platform || '')
+
+    return /iPhone|iPad|iPod/i.test(userAgent)
+      || (platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  }
+
+  const isStandaloneDisplay = () => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    try {
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+        return true
+      }
+    } catch (error) {
+      // Ignore matchMedia failures.
+    }
+
+    return window.navigator?.standalone === true
+  }
+
+  const looksLikeEmbeddedMobileBrowser = () => {
+    if (typeof navigator === 'undefined') {
+      return false
+    }
+
+    const userAgent = String(navigator.userAgent || '')
+
+    return /(FBAN|FBAV|Instagram|Line|MicroMessenger|wv\b|WebView)/i.test(userAgent)
+  }
+
+  const getUnsupportedNotificationMessage = () => {
+    const browserMessages = getBrowserNotificationMessages()
+    const webPushMessages = getWebPushMessages()
+
+    if (!isSecureContextAvailable()) {
+      return webPushMessages.secureContextRequired
+        || browserMessages.secureContextRequired
+        || webPushMessages.unsupported
+        || browserMessages.unsupported
+        || ''
+    }
+
+    if (isIosMobile() && !isStandaloneDisplay()) {
+      return webPushMessages.iosHomeScreenOnly
+        || browserMessages.iosHomeScreenOnly
+        || webPushMessages.unsupported
+        || browserMessages.unsupported
+        || ''
+    }
+
+    if (looksLikeEmbeddedMobileBrowser()) {
+      return webPushMessages.embeddedBrowserUnsupported
+        || browserMessages.embeddedBrowserUnsupported
+        || webPushMessages.unsupported
+        || browserMessages.unsupported
+        || ''
+    }
+
+    return webPushMessages.unsupported
+      || browserMessages.unsupported
+      || ''
+  }
+
+  const supportsWebPush = () => supportsBrowserNotifications()
+    && typeof navigator !== 'undefined'
+    && 'serviceWorker' in navigator
+    && typeof window !== 'undefined'
+    && 'PushManager' in window
+
+  const canFetchBrowserNotifications = (shell) => {
+    const config = getFrontendConfig()
+    const projectId = shell?.dataset?.rehearsalProjectId || ''
+
+    return Boolean(
+      projectId
+      && config?.ajaxUrl
+      && config?.browserNotificationsNonce
+      && supportsBrowserNotifications()
+      && window.Notification.permission === 'granted'
+      && getBrowserNotificationPreference(shell) === 'enabled'
+    )
+  }
+
+  const shouldUseWebPush = (shell) => {
+    const config = getWebPushConfig()
+
+    return Boolean(
+      config?.enabled
+      && config?.publicKey
+      && config?.serviceWorkerUrl
+      && supportsWebPush()
+      && window.Notification.permission === 'granted'
+      && getBrowserNotificationPreference(shell) === 'enabled'
+    )
+  }
+
+  const base64UrlToUint8Array = (value) => {
+    const padding = '='.repeat((4 - (value.length % 4)) % 4)
+    const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/')
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+
+    for (let index = 0; index < rawData.length; index += 1) {
+      outputArray[index] = rawData.charCodeAt(index)
+    }
+
+    return outputArray
+  }
+
+  const serializePushSubscription = (subscription) => {
+    if (!subscription) {
+      return null
+    }
+
+    if (typeof subscription.toJSON === 'function') {
+      return subscription.toJSON()
+    }
+
+    const json = {
+      endpoint: subscription.endpoint || '',
+      expirationTime: subscription.expirationTime || null,
+      keys: {}
+    }
+
+    try {
+      const p256dh = subscription.getKey ? subscription.getKey('p256dh') : null
+      const auth = subscription.getKey ? subscription.getKey('auth') : null
+
+      if (p256dh) {
+        json.keys.p256dh = window.btoa(String.fromCharCode(...new Uint8Array(p256dh)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/g, '')
+      }
+
+      if (auth) {
+        json.keys.auth = window.btoa(String.fromCharCode(...new Uint8Array(auth)))
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/g, '')
+      }
+    } catch (error) {
+      return json
+    }
+
+    return json
+  }
+
+  const persistWebPushSubscription = async (shell, subscription, actionName, nonce) => {
+    const frontendConfig = getFrontendConfig()
+    const projectId = shell?.dataset?.rehearsalProjectId || ''
+    const serialized = serializePushSubscription(subscription)
+
+    if (!frontendConfig?.ajaxUrl || !projectId || !serialized) {
+      throw new Error('Push subscription payload missing.')
+    }
+
+    const formData = new FormData()
+    formData.append('action', actionName)
+    formData.append('nonce', nonce)
+    formData.append('project_id', projectId)
+    formData.append('subscription', JSON.stringify(serialized))
+
+    const response = await window.fetch(frontendConfig.ajaxUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: formData,
+    })
+
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.data?.message || 'Push subscription request failed.')
+    }
+
+    return payload?.data && typeof payload.data === 'object' ? payload.data : null
+  }
+
+  const ensureWebPushSubscription = async (shell) => {
+    const config = getWebPushConfig()
+    const messages = getWebPushMessages()
+
+    if (!shouldUseWebPush(shell)) {
+      return false
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: '/' })
+      let subscription = await registration.pushManager.getSubscription()
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64UrlToUint8Array(String(config.publicKey || ''))
+        })
+      }
+
+      await persistWebPushSubscription(shell, subscription, 'wpssb_save_rehearsal_push_subscription', config.subscriptionNonce)
+      shell._wpssbWebPushActive = true
+      return true
+    } catch (error) {
+      shell._wpssbWebPushActive = false
+      logFrontendDebug('web_push_subscription_error', {
+        projectId: shell?.dataset?.rehearsalProjectId || '',
+        message: error?.message || ''
+      })
+      setBrowserNotificationStatus(shell, `${messages.saveError || ''} ${String(error?.message || '')}`.trim())
+      return false
+    }
+  }
+
+  const disableWebPushSubscription = async (shell) => {
+    const config = getWebPushConfig()
+    const messages = getWebPushMessages()
+
+    if (!config?.enabled || !supportsWebPush()) {
+      shell._wpssbWebPushActive = false
+      return
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: '/' })
+      const subscription = await registration.pushManager.getSubscription()
+
+      if (subscription) {
+        await persistWebPushSubscription(shell, subscription, 'wpssb_remove_rehearsal_push_subscription', config.unsubscribeNonce)
+      }
+
+      shell._wpssbWebPushActive = false
+    } catch (error) {
+      logFrontendDebug('web_push_unsubscribe_error', {
+        projectId: shell?.dataset?.rehearsalProjectId || '',
+        message: error?.message || ''
+      })
+      setBrowserNotificationStatus(shell, `${messages.removeError || ''} ${String(error?.message || '')}`.trim())
+    }
+  }
+
+  const getBrowserNotificationStatusElement = (shell) => shell?.querySelector('[data-rehearsal-browser-notification-status]')
+
+  const setBrowserNotificationStatus = (shell, text = '') => {
+    const status = getBrowserNotificationStatusElement(shell)
+    if (!status) {
+      return
+    }
+
+    const content = String(text || '').trim()
+    status.hidden = !content
+    status.textContent = content
+  }
+
+  const formatBrowserNotificationCheckDebug = (data) => {
+    const messages = getBrowserNotificationMessages()
+    const template = String(messages.checkDebug || '')
+
+    if (!template) {
+      return ''
+    }
+
+    const total = Number.isFinite(Number(data?.total_events)) ? Number(data.total_events) : 0
+    const visible = Number.isFinite(Number(data?.visible_event_count)) ? Number(data.visible_event_count) : 0
+    const afterCursor = String(data?.after_cursor_gmt || 'sin cursor')
+    const latestCursor = String(data?.latest_cursor_gmt || 'sin eventos')
+
+    return template
+      .replace('%1$d', String(total))
+      .replace('%2$d', String(visible))
+      .replace('%3$s', afterCursor)
+      .replace('%4$s', latestCursor)
+  }
+
+  const shouldPollBrowserNotifications = (shell) => canFetchBrowserNotifications(shell) && !shouldUseWebPush(shell)
+
+  const updateBrowserNotificationUi = (shell) => {
+    const panel = shell?.querySelector('[data-rehearsal-browser-notifications]')
+    if (!panel) {
+      return
+    }
+
+    panel.hidden = false
+
+    const message = panel.querySelector('[data-rehearsal-browser-notification-message]')
+    const enableButton = panel.querySelector('[data-rehearsal-browser-enable]')
+    const dismissButton = panel.querySelector('[data-rehearsal-browser-dismiss]')
+    const testButton = panel.querySelector('[data-rehearsal-browser-test]')
+    const checkButton = panel.querySelector('[data-rehearsal-browser-check]')
+    const disableButton = panel.querySelector('[data-rehearsal-browser-disable]')
+    const messages = getBrowserNotificationMessages()
+    const preference = getBrowserNotificationPreference(shell)
+    const permission = supportsBrowserNotifications() ? window.Notification.permission : 'unsupported'
+
+    if (!supportsBrowserNotifications()) {
+      if (message) message.textContent = getUnsupportedNotificationMessage()
+      if (enableButton) enableButton.hidden = true
+      if (dismissButton) dismissButton.hidden = true
+      if (testButton) testButton.hidden = true
+      if (checkButton) checkButton.hidden = true
+      if (disableButton) disableButton.hidden = true
+      setBrowserNotificationStatus(shell, '')
+      return
+    }
+
+    if (permission === 'denied') {
+      if (message) message.textContent = messages.denied || ''
+      if (enableButton) enableButton.hidden = true
+      if (dismissButton) dismissButton.hidden = true
+      if (testButton) testButton.hidden = true
+      if (checkButton) checkButton.hidden = true
+      if (disableButton) disableButton.hidden = true
+      setBrowserNotificationStatus(shell, '')
+      return
+    }
+
+    if (preference === 'enabled' && permission === 'granted') {
+      if (message) {
+        message.textContent = shouldUseWebPush(shell)
+          ? (getWebPushMessages().enabled || messages.enabled || '')
+          : (messages.enabled || '')
+      }
+      if (enableButton) enableButton.hidden = true
+      if (dismissButton) dismissButton.hidden = true
+      if (testButton) testButton.hidden = false
+      if (checkButton) checkButton.hidden = false
+      if (disableButton) disableButton.hidden = false
+      if (!getBrowserNotificationStatusElement(shell)?.textContent) {
+        setBrowserNotificationStatus(shell, messages.checkIdle || '')
+      }
+      return
+    }
+
+    if (preference === 'disabled') {
+      if (message) message.textContent = messages.disabled || ''
+      if (enableButton) enableButton.hidden = false
+      if (dismissButton) dismissButton.hidden = true
+      if (testButton) testButton.hidden = true
+      if (checkButton) checkButton.hidden = true
+      if (disableButton) disableButton.hidden = true
+      setBrowserNotificationStatus(shell, '')
+      return
+    }
+
+    if (message) {
+      message.textContent = getWebPushConfig()?.enabled
+        ? (getWebPushMessages().prompt || messages.prompt || '')
+        : (messages.prompt || '')
+    }
+    if (enableButton) enableButton.hidden = false
+    if (dismissButton) dismissButton.hidden = false
+    if (testButton) testButton.hidden = true
+    if (checkButton) checkButton.hidden = true
+    if (disableButton) disableButton.hidden = true
+    setBrowserNotificationStatus(shell, '')
+  }
+
+  const fetchBrowserNotifications = async (shell, options = {}) => {
+    const config = getFrontendConfig()
+    const projectId = shell?.dataset?.rehearsalProjectId || ''
+
+    if (!config?.ajaxUrl || !config?.browserNotificationsNonce || !projectId) {
+      return null
+    }
+
+    const formData = new FormData()
+    formData.append('action', 'wpssb_get_rehearsal_browser_notifications')
+    formData.append('nonce', config.browserNotificationsNonce)
+    formData.append('project_id', projectId)
+
+    if (options?.after) {
+      formData.append('after', options.after)
+    }
+
+    if (options?.prime) {
+      formData.append('prime', '1')
+    }
+
+    const response = await window.fetch(config.ajaxUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: formData,
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.data?.message || getBrowserNotificationMessages().error || 'Browser notifications request failed.')
+    }
+
+    return payload?.data && typeof payload.data === 'object' ? payload.data : null
+  }
+
+  const primeBrowserNotifications = async (shell) => {
+    try {
+      const data = await fetchBrowserNotifications(shell, { prime: true })
+      const cursor = typeof data?.latest_cursor_gmt === 'string' ? data.latest_cursor_gmt : ''
+      if (cursor) {
+        setBrowserNotificationCursor(shell, cursor)
+      }
+    } catch (error) {
+      logFrontendDebug('browser_notifications_prime_error', {
+        projectId: shell?.dataset?.rehearsalProjectId || '',
+        message: error?.message || ''
+      })
+    }
+  }
+
+  const showBrowserNotification = (shell, event) => {
+    if (!supportsBrowserNotifications() || window.Notification.permission !== 'granted' || !event) {
+      return
+    }
+
+    const projectId = shell?.dataset?.rehearsalProjectId || 'project'
+    const url = typeof event?.url === 'string' && event.url ? event.url : window.location.href
+    const eventId = String(event?.id || '')
+    const sessionId = String(event?.session_id || '')
+    const createdAt = String(event?.created_at_gmt || '')
+    const notification = new window.Notification(String(event?.title || ''), {
+      body: String(event?.body || ''),
+      tag: `wpssb-rehearsal:${projectId}:${eventId || createdAt || sessionId || Date.now()}`,
+      requireInteraction: true,
+      data: { url },
+    })
+
+    notification.onclick = () => {
+      try {
+        window.focus()
+      } catch (error) {
+        // Ignore focus failures and continue with navigation.
+      }
+
+      if (url) {
+        window.location.href = url
+      }
+
+      notification.close()
+    }
+  }
+
+  const pollBrowserNotifications = async (shell) => {
+    if (!shouldPollBrowserNotifications(shell)) {
+      return []
+    }
+
+    const after = getBrowserNotificationCursor(shell)
+    const data = await fetchBrowserNotifications(shell, { after })
+    const events = Array.isArray(data?.events) ? data.events : []
+    const latestCursor = typeof data?.latest_cursor_gmt === 'string' ? data.latest_cursor_gmt : ''
+
+    events.forEach((event) => {
+      showBrowserNotification(shell, event)
+    })
+
+    if (latestCursor) {
+      setBrowserNotificationCursor(shell, latestCursor)
+    }
+
+    return events
+  }
+
+  const scheduleBrowserNotificationPoll = (shell, delayMs = null) => {
+    clearBrowserNotificationTimer(shell)
+
+    if (!shouldPollBrowserNotifications(shell)) {
+      return
+    }
+
+    const config = getBrowserNotificationConfig()
+    const interval = Number(config?.pollIntervalMs) > 0 ? Number(config.pollIntervalMs) : 45000
+    const waitMs = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : interval
+
+    shell._wpssbBrowserNotificationTimerId = window.setTimeout(async () => {
+      try {
+        await pollBrowserNotifications(shell)
+      } catch (error) {
+        logFrontendDebug('browser_notifications_poll_error', {
+          projectId: shell?.dataset?.rehearsalProjectId || '',
+          message: error?.message || ''
+        })
+      } finally {
+        scheduleBrowserNotificationPoll(shell)
+      }
+    }, waitMs)
+  }
+
+  const sendBrowserNotificationActivationTest = (shell = null) => {
+    const config = getBrowserNotificationConfig()
+    const messages = getBrowserNotificationMessages()
+    const testTitle = String(config?.test?.title || '')
+    const testBody = String(config?.test?.body || '')
+
+    if (!supportsBrowserNotifications() || window.Notification.permission !== 'granted' || !testTitle || !testBody) {
+      return
+    }
+
+    const notification = new window.Notification(testTitle, { body: testBody, tag: 'wpssb-rehearsal-activation-test' })
+    window.setTimeout(() => notification.close(), 5000)
+    setBrowserNotificationStatus(shell, messages.testSent || '')
+  }
+
+  const checkBrowserNotificationsNow = async (shell) => {
+    const messages = getBrowserNotificationMessages()
+
+    if (!canFetchBrowserNotifications(shell)) {
+      setBrowserNotificationStatus(shell, messages.checkError || messages.error || '')
+      return
+    }
+
+    try {
+      const data = await fetchBrowserNotifications(shell, { after: getBrowserNotificationCursor(shell) })
+      const events = Array.isArray(data?.events) ? data.events : []
+      const latestCursor = typeof data?.latest_cursor_gmt === 'string' ? data.latest_cursor_gmt : ''
+
+      events.forEach((event) => {
+        showBrowserNotification(shell, event)
+      })
+
+      if (latestCursor) {
+        setBrowserNotificationCursor(shell, latestCursor)
+      }
+
+      const debugLine = formatBrowserNotificationCheckDebug(data)
+
+      if (events.length === 1) {
+        setBrowserNotificationStatus(shell, [messages.checkOne || '', debugLine].filter(Boolean).join(' '))
+      } else if (events.length > 1) {
+        setBrowserNotificationStatus(shell, [String(messages.checkMany || '').replace('%d', String(events.length)), debugLine].filter(Boolean).join(' '))
+      } else {
+        setBrowserNotificationStatus(shell, [messages.checkEmpty || '', debugLine].filter(Boolean).join(' '))
+      }
+    } catch (error) {
+      logFrontendDebug('browser_notifications_manual_check_error', {
+        projectId: shell?.dataset?.rehearsalProjectId || '',
+        message: error?.message || ''
+      })
+      const errorText = error?.message ? `${messages.checkError || messages.error || ''} ${String(error.message)}`.trim() : (messages.checkError || messages.error || '')
+      setBrowserNotificationStatus(shell, errorText)
+    }
+  }
+
+  const enableBrowserNotifications = async (shell) => {
+    if (!supportsBrowserNotifications()) {
+      updateBrowserNotificationUi(shell)
+      return
+    }
+
+    let permission = window.Notification.permission
+
+    if (permission !== 'granted') {
+      try {
+        permission = await window.Notification.requestPermission()
+      } catch (error) {
+        permission = window.Notification.permission
+      }
+    }
+
+    if (permission === 'granted') {
+      setBrowserNotificationPreference(shell, 'enabled')
+      clearBrowserNotificationTimer(shell)
+      await primeBrowserNotifications(shell)
+      await ensureWebPushSubscription(shell)
+      updateBrowserNotificationUi(shell)
+      sendBrowserNotificationActivationTest(shell)
+      if (!shouldUseWebPush(shell)) {
+        scheduleBrowserNotificationPoll(shell, 5000)
+      }
+      return
+    }
+
+    setBrowserNotificationPreference(shell, permission === 'denied' ? 'denied' : 'dismissed')
+    clearBrowserNotificationTimer(shell)
+    updateBrowserNotificationUi(shell)
+  }
+
+  const initBrowserNotifications = (shell) => {
+    const panel = shell?.querySelector('[data-rehearsal-browser-notifications]')
+    if (!panel || panel.dataset.rehearsalBrowserNotificationsReady === 'true') {
+      return
+    }
+
+    panel.dataset.rehearsalBrowserNotificationsReady = 'true'
+
+    const enableButton = panel.querySelector('[data-rehearsal-browser-enable]')
+    const dismissButton = panel.querySelector('[data-rehearsal-browser-dismiss]')
+    const testButton = panel.querySelector('[data-rehearsal-browser-test]')
+    const checkButton = panel.querySelector('[data-rehearsal-browser-check]')
+    const disableButton = panel.querySelector('[data-rehearsal-browser-disable]')
+    const preference = getBrowserNotificationPreference(shell)
+
+    if (supportsBrowserNotifications() && window.Notification.permission === 'granted' && preference !== 'disabled') {
+      setBrowserNotificationPreference(shell, 'enabled')
+    }
+
+    if (enableButton) {
+      enableButton.addEventListener('click', async () => {
+        enableButton.disabled = true
+        try {
+          await enableBrowserNotifications(shell)
+        } finally {
+          enableButton.disabled = false
+        }
+      })
+    }
+
+    if (dismissButton) {
+      dismissButton.addEventListener('click', () => {
+        setBrowserNotificationPreference(shell, 'dismissed')
+        clearBrowserNotificationTimer(shell)
+        updateBrowserNotificationUi(shell)
+      })
+    }
+
+    if (testButton) {
+      testButton.addEventListener('click', () => {
+        sendBrowserNotificationActivationTest(shell)
+      })
+    }
+
+    if (checkButton) {
+      checkButton.addEventListener('click', async () => {
+        checkButton.disabled = true
+        try {
+          await checkBrowserNotificationsNow(shell)
+        } finally {
+          checkButton.disabled = false
+        }
+      })
+    }
+
+    if (disableButton) {
+      disableButton.addEventListener('click', async () => {
+        setBrowserNotificationPreference(shell, 'disabled')
+        clearBrowserNotificationTimer(shell)
+        await disableWebPushSubscription(shell)
+        updateBrowserNotificationUi(shell)
+      })
+    }
+
+    updateBrowserNotificationUi(shell)
+
+    if (canFetchBrowserNotifications(shell)) {
+      if (shouldUseWebPush(shell)) {
+        ensureWebPushSubscription(shell).finally(() => {
+          updateBrowserNotificationUi(shell)
+        })
+      } else if (getBrowserNotificationCursor(shell)) {
+        pollBrowserNotifications(shell)
+          .catch((error) => {
+            logFrontendDebug('browser_notifications_initial_poll_error', {
+              projectId: shell?.dataset?.rehearsalProjectId || '',
+              message: error?.message || ''
+            })
+          })
+          .finally(() => {
+            scheduleBrowserNotificationPoll(shell)
+          })
+      } else {
+        primeBrowserNotifications(shell).finally(() => {
+          scheduleBrowserNotificationPoll(shell)
+        })
+      }
     }
   }
 
@@ -1952,6 +2778,8 @@
       .filter((element) => !isHiddenInside(element, root))
     const carousels = Array.from(root.querySelectorAll('[data-rehearsal-card-carousel]'))
       .filter((element) => !isHiddenInside(element, root))
+    const integratedCalendars = Array.from(root.querySelectorAll('[data-rehearsal-integrated-calendar]'))
+      .filter((element) => !isHiddenInside(element, root))
 
     logFrontendDebug('init_visible_panel_content_start', {
       root: describeDebugRoot(root),
@@ -1961,7 +2789,8 @@
       logbookFormCount: logbookForms.length,
       proposalFormCount: proposalForms.length,
       deleteFormCount: deleteForms.length,
-      carouselCount: carousels.length
+      carouselCount: carousels.length,
+      integratedCalendarCount: integratedCalendars.length
     })
 
     memberEditors.forEach((element, index) => {
@@ -1989,6 +2818,7 @@
     proposalForms.forEach(initProposalAutosave)
     deleteForms.forEach(initProposalDeleteForm)
     carousels.forEach(initCardCarousel)
+    integratedCalendars.forEach(initIntegratedCalendar)
 
     logFrontendDebug('init_visible_panel_content_complete', {
       root: describeDebugRoot(root)
@@ -2234,28 +3064,37 @@
       }
 
       const calendarToggle = shell.querySelector('[data-rehearsal-calendar-view-tabs]')
+      const calendarViewSelect = shell.querySelector('[data-rehearsal-calendar-view-select]')
 
-      if (calendarToggle) {
-        const calendarTabs = Array.from(calendarToggle.querySelectorAll('[data-rehearsal-calendar-view-tab]'))
-        const queryKey = calendarToggle.dataset.rehearsalQuery || 'rehearsal_calendar_view'
+      if (calendarToggle || calendarViewSelect) {
+        const calendarTabs = calendarToggle ? Array.from(calendarToggle.querySelectorAll('[data-rehearsal-calendar-view-tab]')) : []
+        const calendarOptions = calendarViewSelect instanceof HTMLSelectElement ? Array.from(calendarViewSelect.options) : []
+        const queryKey = calendarToggle?.dataset?.rehearsalQuery || calendarViewSelect?.dataset?.rehearsalQuery || 'rehearsal_calendar_view'
         const storedCalendarView = readShellState(shell, 'calendar-view')
-        const initialCalendarTab = calendarTabs.find((tab) => tab.classList.contains('is-active'))
-          || (!hasUrlParam(queryKey) && storedCalendarView ? calendarTabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === storedCalendarView) : null)
-          || calendarTabs[0]
+        const activeCalendarTab = calendarTabs.find((tab) => tab.classList.contains('is-active'))
+        const storedCalendarTab = !hasUrlParam(queryKey) && storedCalendarView
+          ? calendarTabs.find((tab) => tab.dataset.rehearsalCalendarViewTab === storedCalendarView)
+          : null
+        const storedCalendarOption = !hasUrlParam(queryKey) && storedCalendarView
+          ? calendarOptions.find((option) => option.value === storedCalendarView)
+          : null
+        const initialCalendarView = activeCalendarTab?.dataset?.rehearsalCalendarViewTab
+          || storedCalendarTab?.dataset?.rehearsalCalendarViewTab
+          || storedCalendarOption?.value
+          || (calendarViewSelect instanceof HTMLSelectElement ? calendarViewSelect.value : '')
+          || calendarTabs[0]?.dataset?.rehearsalCalendarViewTab
+          || calendarOptions[0]?.value
+          || ''
 
         logFrontendDebug('shell_calendar_detected', {
           shellIndex,
           projectId,
           calendarTabCount: calendarTabs.length,
-          initialCalendarView: initialCalendarTab?.dataset?.rehearsalCalendarViewTab || ''
+          initialCalendarView
         })
 
-        if (initialCalendarTab) {
-          const initialCalendarView = initialCalendarTab.dataset.rehearsalCalendarViewTab || ''
-          const activeCalendarPanel = shell.querySelector(`[data-rehearsal-calendar-view-panel="${initialCalendarView}"]`)
-
-          initVisiblePanelContent(activeCalendarPanel)
-          writeShellState(shell, 'calendar-view', initialCalendarView)
+        if (initialCalendarView) {
+          activateCalendarView(shell, initialCalendarView, { syncUrl: false })
         }
 
         calendarTabs.forEach((tab) => {
@@ -2279,6 +3118,12 @@
             }
           })
         })
+
+        if (calendarViewSelect instanceof HTMLSelectElement) {
+          calendarViewSelect.addEventListener('change', () => {
+            activateCalendarView(shell, calendarViewSelect.value)
+          })
+        }
       }
 
       logFrontendDebug('shell_content_init_start', {
@@ -2289,6 +3134,7 @@
       initVisiblePanelContent(shell)
       initCollapsiblePanels(shell)
       initProjectSwitcher(shell)
+      initBrowserNotifications(shell)
       initCalendarEventModal(shell)
       focusProjectSelector(shell)
 

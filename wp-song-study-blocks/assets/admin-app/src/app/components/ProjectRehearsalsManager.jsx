@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppState } from '../StateProvider.jsx'
 
 const DAY_OPTIONS = [
@@ -42,6 +42,46 @@ const VOTE_OPTIONS = [
 ]
 
 const VOTE_LABELS = Object.fromEntries(VOTE_OPTIONS.map((option) => [option.value, option.label]))
+
+const BROWSER_NOTIFICATION_POLL_MS = 5000
+
+function supportsBrowserNotifications() {
+  return typeof window !== 'undefined' && 'Notification' in window
+}
+
+function getBrowserNotificationStorageKey(currentUserId, projectId, scope) {
+  return `wpssb:admin-rehearsal:${Number(currentUserId) || 0}:${Number(projectId) || 0}:${scope}`
+}
+
+function readBrowserNotificationStorage(currentUserId, projectId, scope) {
+  if (typeof window === 'undefined' || !window.localStorage || !projectId) {
+    return ''
+  }
+
+  try {
+    return window.localStorage.getItem(getBrowserNotificationStorageKey(currentUserId, projectId, scope)) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeBrowserNotificationStorage(currentUserId, projectId, scope, value) {
+  if (typeof window === 'undefined' || !window.localStorage || !projectId) {
+    return
+  }
+
+  try {
+    const key = getBrowserNotificationStorageKey(currentUserId, projectId, scope)
+    if (!value) {
+      window.localStorage.removeItem(key)
+      return
+    }
+
+    window.localStorage.setItem(key, String(value))
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
 
 function createRange(prefix = 'slot') {
   return {
@@ -632,6 +672,136 @@ function renderSyncStatus(session) {
   return ''
 }
 
+const AvailabilityCard = memo(function AvailabilityCard({
+  entry,
+  onToggleBlockedDay,
+  onUpdateAvailabilityEntry,
+  onAddAvailabilityRange,
+  onUpdateAvailabilityRangeField,
+  onRemoveAvailabilityRange,
+}) {
+  const availableDayOptions = DAY_OPTIONS.filter((option) => !entry.blocked_days.includes(option.value))
+
+  return (
+    <article className="wpss-project-rehearsals__card">
+      <div className="wpss-project-rehearsals__card-header">
+        <strong>{entry.nombre}</strong>
+      </div>
+
+      <div className="wpss-project-rehearsals__availability-section">
+        <strong>No disponible todo el día</strong>
+        <div className="wpss-project-rehearsals__day-toggles">
+          {DAY_OPTIONS.map((option) => (
+            <label key={`${entry.user_id}-${option.value}`} className="wpss-project-rehearsals__day-chip">
+              <input
+                type="checkbox"
+                checked={entry.blocked_days.includes(option.value)}
+                onChange={(event) => onToggleBlockedDay(entry.user_id, option.value, event.target.checked)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <label className="wpss-field">
+        <span>Observaciones</span>
+        <textarea
+          rows="2"
+          value={entry.notes}
+          onChange={(event) => onUpdateAvailabilityEntry(entry.user_id, { ...entry, notes: event.target.value })}
+        />
+      </label>
+
+      <div className="wpss-project-rehearsals__availability-section">
+        <div className="wpss-project-rehearsals__subheader">
+          <strong>Disponible por rangos</strong>
+          <button type="button" className="button button-small" onClick={() => onAddAvailabilityRange(entry.user_id, 'slots')}>
+            Añadir horario
+          </button>
+        </div>
+        <div className="wpss-project-rehearsals__slot-list">
+          {entry.slots.map((slot) => (
+            <div key={slot.id} className="wpss-project-rehearsals__slot-row">
+              <label className="wpss-project-rehearsals__slot-field wpss-project-rehearsals__slot-field--day">
+                <span>Día</span>
+                <select value={slot.day} onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'day', event.target.value)}>
+                  {availableDayOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="wpss-project-rehearsals__slot-field">
+                <span>Inicio</span>
+                <input
+                  type="time"
+                  value={slot.start}
+                  onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'start', event.target.value)}
+                />
+              </label>
+              <label className="wpss-project-rehearsals__slot-field">
+                <span>Fin</span>
+                <input
+                  type="time"
+                  value={slot.end}
+                  onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'end', event.target.value)}
+                />
+              </label>
+              <button type="button" className="button button-small button-link-delete" onClick={() => onRemoveAvailabilityRange(entry.user_id, 'slots', slot.id)}>
+                Quitar
+              </button>
+            </div>
+          ))}
+          {!entry.slots.length ? <p className="wpss-collections__hint">Sin rangos disponibles definidos.</p> : null}
+        </div>
+      </div>
+
+      <div className="wpss-project-rehearsals__availability-section">
+        <div className="wpss-project-rehearsals__subheader">
+          <strong>No disponible por rangos</strong>
+          <button type="button" className="button button-small" onClick={() => onAddAvailabilityRange(entry.user_id, 'unavailable_slots')}>
+            Añadir bloqueo
+          </button>
+        </div>
+        <div className="wpss-project-rehearsals__slot-list">
+          {entry.unavailable_slots.map((slot) => (
+            <div key={slot.id} className="wpss-project-rehearsals__slot-row">
+              <label className="wpss-project-rehearsals__slot-field wpss-project-rehearsals__slot-field--day">
+                <span>Día</span>
+                <select value={slot.day} onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'day', event.target.value)}>
+                  {availableDayOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="wpss-project-rehearsals__slot-field">
+                <span>Inicio</span>
+                <input
+                  type="time"
+                  value={slot.start}
+                  onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'start', event.target.value)}
+                />
+              </label>
+              <label className="wpss-project-rehearsals__slot-field">
+                <span>Fin</span>
+                <input
+                  type="time"
+                  value={slot.end}
+                  onChange={(event) => onUpdateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'end', event.target.value)}
+                />
+              </label>
+              <button type="button" className="button button-small button-link-delete" onClick={() => onRemoveAvailabilityRange(entry.user_id, 'unavailable_slots', slot.id)}>
+                Quitar
+              </button>
+            </div>
+          ))}
+          {!entry.unavailable_slots.length ? <p className="wpss-collections__hint">Sin bloqueos parciales definidos.</p> : null}
+        </div>
+      </div>
+    </article>
+  )
+})
+
 export default function ProjectRehearsalsManager() {
   const { api, wpData } = useAppState()
   const canRescueAvailability = true
@@ -658,6 +828,13 @@ export default function ProjectRehearsalsManager() {
   const [rescueTargetProjectId, setRescueTargetProjectId] = useState(null)
   const [rescueMode, setRescueMode] = useState('move')
   const [rescueEntries, setRescueEntries] = useState([])
+  const [browserNotificationPreference, setBrowserNotificationPreference] = useState('')
+  const [browserNotificationMessage, setBrowserNotificationMessage] = useState('')
+  const [browserNotificationLastCheck, setBrowserNotificationLastCheck] = useState('')
+  const browserNotificationTimerRef = useRef(null)
+  const browserNotificationCursorRef = useRef('')
+
+  const browserNotificationSupported = supportsBrowserNotifications()
 
   const refreshProjects = useCallback(
     (preferredId = null) => {
@@ -838,11 +1015,7 @@ export default function ProjectRehearsalsManager() {
   useEffect(() => {
     if (!canRescueAvailability) return undefined
 
-    if (!rescueSourceProjectId) {
-      setRescueEntries([])
-      setRescueUserId(null)
-      return undefined
-    }
+    if (!rescueSourceProjectId) return undefined
 
     const timeoutId = window.setTimeout(() => {
       loadRescueAvailability(rescueSourceProjectId)
@@ -852,6 +1025,303 @@ export default function ProjectRehearsalsManager() {
       window.clearTimeout(timeoutId)
     }
   }, [canRescueAvailability, rescueSourceProjectId, loadRescueAvailability])
+
+  const clearBrowserNotificationTimer = useCallback(() => {
+    if (browserNotificationTimerRef.current) {
+      window.clearTimeout(browserNotificationTimerRef.current)
+      browserNotificationTimerRef.current = null
+    }
+  }, [])
+
+  const browserNotificationMessages = useMemo(() => ({
+    prompt: 'Activa las notificaciones del navegador para enterarte de cambios del grupo mientras este panel siga abierto.',
+    enabled: 'Notificaciones activadas en este navegador para el proyecto activo.',
+    disabled: 'Las notificaciones de este proyecto quedaron desactivadas en este navegador.',
+    denied: 'El navegador bloqueó este permiso. Si cambias de idea, habilítalo desde la configuración del sitio.',
+    unsupported: 'Este navegador no ofrece la API de notificaciones necesaria para este panel.',
+    error: 'No fue posible revisar las notificaciones nuevas del proyecto.',
+  }), [])
+
+  const syncBrowserNotificationUi = useCallback((projectId, preferenceOverride = null) => {
+    if (!browserNotificationSupported) {
+      setBrowserNotificationMessage(browserNotificationMessages.unsupported)
+      setBrowserNotificationPreference('')
+      return
+    }
+
+    const permission = window.Notification.permission
+    const storedPreference = preferenceOverride ?? readBrowserNotificationStorage(currentUserId, projectId, 'preference')
+
+    if (permission === 'denied') {
+      setBrowserNotificationPreference('denied')
+      setBrowserNotificationMessage(browserNotificationMessages.denied)
+      return
+    }
+
+    if (permission === 'granted' && storedPreference !== 'disabled') {
+      if (storedPreference !== 'enabled') {
+        writeBrowserNotificationStorage(currentUserId, projectId, 'preference', 'enabled')
+      }
+      setBrowserNotificationPreference('enabled')
+      setBrowserNotificationMessage(browserNotificationMessages.enabled)
+      return
+    }
+
+    setBrowserNotificationPreference(storedPreference)
+    setBrowserNotificationMessage(
+      storedPreference === 'disabled'
+        ? browserNotificationMessages.disabled
+        : browserNotificationMessages.prompt
+    )
+  }, [browserNotificationMessages, browserNotificationSupported, currentUserId])
+
+  const fetchBrowserNotifications = useCallback(async (projectId, options = {}) => {
+    if (!projectId || !wpData?.adminAjaxUrl || !wpData?.browserNotificationsNonce) {
+      return null
+    }
+
+    const formData = new FormData()
+    formData.append('action', 'wpssb_get_rehearsal_browser_notifications')
+    formData.append('nonce', wpData.browserNotificationsNonce)
+    formData.append('project_id', String(projectId))
+
+    if (options?.after) {
+      formData.append('after', String(options.after))
+    }
+
+    if (options?.prime) {
+      formData.append('prime', '1')
+    }
+
+    const response = await window.fetch(wpData.adminAjaxUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: formData,
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.data?.message || browserNotificationMessages.error)
+    }
+
+    return payload?.data && typeof payload.data === 'object' ? payload.data : null
+  }, [browserNotificationMessages.error, wpData])
+
+  const showBrowserNotification = useCallback((event) => {
+    if (!browserNotificationSupported || window.Notification.permission !== 'granted' || !event) {
+      return
+    }
+
+    const url = typeof event?.url === 'string' && event.url ? event.url : window.location.href
+    const notification = new window.Notification(String(event?.title || ''), {
+      body: String(event?.body || ''),
+      tag: `wpssb-admin-rehearsal:${activeProjectId || 'project'}:${event?.session_id || event?.id || Date.now()}`,
+      data: { url },
+    })
+
+    notification.onclick = () => {
+      try {
+        window.focus()
+      } catch {
+        // Ignore focus failures.
+      }
+
+      if (url) {
+        window.location.href = url
+      }
+
+      notification.close()
+    }
+  }, [activeProjectId, browserNotificationSupported])
+
+  const primeBrowserNotifications = useCallback(async (projectId) => {
+    const data = await fetchBrowserNotifications(projectId, { prime: true })
+    const cursor = typeof data?.latest_cursor_gmt === 'string' ? data.latest_cursor_gmt : ''
+    browserNotificationCursorRef.current = cursor
+    writeBrowserNotificationStorage(currentUserId, projectId, 'cursor', cursor)
+  }, [currentUserId, fetchBrowserNotifications])
+
+  const pollBrowserNotifications = useCallback(async (projectId) => {
+    if (!projectId || !browserNotificationSupported || window.Notification.permission !== 'granted') {
+      return
+    }
+
+    const data = await fetchBrowserNotifications(projectId, { after: browserNotificationCursorRef.current })
+    const events = Array.isArray(data?.events) ? data.events : []
+    const latestCursor = typeof data?.latest_cursor_gmt === 'string' ? data.latest_cursor_gmt : ''
+
+    events.forEach((event) => {
+      showBrowserNotification(event)
+    })
+
+    if (latestCursor) {
+      browserNotificationCursorRef.current = latestCursor
+      writeBrowserNotificationStorage(currentUserId, projectId, 'cursor', latestCursor)
+    }
+
+    setBrowserNotificationLastCheck(
+      events.length
+        ? `Se detectaron ${events.length} cambio(s) en la última revisión.`
+        : 'Última revisión sin cambios nuevos.'
+    )
+  }, [browserNotificationSupported, currentUserId, fetchBrowserNotifications, showBrowserNotification])
+
+  const scheduleBrowserNotificationPoll = useCallback((projectId, delayMs = BROWSER_NOTIFICATION_POLL_MS) => {
+    clearBrowserNotificationTimer()
+
+    if (
+      !projectId
+      || !browserNotificationSupported
+      || window.Notification.permission !== 'granted'
+      || readBrowserNotificationStorage(currentUserId, projectId, 'preference') !== 'enabled'
+    ) {
+      return
+    }
+
+    browserNotificationTimerRef.current = window.setTimeout(async () => {
+      try {
+        await pollBrowserNotifications(projectId)
+      } catch (error) {
+        setBrowserNotificationMessage(error?.message || browserNotificationMessages.error)
+      } finally {
+        scheduleBrowserNotificationPoll(projectId)
+      }
+    }, delayMs)
+  }, [
+    browserNotificationMessages.error,
+    browserNotificationSupported,
+    clearBrowserNotificationTimer,
+    currentUserId,
+    pollBrowserNotifications,
+  ])
+
+  const enableBrowserNotifications = useCallback(async () => {
+    if (!activeProjectId || !browserNotificationSupported) {
+      syncBrowserNotificationUi(activeProjectId || 0)
+      return
+    }
+
+    let permission = window.Notification.permission
+
+    if (permission !== 'granted') {
+      try {
+        permission = await window.Notification.requestPermission()
+      } catch {
+        permission = window.Notification.permission
+      }
+    }
+
+    if (permission === 'granted') {
+      writeBrowserNotificationStorage(currentUserId, activeProjectId, 'preference', 'enabled')
+      setBrowserNotificationPreference('enabled')
+      await primeBrowserNotifications(activeProjectId)
+      setBrowserNotificationMessage(browserNotificationMessages.enabled)
+      const notification = new window.Notification('Notificaciones activadas', {
+        body: 'Te avisaremos aquí cuando cambien propuestas o ensayos del proyecto activo.',
+        tag: `wpssb-admin-rehearsal-test:${activeProjectId}`,
+      })
+      window.setTimeout(() => notification.close(), 5000)
+      setBrowserNotificationLastCheck('Permiso concedido. La prueba local del navegador ya debería haberse mostrado.')
+      scheduleBrowserNotificationPoll(activeProjectId, 8000)
+      return
+    }
+
+    writeBrowserNotificationStorage(currentUserId, activeProjectId, 'preference', permission === 'denied' ? 'denied' : 'dismissed')
+    syncBrowserNotificationUi(activeProjectId, permission === 'denied' ? 'denied' : 'dismissed')
+  }, [
+    activeProjectId,
+    browserNotificationMessages.enabled,
+    browserNotificationSupported,
+    currentUserId,
+    primeBrowserNotifications,
+    scheduleBrowserNotificationPoll,
+    syncBrowserNotificationUi,
+  ])
+
+  const disableBrowserNotifications = useCallback(() => {
+    if (!activeProjectId) return
+    writeBrowserNotificationStorage(currentUserId, activeProjectId, 'preference', 'disabled')
+    clearBrowserNotificationTimer()
+    setBrowserNotificationLastCheck('')
+    syncBrowserNotificationUi(activeProjectId, 'disabled')
+  }, [activeProjectId, clearBrowserNotificationTimer, currentUserId, syncBrowserNotificationUi])
+
+  const sendTestBrowserNotification = useCallback(() => {
+    if (!browserNotificationSupported || window.Notification.permission !== 'granted' || !activeProjectId) {
+      setBrowserNotificationLastCheck('La prueba local no pudo mostrarse porque el permiso aún no está concedido.')
+      return
+    }
+
+    const notification = new window.Notification('Prueba de notificación', {
+      body: `Proyecto activo ${activeProjectId}. Si viste esto, la API del navegador sí está funcionando.`,
+      tag: `wpssb-admin-rehearsal-manual-test:${activeProjectId}`,
+    })
+    window.setTimeout(() => notification.close(), 5000)
+    setBrowserNotificationLastCheck('Se lanzó una prueba local del navegador.')
+  }, [activeProjectId, browserNotificationSupported])
+
+  const checkBrowserNotificationsNow = useCallback(async () => {
+    if (!activeProjectId) {
+      return
+    }
+
+    try {
+      await pollBrowserNotifications(activeProjectId)
+    } catch (error) {
+      setBrowserNotificationLastCheck(error?.message || browserNotificationMessages.error)
+    }
+  }, [activeProjectId, browserNotificationMessages.error, pollBrowserNotifications])
+
+  useEffect(() => {
+    if (!activeProjectId) {
+      clearBrowserNotificationTimer()
+      browserNotificationCursorRef.current = ''
+      setBrowserNotificationPreference('')
+      setBrowserNotificationMessage('')
+      setBrowserNotificationLastCheck('')
+      return undefined
+    }
+
+    browserNotificationCursorRef.current = readBrowserNotificationStorage(currentUserId, activeProjectId, 'cursor')
+    syncBrowserNotificationUi(activeProjectId)
+
+    const storedPreference = readBrowserNotificationStorage(currentUserId, activeProjectId, 'preference')
+    if (browserNotificationSupported && window.Notification.permission === 'granted' && storedPreference !== 'disabled') {
+      if (browserNotificationCursorRef.current) {
+        pollBrowserNotifications(activeProjectId)
+          .catch((error) => {
+            setBrowserNotificationMessage(error?.message || browserNotificationMessages.error)
+          })
+          .finally(() => {
+            scheduleBrowserNotificationPoll(activeProjectId)
+          })
+      } else {
+        primeBrowserNotifications(activeProjectId)
+          .catch((error) => {
+            setBrowserNotificationMessage(error?.message || browserNotificationMessages.error)
+          })
+          .finally(() => {
+            scheduleBrowserNotificationPoll(activeProjectId)
+          })
+      }
+    } else {
+      clearBrowserNotificationTimer()
+    }
+
+    return () => {
+      clearBrowserNotificationTimer()
+    }
+  }, [
+    activeProjectId,
+    browserNotificationMessages.error,
+    browserNotificationSupported,
+    clearBrowserNotificationTimer,
+    currentUserId,
+    pollBrowserNotifications,
+    primeBrowserNotifications,
+    scheduleBrowserNotificationPoll,
+    syncBrowserNotificationUi,
+  ])
 
   const collaborators = useMemo(
     () => (Array.isArray(draft?.project?.colaboradores) ? draft.project.colaboradores : []),
@@ -920,26 +1390,21 @@ export default function ProjectRehearsalsManager() {
     }),
     [rescueProjects, rescueSourceProjectId, rescueUserId],
   )
+  const effectiveRescueTargetProjectId = useMemo(() => {
+    if (rescueTargetProjectId && availableRescueTargets.some((project) => Number(project?.id) === Number(rescueTargetProjectId))) {
+      return Number(rescueTargetProjectId)
+    }
+    return availableRescueTargets[0]?.id ? Number(availableRescueTargets[0].id) : null
+  }, [availableRescueTargets, rescueTargetProjectId])
 
-  useEffect(() => {
-    if (!canRescueAvailability) return
-
-    setRescueTargetProjectId((previous) => {
-      if (previous && availableRescueTargets.some((project) => Number(project?.id) === Number(previous))) {
-        return Number(previous)
-      }
-      return availableRescueTargets[0]?.id ? Number(availableRescueTargets[0].id) : null
-    })
-  }, [availableRescueTargets, canRescueAvailability])
-
-  const updateDraft = (updater) => {
+  const updateDraft = useCallback((updater) => {
     setDraft((previous) => {
       if (!previous) return previous
       return typeof updater === 'function' ? updater(previous) : updater
     })
-  }
+  }, [])
 
-  const updateAvailabilityEntry = (userId, updater) => {
+  const updateAvailabilityEntry = useCallback((userId, updater) => {
     updateDraft((previous) => ({
       ...previous,
       availability: previous.availability.map((item) => (
@@ -950,30 +1415,30 @@ export default function ProjectRehearsalsManager() {
           : item
       )),
     }))
-  }
+  }, [updateDraft])
 
-  const addAvailabilityRange = (userId, key) => {
+  const addAvailabilityRange = useCallback((userId, key) => {
     updateAvailabilityEntry(userId, (entry) => ({
       ...entry,
       [key]: [...entry[key], createRange(key === 'slots' ? 'slot' : 'unavailable')],
     }))
-  }
+  }, [updateAvailabilityEntry])
 
-  const updateAvailabilityRangeField = (userId, key, rangeId, field, value) => {
+  const updateAvailabilityRangeField = useCallback((userId, key, rangeId, field, value) => {
     updateAvailabilityEntry(userId, (entry) => ({
       ...entry,
       [key]: entry[key].map((slot) => (slot.id === rangeId ? { ...slot, [field]: value } : slot)),
     }))
-  }
+  }, [updateAvailabilityEntry])
 
-  const removeAvailabilityRange = (userId, key, rangeId) => {
+  const removeAvailabilityRange = useCallback((userId, key, rangeId) => {
     updateAvailabilityEntry(userId, (entry) => ({
       ...entry,
       [key]: entry[key].filter((slot) => slot.id !== rangeId),
     }))
-  }
+  }, [updateAvailabilityEntry])
 
-  const toggleBlockedDay = (userId, day, checked) => {
+  const toggleBlockedDay = useCallback((userId, day, checked) => {
     updateAvailabilityEntry(userId, (entry) => {
       const blockedDays = new Set(Array.isArray(entry.blocked_days) ? entry.blocked_days : [])
       if (checked) blockedDays.add(day)
@@ -986,7 +1451,7 @@ export default function ProjectRehearsalsManager() {
         unavailable_slots: checked ? entry.unavailable_slots.filter((slot) => slot.day !== day) : entry.unavailable_slots,
       }
     })
-  }
+  }, [updateAvailabilityEntry])
 
   const updateSession = (sessionId, updater) => {
     updateDraft((previous) => ({
@@ -1173,7 +1638,8 @@ export default function ProjectRehearsalsManager() {
   }
 
   const handleRescueAvailability = () => {
-    if (!rescueSourceProjectId || !rescueUserId || !rescueTargetProjectId) return
+    const targetProjectId = effectiveRescueTargetProjectId
+    if (!rescueSourceProjectId || !rescueUserId || !targetProjectId) return
 
     const actionLabel = rescueMode === 'copy' ? 'Copiar' : 'Mover'
     const confirmed = window.confirm(
@@ -1188,7 +1654,7 @@ export default function ProjectRehearsalsManager() {
     api
       .rescueProjectRehearsalAvailability({
         source_project_id: rescueSourceProjectId,
-        target_project_id: rescueTargetProjectId,
+        target_project_id: targetProjectId,
         user_id: rescueUserId,
         mode: rescueMode,
       })
@@ -1199,7 +1665,7 @@ export default function ProjectRehearsalsManager() {
 
         if (
           Number(activeProjectId)
-          && [Number(rescueSourceProjectId), Number(rescueTargetProjectId)].includes(Number(activeProjectId))
+          && [Number(rescueSourceProjectId), Number(targetProjectId)].includes(Number(activeProjectId))
         ) {
           loadProject(activeProjectId)
         }
@@ -1261,6 +1727,38 @@ export default function ProjectRehearsalsManager() {
         {sessionValidationMessage ? (
           <p className="wpss-collections__hint">No puedes guardar mientras haya propuestas o ensayos incompletos. {sessionValidationMessage}</p>
         ) : null}
+        <div className={`wpss-project-rehearsals__google-status ${browserNotificationPreference === 'enabled' ? 'is-ready' : 'is-warning'}`}>
+          <div>
+            <strong>Notificaciones del navegador</strong>
+            <p>{browserNotificationMessage || 'Activa este permiso para enterarte de cambios del grupo mientras este panel siga abierto.'}</p>
+            <small>Esta versión funciona mientras tengas abierto este panel en el navegador.</small>
+            {browserNotificationLastCheck ? (
+              <small>{browserNotificationLastCheck}</small>
+            ) : null}
+          </div>
+          <div className="wpss-project-rehearsals__google-status-actions">
+            {browserNotificationPreference !== 'enabled' ? (
+              <button type="button" className="button button-small" onClick={enableBrowserNotifications} disabled={!activeProjectId}>
+                Activar notificaciones
+              </button>
+            ) : null}
+            {browserNotificationPreference === 'enabled' ? (
+              <button type="button" className="button button-small" onClick={sendTestBrowserNotification}>
+                Probar navegador
+              </button>
+            ) : null}
+            {browserNotificationPreference === 'enabled' ? (
+              <button type="button" className="button button-small button-secondary" onClick={checkBrowserNotificationsNow}>
+                Revisar ahora
+              </button>
+            ) : null}
+            {browserNotificationPreference === 'enabled' ? (
+              <button type="button" className="button button-small button-secondary" onClick={disableBrowserNotifications}>
+                Desactivar
+              </button>
+            ) : null}
+          </div>
+        </div>
         {canRescueAvailability ? (
           <section className="wpss-project-rehearsals__panel">
             <div className="wpss-project-rehearsals__panel-header">
@@ -1330,7 +1828,7 @@ export default function ProjectRehearsalsManager() {
               <label className="wpss-field">
                 <span>Proyecto destino</span>
                 <select
-                  value={rescueTargetProjectId || ''}
+                  value={effectiveRescueTargetProjectId || ''}
                   onChange={(event) => setRescueTargetProjectId(event.target.value ? Number(event.target.value) : null)}
                   disabled={!selectedRescueEntry || rescueActionLoading}
                 >
@@ -1436,122 +1934,15 @@ export default function ProjectRehearsalsManager() {
               ) : (
                 <div className="wpss-project-rehearsals__availability-grid">
                   {availability.map((entry) => (
-                    <article key={entry.user_id} className="wpss-project-rehearsals__card">
-                      <div className="wpss-project-rehearsals__card-header">
-                        <strong>{entry.nombre}</strong>
-                      </div>
-
-                      <div className="wpss-project-rehearsals__availability-section">
-                        <strong>No disponible todo el día</strong>
-                        <div className="wpss-project-rehearsals__day-toggles">
-                          {DAY_OPTIONS.map((option) => (
-                            <label key={`${entry.user_id}-${option.value}`} className="wpss-project-rehearsals__day-chip">
-                              <input
-                                type="checkbox"
-                                checked={entry.blocked_days.includes(option.value)}
-                                onChange={(event) => toggleBlockedDay(entry.user_id, option.value, event.target.checked)}
-                              />
-                              <span>{option.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <label className="wpss-field">
-                        <span>Observaciones</span>
-                        <textarea
-                          rows="2"
-                          value={entry.notes}
-                          onChange={(event) => updateAvailabilityEntry(entry.user_id, { ...entry, notes: event.target.value })}
-                        />
-                      </label>
-
-                      <div className="wpss-project-rehearsals__availability-section">
-                        <div className="wpss-project-rehearsals__subheader">
-                          <strong>Disponible por rangos</strong>
-                          <button type="button" className="button button-small" onClick={() => addAvailabilityRange(entry.user_id, 'slots')}>
-                            Añadir horario
-                          </button>
-                        </div>
-                        <div className="wpss-project-rehearsals__slot-list">
-                          {entry.slots.map((slot) => (
-                            <div key={slot.id} className="wpss-project-rehearsals__slot-row">
-                              <label className="wpss-project-rehearsals__slot-field wpss-project-rehearsals__slot-field--day">
-                                <span>Día</span>
-                                <select value={slot.day} onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'day', event.target.value)}>
-                                  {DAY_OPTIONS.filter((option) => !entry.blocked_days.includes(option.value)).map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="wpss-project-rehearsals__slot-field">
-                                <span>Inicio</span>
-                                <input
-                                  type="time"
-                                  value={slot.start}
-                                  onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'start', event.target.value)}
-                                />
-                              </label>
-                              <label className="wpss-project-rehearsals__slot-field">
-                                <span>Fin</span>
-                                <input
-                                  type="time"
-                                  value={slot.end}
-                                  onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'slots', slot.id, 'end', event.target.value)}
-                                />
-                              </label>
-                              <button type="button" className="button button-small button-link-delete" onClick={() => removeAvailabilityRange(entry.user_id, 'slots', slot.id)}>
-                                Quitar
-                              </button>
-                            </div>
-                          ))}
-                          {!entry.slots.length ? <p className="wpss-collections__hint">Sin rangos disponibles definidos.</p> : null}
-                        </div>
-                      </div>
-
-                      <div className="wpss-project-rehearsals__availability-section">
-                        <div className="wpss-project-rehearsals__subheader">
-                          <strong>No disponible por rangos</strong>
-                          <button type="button" className="button button-small" onClick={() => addAvailabilityRange(entry.user_id, 'unavailable_slots')}>
-                            Añadir bloqueo
-                          </button>
-                        </div>
-                        <div className="wpss-project-rehearsals__slot-list">
-                          {entry.unavailable_slots.map((slot) => (
-                            <div key={slot.id} className="wpss-project-rehearsals__slot-row">
-                              <label className="wpss-project-rehearsals__slot-field wpss-project-rehearsals__slot-field--day">
-                                <span>Día</span>
-                                <select value={slot.day} onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'day', event.target.value)}>
-                                  {DAY_OPTIONS.filter((option) => !entry.blocked_days.includes(option.value)).map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="wpss-project-rehearsals__slot-field">
-                                <span>Inicio</span>
-                                <input
-                                  type="time"
-                                  value={slot.start}
-                                  onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'start', event.target.value)}
-                                />
-                              </label>
-                              <label className="wpss-project-rehearsals__slot-field">
-                                <span>Fin</span>
-                                <input
-                                  type="time"
-                                  value={slot.end}
-                                  onChange={(event) => updateAvailabilityRangeField(entry.user_id, 'unavailable_slots', slot.id, 'end', event.target.value)}
-                                />
-                              </label>
-                              <button type="button" className="button button-small button-link-delete" onClick={() => removeAvailabilityRange(entry.user_id, 'unavailable_slots', slot.id)}>
-                                Quitar
-                              </button>
-                            </div>
-                          ))}
-                          {!entry.unavailable_slots.length ? <p className="wpss-collections__hint">Sin bloqueos parciales definidos.</p> : null}
-                        </div>
-                      </div>
-                    </article>
+                    <AvailabilityCard
+                      key={entry.user_id}
+                      entry={entry}
+                      onToggleBlockedDay={toggleBlockedDay}
+                      onUpdateAvailabilityEntry={updateAvailabilityEntry}
+                      onAddAvailabilityRange={addAvailabilityRange}
+                      onUpdateAvailabilityRangeField={updateAvailabilityRangeField}
+                      onRemoveAvailabilityRange={removeAvailabilityRange}
+                    />
                   ))}
                 </div>
               )}
