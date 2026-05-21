@@ -229,6 +229,13 @@ const filterRehearsalAttachmentsByProject = (attachments, projectId) => {
   })
 }
 
+const REHEARSAL_ACTION_LABELS = {
+  importAudio: 'Subir audio',
+  recordAudio: 'Grabar nota',
+  stopRecordAudio: 'Detener nota',
+  uploadingRecordAudio: 'Subiendo nota…',
+}
+
 const buildRehearsalTitle = (target, projectTitle = '') => {
   const anchorType = target?.anchor_type || 'song'
   const scopeLabel = anchorType === 'section'
@@ -238,7 +245,7 @@ const buildRehearsalTitle = (target, projectTitle = '') => {
       : anchorType === 'segment'
         ? `fragmento ${Number(target?.segment_index) + 1}`
         : 'canción completa'
-  return projectTitle ? `Ensayo · ${scopeLabel} · ${projectTitle}` : `Ensayo · ${scopeLabel}`
+  return projectTitle ? `Nota de ensayo · ${scopeLabel} · ${projectTitle}` : `Nota de ensayo · ${scopeLabel}`
 }
 
 function YouTubeSectionPlayer({ song, section, sectionIndex, repeat = 1 }) {
@@ -1500,7 +1507,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
               <div className="wpss-reading__group-controls wpss-reading__group-controls--rehearsal">
                 {rehearsalProjects.length ? (
                   <label className="wpss-reading__status-field">
-                    <span>Proyecto de ensayo</span>
+                    <span>Proyecto musical</span>
                     <select
                       value={String(selectedRehearsalProjectId || '')}
                       onChange={(event) => setSelectedRehearsalProjectId(normalizeProjectId(event.target.value))}
@@ -1514,19 +1521,20 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                   </label>
                 ) : (
                   <span className="wpss-reading__status-label">
-                    Esta canción no tiene proyectos habilitados para ensayos.
+                    No hay proyectos musicales disponibles para guardar notas de ensayo en esta canción.
                   </span>
                 )}
                 <span className="wpss-reading__status-label">
                   {activeRehearsalProject
-                    ? `Escuchando tomas de ${activeRehearsalProject.titulo}.`
-                    : 'Selecciona un proyecto para filtrar los ensayos.'}
+                    ? `Viendo notas de ensayo de ${activeRehearsalProject.titulo}.`
+                    : 'Selecciona un proyecto para ver y grabar notas de ensayo.'}
                 </span>
                 {canUploadRehearsals && activeRehearsalProject ? (
                   <InlineMediaQuickActions
-                    target={{ anchor_type: 'song', label: 'canción completa', compactRecorder: true }}
+                    target={{ anchor_type: 'song', label: 'canción completa', compactRecorder: true, stickyRecorder: true }}
                     onUpload={handleUploadRehearsal}
                     allowedModes={['importAudio', 'recordAudio']}
+                    actionLabels={REHEARSAL_ACTION_LABELS}
                   />
                 ) : null}
               </div>
@@ -1753,7 +1761,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
             {showAttachments && songLevelRehearsals.length ? (
               <ReadingMediaAttachments
                 attachments={songLevelRehearsals}
-                title={activeRehearsalProject ? `Ensayos · ${activeRehearsalProject.titulo}` : 'Ensayos de la canción'}
+                title={activeRehearsalProject ? `Notas de ensayo · ${activeRehearsalProject.titulo}` : 'Notas de ensayo de la canción'}
                 compact
                 minimal={minimizeAttachments}
                 onDelete={handleDeleteAttachment}
@@ -1866,7 +1874,8 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                               compactRecorder: true,
                             }}
                             onUpload={handleUploadRehearsal}
-                            allowedModes={['importAudio', 'recordAudio']}
+                            allowedModes={['recordAudio']}
+                            actionLabels={REHEARSAL_ACTION_LABELS}
                           />
                         ) : null}
                       </div>
@@ -1882,7 +1891,8 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                             compactRecorder: true,
                           }}
                           onUpload={handleUploadRehearsal}
-                          allowedModes={['importAudio', 'recordAudio']}
+                          allowedModes={['recordAudio']}
+                          actionLabels={REHEARSAL_ACTION_LABELS}
                         />
                       </div>
                     </div>
@@ -1916,7 +1926,7 @@ export default function ReadingView({ onExit, exitLabel, onShowList, onEdit }) {
                           {showAttachments && sectionRehearsalAttachments.length ? (
                             <ReadingMediaAttachments
                               attachments={sectionRehearsalAttachments}
-                              title="Ensayos de la sección"
+                              title="Notas de ensayo de la sección"
                               compact
                               minimal={minimizeAttachments}
                               onDelete={handleDeleteAttachment}
@@ -2259,20 +2269,6 @@ function ReadingVerse({
           </div>
           {segmentAudioElements}
           {meta}
-          {canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
-            <div className="wpss-reading__verse-tools">
-              <InlineMediaQuickActions
-                target={{
-                  anchor_type: 'verse',
-                  verse_index: globalVerseIndex,
-                  label: `verso ${globalVerseIndex + 1}`,
-                  compactRecorder: true,
-                }}
-                onUpload={onUploadRehearsal}
-                allowedModes={['importAudio', 'recordAudio']}
-              />
-            </div>
-          ) : null}
           {verseMidi}
           {segmentMidis}
           {showAttachments && segmentVisualAttachments.length ? (
@@ -2301,7 +2297,7 @@ function ReadingVerse({
           {showAttachments && verseRehearsalAttachments.length ? (
             <ReadingMediaAttachments
               attachments={verseRehearsalAttachments}
-              title="Ensayos del verso"
+              title="Notas de ensayo del verso"
               compact
               minimal={minimizeAttachments}
               onDelete={onDeleteAttachment}
@@ -2342,20 +2338,6 @@ function ReadingVerse({
         </div>
         {segmentAudioElements}
         {meta}
-        {canUploadRehearsals && activeReadingToolTab === 'ensayo' && activeRehearsalProject ? (
-          <div className="wpss-reading__verse-tools">
-            <InlineMediaQuickActions
-              target={{
-                anchor_type: 'verse',
-                verse_index: globalVerseIndex,
-                label: `verso ${globalVerseIndex + 1}`,
-                compactRecorder: true,
-              }}
-              onUpload={onUploadRehearsal}
-              allowedModes={['importAudio', 'recordAudio']}
-            />
-          </div>
-        ) : null}
         {verseMidi}
         {segmentMidis}
         {showAttachments && segmentVisualAttachments.length ? (
@@ -2384,7 +2366,7 @@ function ReadingVerse({
         {showAttachments && verseRehearsalAttachments.length ? (
           <ReadingMediaAttachments
             attachments={verseRehearsalAttachments}
-            title="Ensayos del verso"
+            title="Notas de ensayo del verso"
             compact
             minimal={minimizeAttachments}
             onDelete={onDeleteAttachment}

@@ -2398,31 +2398,57 @@ function wpss_get_song_rehearsal_projects( $post_id, $user_id = null ) {
     }
 
     $user_id          = absint( $user_id );
-    $project_ids      = wpss_get_song_rehearsal_project_ids( $post_id );
-    $visibility_items = [];
-
-    foreach ( $project_ids as $project_id ) {
-        $project = get_post( $project_id );
-        if ( ! $project || 'proyecto' !== $project->post_type ) {
-            continue;
-        }
-
-        $visibility_items[] = [
-            'id'     => (int) $project_id,
-            'titulo' => sanitize_text_field( get_the_title( $project_id ) ),
-        ];
+    $can_manage = function_exists( 'wpss_user_can_manage_songbook' ) && wpss_user_can_manage_songbook( $user_id );
+    if ( $can_manage ) {
+        $project_ids = get_posts(
+            [
+                'post_type'      => 'proyecto',
+                'post_status'    => function_exists( 'wpssb_get_rehearsal_project_post_statuses' )
+                    ? wpssb_get_rehearsal_project_post_statuses()
+                    : [ 'publish', 'private', 'draft', 'pending', 'future' ],
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'orderby'        => 'title',
+                'order'          => 'ASC',
+                'no_found_rows'  => true,
+            ]
+        );
+    } else {
+        $project_ids = function_exists( 'wpssb_get_user_rehearsal_project_ids' )
+            ? wpssb_get_user_rehearsal_project_ids( $user_id )
+            : [];
     }
 
-    if ( empty( $visibility_items ) ) {
+    $project_ids = array_values( array_filter( array_map( 'absint', (array) $project_ids ) ) );
+
+    if ( 'project' === wpss_get_song_visibility_mode( $post_id ) ) {
+        $visibility_project_ids = wpss_get_song_visibility_project_ids( $post_id );
+        if ( ! empty( $visibility_project_ids ) ) {
+            $project_ids = array_values( array_intersect( $project_ids, $visibility_project_ids ) );
+        }
+    }
+
+    if ( empty( $project_ids ) ) {
+        $legacy_project_ids = wpss_get_song_rehearsal_project_ids( $post_id );
+        if ( ! empty( $legacy_project_ids ) ) {
+            $project_ids = $legacy_project_ids;
+        }
+    }
+
+    if ( empty( $project_ids ) ) {
         return [];
     }
 
-    $can_manage = function_exists( 'wpss_user_can_manage_songbook' ) && wpss_user_can_manage_songbook( $user_id );
     $result     = [];
 
-    foreach ( $visibility_items as $project ) {
-        $project_id = isset( $project['id'] ) ? absint( $project['id'] ) : 0;
+    foreach ( $project_ids as $project_id ) {
+        $project_id = absint( $project_id );
         if ( $project_id <= 0 ) {
+            continue;
+        }
+
+        $project = get_post( $project_id );
+        if ( ! $project || 'proyecto' !== $project->post_type ) {
             continue;
         }
 
@@ -2434,7 +2460,10 @@ function wpss_get_song_rehearsal_projects( $post_id, $user_id = null ) {
             continue;
         }
 
-        $project['can_upload'] = $user_id > 0
+        $result[] = [
+            'id'         => (int) $project_id,
+            'titulo'     => sanitize_text_field( get_the_title( $project_id ) ),
+            'can_upload' => $user_id > 0
             && (
                 $can_manage
                 || (
@@ -2442,9 +2471,8 @@ function wpss_get_song_rehearsal_projects( $post_id, $user_id = null ) {
                     && wpss_user_can_read_songbook( $user_id )
                     && $belongs
                 )
-            );
-
-        $result[] = $project;
+            ),
+        ];
     }
 
     return $result;

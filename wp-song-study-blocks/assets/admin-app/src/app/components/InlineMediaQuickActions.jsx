@@ -6,8 +6,8 @@ function Spinner({ label = 'Cargando' }) {
   return <span className="wpss-inline-spinner" aria-label={label} />
 }
 
-function getActionLabel(mode, uploadingMode) {
-  const labels = {
+function getActionLabel(mode, uploadingMode, labels = {}) {
+  const defaults = {
     importAudio: 'Adjuntar audio',
     recordAudio: 'Grabar audio',
     importPhoto: 'Adjuntar foto',
@@ -15,10 +15,11 @@ function getActionLabel(mode, uploadingMode) {
   }
 
   if (uploadingMode === mode) {
-    return 'Subiendo…'
+    const camelKey = `uploading${mode.charAt(0).toUpperCase()}${mode.slice(1)}`
+    return labels[`uploading_${mode}`] || labels[camelKey] || 'Subiendo…'
   }
 
-  return labels[mode] || 'Adjuntar'
+  return labels[mode] || defaults[mode] || 'Adjuntar'
 }
 
 function buildCapturedFile(blob, mode) {
@@ -59,7 +60,7 @@ function getPhotoScoreOptions(mode, fileName = '') {
   }
 }
 
-export default function InlineMediaQuickActions({ target, onUpload, allowedModes = null }) {
+export default function InlineMediaQuickActions({ target, onUpload, allowedModes = null, actionLabels = null }) {
   const { api, wpData, dispatch } = useAppState()
   const importAudioRef = useRef(null)
   const importPhotoRef = useRef(null)
@@ -83,6 +84,9 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
   const [showDriveWarning, setShowDriveWarning] = useState(false)
 
   const driveReady = isDriveOperational(driveStatus)
+  const labels = actionLabels && typeof actionLabels === 'object' ? actionLabels : {}
+  const isCompactAudioRecorder = target?.compactRecorder === true
+  const isStickyRecorder = target?.stickyRecorder === true
   const profileUrl = wpData?.adminUrls?.profilePage || '#'
   const drivePageUrl = wpData?.adminUrls?.drivePage || '#'
   const connectUrl = driveStatus?.connect_url || drivePageUrl
@@ -179,8 +183,6 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     })
     return false
   }
-
-  const isCompactAudioRecorder = target?.compactRecorder === true
 
   useEffect(() => {
     if (!captureMode || (isCompactAudioRecorder && captureMode === 'recordAudio')) {
@@ -350,10 +352,13 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     ? new Set(allowedModes)
     : null
   const canShowMode = (mode) => !enabledModes || enabledModes.has(mode)
+  const startRecordLabel = labels.recordAudio || 'Grabar audio'
+  const stopRecordLabel = labels.stopRecordAudio || 'Detener y subir grabación'
+  const uploadingRecordLabel = labels.uploading_recordAudio || labels.uploadingRecordAudio || 'Subiendo grabación'
   const renderActionContent = (mode) => (
     <span className="wpss-inline-action-label">
       {uploadingMode === mode ? <Spinner label="Subiendo a Google Drive" /> : null}
-      <span>{getActionLabel(mode, uploadingMode)}</span>
+      <span>{getActionLabel(mode, uploadingMode, labels)}</span>
     </span>
   )
 
@@ -373,6 +378,26 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
     }
 
     if (isCompactAudioRecorder) {
+      if (isStickyRecorder) {
+        if (captureMode === 'recordAudio') {
+          if (isRecording) {
+            await stopAudioRecordingAndUpload()
+            return
+          }
+
+          closeCapture()
+          return
+        }
+
+        setCaptureError(null)
+        setCaptureMode('recordAudio')
+        const ready = await prepareAudioStream()
+        if (!ready) {
+          setCaptureMode(null)
+        }
+        return
+      }
+
       if (isRecording) {
         await stopAudioRecordingAndUpload()
         return
@@ -397,6 +422,26 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
   const openCapturePhoto = async () => {
     if (await ensureDriveReady()) {
       setCaptureMode('capturePhoto')
+    }
+  }
+  const startInlineAudioRecording = async () => {
+    if (!isCompactAudioRecorder) {
+      return
+    }
+
+    if (!(await ensureDriveReady())) {
+      return
+    }
+
+    setCaptureError(null)
+    const ready = audioReady ? true : await prepareAudioStream()
+    if (!ready) {
+      return
+    }
+
+    const started = startAudioRecording()
+    if (!started && isStickyRecorder) {
+      closeCapture()
     }
   }
 
@@ -430,23 +475,30 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
             disabled={disabled || isCheckingDrive}
             aria-label={
               uploadingMode === 'recordAudio'
-                ? 'Subiendo grabación'
+                ? uploadingRecordLabel
                 : isRecording
-                  ? 'Detener y subir grabación'
-                  : 'Grabar audio'
+                  ? stopRecordLabel
+                  : startRecordLabel
             }
             title={
               uploadingMode === 'recordAudio'
-                ? 'Subiendo grabación'
+                ? uploadingRecordLabel
                 : isRecording
-                  ? 'Detener y subir grabación'
-                  : 'Grabar audio'
+                  ? stopRecordLabel
+                  : startRecordLabel
             }
           >
             {isCompactAudioRecorder ? (
               <span className="wpss-inline-record-button__content">
                 {uploadingMode === 'recordAudio' ? <Spinner label="Subiendo audio a Google Drive" /> : null}
                 <span className={`wpss-inline-record-button__glyph ${isRecording ? 'is-recording' : ''}`} aria-hidden="true" />
+                <span className="wpss-inline-record-button__text">
+                  {uploadingMode === 'recordAudio'
+                    ? uploadingRecordLabel
+                    : isRecording
+                      ? stopRecordLabel
+                      : startRecordLabel}
+                </span>
               </span>
             ) : (
               renderActionContent('recordAudio')
@@ -491,23 +543,49 @@ export default function InlineMediaQuickActions({ target, onUpload, allowedModes
       ) : null}
 
       {isCompactAudioRecorder && (captureMode === 'recordAudio' || captureError) ? (
-        <div className={`wpss-inline-recorder-status ${captureError ? 'has-error' : ''}`} role={captureError ? 'alert' : 'status'}>
-          <span>
+        <div
+          className={`wpss-inline-recorder-status ${isStickyRecorder ? 'is-sticky' : ''} ${captureError ? 'has-error' : ''}`.trim()}
+          role={captureError ? 'alert' : 'status'}
+        >
+          <span className="wpss-inline-recorder-status__message">
             {captureError
               ? captureError
               : uploadingMode === 'recordAudio'
                 ? 'Subiendo grabacion...'
                 : isRecording
-                  ? 'Grabando. Pulsa el icono otra vez para detener y subir.'
+                  ? 'Grabando desde el micrófono.'
                   : audioReady
                     ? 'Microfono listo.'
                     : 'Preparando microfono...'}
           </span>
-          {captureMode === 'recordAudio' && uploadingMode !== 'recordAudio' ? (
-            <button type="button" className="button button-small button-secondary" onClick={cancelAudioCapture}>
-              Cancelar
-            </button>
-          ) : null}
+          <div className="wpss-inline-recorder-status__actions">
+            {captureMode === 'recordAudio' && uploadingMode !== 'recordAudio' ? (
+              !isRecording ? (
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={startInlineAudioRecording}
+                  disabled={disabled || !audioReady}
+                >
+                  Iniciar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={stopAudioRecordingAndUpload}
+                  disabled={disabled}
+                >
+                  Detener y subir
+                </button>
+              )
+            ) : null}
+            {captureMode === 'recordAudio' && uploadingMode !== 'recordAudio' ? (
+              <button type="button" className="button button-small button-secondary" onClick={cancelAudioCapture}>
+                {isRecording ? 'Cancelar' : 'Cerrar'}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

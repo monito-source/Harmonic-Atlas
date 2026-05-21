@@ -1259,16 +1259,6 @@ export default function Editor({ onShowList }) {
 
   const availableCollections = Array.isArray(state.collections?.items) ? state.collections.items : []
   const availableProjects = Array.isArray(state.projects) ? state.projects : []
-  const selectedRehearsalProjectIds = useMemo(
-    () => (Array.isArray(editingSong.rehearsal_project_ids)
-      ? Array.from(new Set(editingSong.rehearsal_project_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
-      : []),
-    [editingSong.rehearsal_project_ids],
-  )
-  const selectedRehearsalProjects = useMemo(
-    () => availableProjects.filter((project) => selectedRehearsalProjectIds.includes(Number(project?.id))),
-    [availableProjects, selectedRehearsalProjectIds],
-  )
   const mediaPermissionsKey = useMemo(() => {
     const settings = editingSong?.adjuntos_permisos && typeof editingSong.adjuntos_permisos === 'object'
       ? editingSong.adjuntos_permisos
@@ -1821,9 +1811,7 @@ export default function Editor({ onShowList }) {
       visibility_user_ids: Array.isArray(currentSong.visibility_user_ids)
         ? Array.from(new Set(currentSong.visibility_user_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
         : [],
-      rehearsal_project_ids: Array.isArray(currentSong.rehearsal_project_ids)
-        ? Array.from(new Set(currentSong.rehearsal_project_ids.map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0)))
-        : [],
+      rehearsal_project_ids: [],
       prestamos_cancion: currentSong.prestamos,
       modulaciones_cancion: currentSong.modulaciones,
       secciones: Array.isArray(currentSong.secciones)
@@ -5073,33 +5061,18 @@ export default function Editor({ onShowList }) {
               </label>
             </div>
             <div className="wpss-field">
-              <span>Administración de grupos de ensayo</span>
+              <span>Notas de ensayo por proyecto</span>
               <p className="wpss-collections__hint">
-                Los proyectos seleccionados podrán grabar y adjuntar audios dentro del área de ensayos. Estos materiales no se mezclan con los adjuntos generales de la canción.
+                Las notas de audio del ensayo ya no se activan canción por canción. Cada proyecto musical autorizado verá y grabará solo sus propios adjuntos sobre esta canción.
               </p>
               {availableProjects.length ? (
                 <>
                   <div className="wpss-collections__shared-list">
                     {availableProjects.map((project) => {
                       const projectId = Number(project?.id)
-                      const checked = selectedRehearsalProjectIds.includes(projectId)
 
                       return (
                         <label key={projectId} className="wpss-collections__shared-item">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              const nextIds = checked
-                                ? selectedRehearsalProjectIds.filter((item) => item !== projectId)
-                                : selectedRehearsalProjectIds.concat(projectId)
-                              updateSong({
-                                ...editingSong,
-                                rehearsal_project_ids: nextIds,
-                              })
-                              scheduleAutosave()
-                            }}
-                          />
                           <span>
                             <strong>{project?.titulo || `Proyecto #${projectId}`}</strong>
                             {Array.isArray(project?.colaboradores) && project.colaboradores.length ? (
@@ -5113,13 +5086,13 @@ export default function Editor({ onShowList }) {
                     })}
                   </div>
                   <p className="wpss-collections__hint">
-                    {selectedRehearsalProjects.length
-                      ? `${selectedRehearsalProjects.length} proyecto(s) habilitado(s) para ensayos.`
-                      : 'Si no seleccionas proyectos, la canción no tendrá grupos de ensayo habilitados.'}
+                    {editingSong.visibility_mode === 'project' && Array.isArray(editingSong.visibility_projects) && editingSong.visibility_projects.length
+                      ? 'Si la canción está restringida por proyecto, solo esos proyectos podrán ver y grabar sus notas de ensayo.'
+                      : 'Las notas quedan separadas por proyecto y el usuario podrá cambiar entre ellas desde la lectura.'}
                   </p>
                 </>
               ) : (
-                <span>No hay proyectos disponibles todavía.</span>
+                <span>No hay proyectos musicales disponibles todavía.</span>
               )}
             </div>
             <label className="wpss-toggle">

@@ -1876,6 +1876,25 @@
   gap: 0.85rem;
 }
 
+.wpss-reading__section-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.wpss-reading__section-tools {
+  max-width: 100%;
+}
+
+.wpss-reading__section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .wpss-reading__verse-tools {
   margin: 0.75rem 0 0;
 }
@@ -1900,8 +1919,8 @@
 }
 
 .wpss-inline-record-button {
-  min-width: 2.4rem;
-  padding-inline: 0.55rem;
+  min-width: 0;
+  padding-inline: 0.7rem;
   border-radius: 999px;
 }
 
@@ -1909,6 +1928,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
   min-width: 1rem;
   min-height: 1rem;
 }
@@ -1919,6 +1939,11 @@
   border-radius: 999px;
   background: #dc2626;
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.16);
+}
+
+.wpss-inline-record-button__text {
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .wpss-inline-record-button.is-recording {
@@ -1940,6 +1965,28 @@
   margin-top: 0.45rem;
   color: #475569;
   font-size: 0.85rem;
+}
+
+.wpss-inline-recorder-status.is-sticky {
+  position: sticky;
+  top: calc(var(--wp-admin--admin-bar--height, 0px) + 0.75rem);
+  z-index: 8;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.wpss-inline-recorder-status__message {
+  flex: 1 1 14rem;
+}
+
+.wpss-inline-recorder-status__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .wpss-inline-recorder-status.has-error {

@@ -5890,13 +5890,13 @@ function wpss_rest_upload_song_media_to_google_drive( WP_REST_Request $request )
         }
 
         if ( 'section' === $anchor_type ) {
-            $title = $section_name ? sprintf( __( 'Ensayo · %s', 'wp-song-study' ), $section_name ) : __( 'Ensayo de sección', 'wp-song-study' );
+            $title = $section_name ? sprintf( __( 'Nota de ensayo · %s', 'wp-song-study' ), $section_name ) : __( 'Nota de ensayo de la sección', 'wp-song-study' );
         } elseif ( 'verse' === $anchor_type ) {
-            $title = sprintf( __( 'Ensayo · verso %d', 'wp-song-study' ), $verse_index + 1 );
+            $title = sprintf( __( 'Nota de ensayo · verso %d', 'wp-song-study' ), $verse_index + 1 );
         } elseif ( 'segment' === $anchor_type ) {
-            $title = sprintf( __( 'Ensayo · fragmento %d', 'wp-song-study' ), $segment_index + 1 );
+            $title = sprintf( __( 'Nota de ensayo · fragmento %d', 'wp-song-study' ), $segment_index + 1 );
         } else {
-            $title = __( 'Ensayo general', 'wp-song-study' );
+            $title = __( 'Nota de ensayo general', 'wp-song-study' );
         }
     }
 
